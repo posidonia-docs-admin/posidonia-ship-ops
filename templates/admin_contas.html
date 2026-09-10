@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block titulo %}Contas{% endblock %}
+
+{% block topo %}
+<div class="topo">
+  <div>
+    <div class="navio">Posidonia · Ship Ops</div>
+    <div class="viagem">Contas de acesso</div>
+  </div>
+  <a href="/painel">painel</a>
+</div>
+{% endblock %}
+
+{% block conteudo %}
+<h1>Contas</h1>
+<p class="legenda">
+  A conta de navio é do navio, não da pessoa — quem preencheu fica registrado em
+  cada lançamento.
+</p>
+
+{% if erro %}<p class="aviso aviso-erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="aviso">{{ ok }}</p>{% endif %}
+
+<table>
+  <thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Navio</th></tr></thead>
+  <tbody>
+    {% for c in lista %}
+    <tr>
+      <td>{{ c.login }}{% if not c.ativo %} <em>(inativa)</em>{% endif %}</td>
+      <td>{{ c.nome_exibicao }}</td>
+      <td>{{ c.perfil }}</td>
+      <td>{{ c.navio or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<details open>
+  <summary>Criar conta</summary>
+  <form method="post" action="/admin/contas">
+    <label>Login
+      <input type="text" name="login" required autocapitalize="none"
+             spellcheck="false" placeholder="navio.pathfinder">
+    </label>
+    <label>Nome de exibição
+      <input type="text" name="nome_exibicao" required placeholder="Amazon Pathfinder">
+    </label>
+    <label>Perfil
+      <select name="perfil">
+        <option value="navio">Navio</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="analytics">Analytics (só leitura)</option>
+        <option value="admin">Administrador</option>
+      </select>
+    </label>
+    <label>Navio <span class="dica">— obrigatório no perfil Navio</span>
+      <select name="navio_id">
+        <option value="">—</option>
+        {% for n in navios %}<option value="{{ n.id }}">{{ n.nome_oficial }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Senha <span class="dica">— mínimo 8 caracteres</span>
+      <input type="password" name="senha" required minlength="8" autocomplete="new-password">
+    </label>
+    <button type="submit">Criar conta</button>
+  </form>
+</details>
+
+<details>
+  <summary>Trocar senha</summary>
+  <form method="post" action="/admin/contas/senha">
+    <label>Login
+      <select name="login">
+        {% for c in lista %}<option value="{{ c.login }}">{{ c.login }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Nova senha
+      <input type="password" name="senha" required minlength="8" autocomplete="new-password">
+    </label>
+    <button type="submit">Trocar senha</button>
+  </form>
+</details>
+{% endblock %}

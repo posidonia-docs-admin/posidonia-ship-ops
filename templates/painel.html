@@ -32,6 +32,10 @@
   </tbody>
 </table>
 
+{% if conta.perfil == "admin" %}
+<a class="botao botao-fraco" href="/admin/contas">Contas de acesso</a>
+{% endif %}
+
 <p class="legenda" style="margin-top:20px">
   As filas de conferência e de cobrança entram na Fase 3.
 </p>

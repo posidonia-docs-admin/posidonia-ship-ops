@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+scripts/demo_viagem.py
+*.db
+*.sqlite3
+.env
+CLAUDE.md

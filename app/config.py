@@ -44,5 +44,31 @@ def secret_key(obrigatoria: bool = True) -> str:
     return "chave-apenas-de-teste-nao-use-em-producao"
 
 
+# Conta de administrador criada no arranque. Em producao (Render free) NAO ha
+# terminal: sem isto, o sistema sobe e ninguem consegue entrar.
+ADMIN_LOGIN = os.environ.get("SHIPOPS_ADMIN_LOGIN", "").strip().lower()
+ADMIN_SENHA = os.environ.get("SHIPOPS_ADMIN_SENHA", "")
+
+
 def usando_turso() -> bool:
     return bool(TURSO_URL)
+
+
+def em_hospedagem_efemera() -> bool:
+    """O Render define RENDER=true. O container e recriado a cada deploy."""
+    return os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
+
+
+def checar_persistencia() -> None:
+    """Recusa subir em hospedagem efemera sem banco na nuvem.
+
+    Sem esta trava o app subiria, funcionaria, o comandante lancaria uma viagem
+    inteira — e o primeiro redeploy apagaria tudo, em silencio. Falhar no
+    arranque e barulhento e barato; perder dado nao tem volta.
+    """
+    if em_hospedagem_efemera() and not usando_turso():
+        raise RuntimeError(
+            "TURSO_DATABASE_URL nao definida. Neste ambiente o disco e efemero: "
+            "o banco local seria apagado no proximo deploy. Configure o Turso "
+            "antes de subir."
+        )

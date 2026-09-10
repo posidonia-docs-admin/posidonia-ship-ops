@@ -1,0 +1,29 @@
+# Blueprint do Render. Ao conectar o repositorio, o Render le este arquivo e
+# cria o servico ja configurado — nao e preciso preencher nada a mao alem dos
+# segredos marcados com `sync: false`.
+services:
+  - type: web
+    name: posidonia-ship-ops
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Gerada uma vez pelo Render. Trocar invalida todas as sessoes abertas.
+      - key: SHIPOPS_SECRET_KEY
+        generateValue: true
+
+      # Turso: preencher no painel. O plano free do Render recria o container a
+      # cada deploy, entao SQLite local NAO sobreviveria — o dado tem de estar la.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+
+      # Conta de administrador de arranque. Sem terminal no plano free, e por
+      # aqui que o primeiro acesso existe — e o caminho de recuperacao de senha.
+      - key: SHIPOPS_ADMIN_LOGIN
+        sync: false
+      - key: SHIPOPS_ADMIN_SENHA
+        sync: false

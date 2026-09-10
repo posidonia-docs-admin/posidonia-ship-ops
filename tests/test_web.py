@@ -244,3 +244,98 @@ def test_escala_extra_pela_tela(cliente):
 def test_estatico_e_publico(cliente):
     for arquivo in ("/static/estilo.css", "/static/fila.js", "/static/marco.js"):
         assert cliente.get(arquivo).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Administracao de contas — o Render free nao tem terminal
+# ---------------------------------------------------------------------------
+
+def test_admin_de_arranque_nasce_do_ambiente(monkeypatch):
+    """Sem isto o sistema sobe em producao e ninguem consegue entrar."""
+    caminho = pathlib.Path(os.environ["SHIPOPS_BANCO"])
+    if caminho.exists():
+        caminho.unlink()
+    monkeypatch.setattr(main.config, "ADMIN_LOGIN", "chefe")
+    monkeypatch.setattr(main.config, "ADMIN_SENHA", "senha-inicial-123")
+
+    with TestClient(main.app) as c:
+        resposta = c.post("/login", data={"login": "chefe", "senha": "senha-inicial-123"},
+                          follow_redirects=False)
+        assert resposta.status_code == 303 and "erro=" not in resposta.headers["location"]
+        assert c.get("/admin/contas").status_code == 200
+
+
+def test_admin_de_arranque_realinha_a_senha(monkeypatch):
+    """O caminho de recuperacao: troca-se a variavel e redeploya."""
+    caminho = pathlib.Path(os.environ["SHIPOPS_BANCO"])
+    if caminho.exists():
+        caminho.unlink()
+    monkeypatch.setattr(main.config, "ADMIN_LOGIN", "chefe")
+    monkeypatch.setattr(main.config, "ADMIN_SENHA", "senha-antiga-123")
+    with TestClient(main.app):
+        pass
+
+    monkeypatch.setattr(main.config, "ADMIN_SENHA", "senha-nova-456")
+    with TestClient(main.app) as c:
+        velha = c.post("/login", data={"login": "chefe", "senha": "senha-antiga-123"},
+                       follow_redirects=False)
+        assert "erro=" in velha.headers["location"]
+        nova = c.post("/login", data={"login": "chefe", "senha": "senha-nova-456"},
+                      follow_redirects=False)
+        assert "erro=" not in nova.headers["location"]
+
+
+def test_sem_variavel_de_admin_nenhuma_conta_e_criada(cliente):
+    with closing(db.conectar()) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM conta WHERE perfil = 'admin'").fetchone()[0] == 0
+
+
+def test_nao_admin_nao_entra_na_tela_de_contas(cliente):
+    entrar(cliente, "vlo")            # supervisor
+    assert cliente.get("/admin/contas").status_code == 403
+    entrar(cliente, "navio.pathfinder")
+    assert cliente.get("/admin/contas").status_code == 403
+
+
+def test_admin_cria_conta_de_navio_pela_tela(cliente, monkeypatch):
+    with closing(db.conectar()) as conn:
+        contas.criar_conta(conn, login="chefe", senha=SENHA,
+                           nome_exibicao="Chefe", perfil="admin")
+    entrar(cliente, "chefe")
+
+    resposta = cliente.post("/admin/contas", data={
+        "login": "navio.courage", "nome_exibicao": "Amazon Courage",
+        "perfil": "navio", "senha": "outra-senha-123", "navio_id": "4"},
+        follow_redirects=False)
+    assert resposta.status_code == 303 and "ok=" in resposta.headers["location"]
+
+    cliente.get("/logout")
+    entrada = cliente.post("/login", data={"login": "navio.courage",
+                                           "senha": "outra-senha-123"},
+                           follow_redirects=False)
+    assert "erro=" not in entrada.headers["location"]
+
+
+def test_conta_de_navio_sem_navio_e_recusada(cliente):
+    with closing(db.conectar()) as conn:
+        contas.criar_conta(conn, login="chefe", senha=SENHA,
+                           nome_exibicao="Chefe", perfil="admin")
+    entrar(cliente, "chefe")
+    resposta = cliente.post("/admin/contas", data={
+        "login": "navio.solto", "nome_exibicao": "Solto", "perfil": "navio",
+        "senha": "senha-boa-123", "navio_id": ""}, follow_redirects=False)
+    assert "erro=" in resposta.headers["location"]
+    assert "vinculada%20a%20um%20navio" in resposta.headers["location"]
+
+
+def test_recusa_subir_em_hospedagem_efemera_sem_turso(monkeypatch):
+    """Sem esta trava o dado sumiria no primeiro redeploy, em silencio."""
+    monkeypatch.setenv("RENDER", "true")
+    with pytest.raises(RuntimeError, match="TURSO_DATABASE_URL"):
+        with TestClient(main.app):
+            pass
+
+
+def test_fora_do_render_o_sqlite_local_e_aceito(cliente):
+    assert cliente.get("/api/health").json() == {"status": "ok"}

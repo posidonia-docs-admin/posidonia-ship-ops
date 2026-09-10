@@ -87,6 +87,34 @@ def ler(sql: str, params: tuple = (), *, uma: bool = False):
     return None if uma else []
 
 
+def _dividir_script(sql: str) -> list[str]:
+    """Quebra o script em comandos. Usado so quando o driver nao tem executescript.
+
+    Funciona porque em schema.sql e seed.sql nenhum comando carrega ';' no meio —
+    nao ha trigger nem corpo de funcao. Se um dia houver, isto quebra: prefira
+    manter essa propriedade a tentar um parser de SQL aqui.
+    """
+    limpo = "\n".join(
+        linha for linha in sql.splitlines() if not linha.strip().startswith("--"))
+    return [c.strip() for c in limpo.split(";") if c.strip()]
+
+
+def _rodar_script(conn, sql: str) -> None:
+    if hasattr(conn, "executescript"):
+        conn.executescript(sql)
+        return
+    for comando in _dividir_script(sql):
+        conn.execute(comando)
+
+
+def _versao_schema(conn) -> int:
+    """PRAGMA nem sempre existe fora do SQLite local. Ausencia = banco novo."""
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def inicializar(conn=None) -> None:
     """Cria o schema e aplica o seed. Idempotente.
 
@@ -97,14 +125,14 @@ def inicializar(conn=None) -> None:
     propria = conn is None
     conn = conn or conectar()
     try:
-        versao = conn.execute("PRAGMA user_version").fetchone()[0]
+        versao = _versao_schema(conn)
         if versao not in (0, VERSAO_SCHEMA):
             raise RuntimeError(
-                f"Banco na versao de schema {versao}, o codigo espera "
-                f"{VERSAO_SCHEMA}. Migre antes de continuar."
+                "Banco na versao de schema {}, o codigo espera {}. "
+                "Migre antes de continuar.".format(versao, VERSAO_SCHEMA)
             )
-        conn.executescript(_ARQ_SCHEMA.read_text(encoding="utf-8"))
-        conn.executescript(_ARQ_SEED.read_text(encoding="utf-8"))
+        _rodar_script(conn, _ARQ_SCHEMA.read_text(encoding="utf-8"))
+        _rodar_script(conn, _ARQ_SEED.read_text(encoding="utf-8"))
         conn.commit()
     finally:
         if propria:

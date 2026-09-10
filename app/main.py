@@ -17,11 +17,33 @@ templates = Jinja2Templates(directory=str(RAIZ / "templates"))
 templates.env.globals["ROTULO_MOTIVO"] = dominio.ROTULO_MOTIVO
 templates.env.globals["ROTULO_MARCO"] = dominio.ROTULO_MARCO
 
+
+def _garantir_admin() -> None:
+    """Cria (ou realinha) a conta de administrador a partir do ambiente.
+
+    Em producao no plano free do Render NAO existe terminal: sem isto o sistema
+    sobe e ninguem consegue entrar. A regra e simples e previsivel — a senha do
+    admin e o que SHIPOPS_ADMIN_SENHA disser. E tambem o caminho de recuperacao
+    se a senha se perder: troca-se a variavel e redeploya.
+    """
+    if not config.ADMIN_LOGIN or not config.ADMIN_SENHA:
+        return
+    with closing(db.conectar()) as conn:
+        if contas.buscar(conn, config.ADMIN_LOGIN) is None:
+            contas.criar_conta(
+                conn, login=config.ADMIN_LOGIN, senha=config.ADMIN_SENHA,
+                nome_exibicao="Administrador", perfil="admin")
+        elif contas.autenticar(conn, config.ADMIN_LOGIN, config.ADMIN_SENHA) is None:
+            contas.trocar_senha(conn, config.ADMIN_LOGIN, config.ADMIN_SENHA)
+
+
 @asynccontextmanager
 async def ciclo_de_vida(_app: FastAPI):
     # Falha aqui e falha cedo: melhor nao subir do que subir sem segredo.
     config.secret_key()
+    config.checar_persistencia()
     db.inicializar()
+    _garantir_admin()
     yield
 
 
@@ -37,8 +59,6 @@ CSP = (
     "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
     "base-uri 'self'; form-action 'self'"
 )
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +338,64 @@ def painel(request: Request):
     return templates.TemplateResponse(request, "painel.html", {
         "conta": request.state.conta,
         "frota": frota, "a_conferir": a_conferir})
+
+
+# ---------------------------------------------------------------------------
+# Administracao de contas
+#
+# Existe porque o plano free do Render nao tem terminal: o script de linha de
+# comando funciona na maquina do Vinicius, mas em producao nao ha onde roda-lo.
+# ---------------------------------------------------------------------------
+
+def _so_admin(request: Request):
+    return request.state.conta["perfil"] == "admin"
+
+
+@app.get("/admin/contas", response_class=HTMLResponse)
+def admin_contas(request: Request, erro: str = "", ok: str = ""):
+    if not _so_admin(request):
+        return HTMLResponse("<h3>Apenas administradores.</h3>", status_code=403)
+    with closing(db.conectar()) as conn:
+        lista = conn.execute(
+            "SELECT c.login, c.nome_exibicao, c.perfil, c.ativo, n.nome_oficial AS navio "
+            "  FROM conta c LEFT JOIN navio n ON n.id = c.navio_id "
+            " ORDER BY c.perfil, c.login").fetchall()
+        navios = conn.execute(
+            "SELECT id, nome_oficial FROM navio WHERE ativo = 1 ORDER BY id").fetchall()
+    return templates.TemplateResponse(request, "admin_contas.html", {
+        "conta": request.state.conta, "lista": lista, "navios": navios,
+        "erro": erro, "ok": ok})
+
+
+@app.post("/admin/contas")
+def admin_criar_conta(
+    request: Request,
+    login: str = Form(...),
+    nome_exibicao: str = Form(...),
+    perfil: str = Form(...),
+    senha: str = Form(...),
+    navio_id: str = Form(""),
+):
+    if not _so_admin(request):
+        return HTMLResponse("<h3>Apenas administradores.</h3>", status_code=403)
+    with closing(db.conectar()) as conn:
+        criado, erros = contas.criar_conta(
+            conn, login=login, senha=senha, nome_exibicao=nome_exibicao,
+            perfil=perfil, navio_id=int(navio_id) if navio_id.strip() else None)
+    if erros:
+        return RedirectResponse(
+            "/admin/contas?erro=" + quote(" | ".join(erros)), 303)
+    return RedirectResponse(
+        "/admin/contas?ok=" + quote("Conta {} criada.".format(criado)), 303)
+
+
+@app.post("/admin/contas/senha")
+def admin_trocar_senha(request: Request, login: str = Form(...), senha: str = Form(...)):
+    if not _so_admin(request):
+        return HTMLResponse("<h3>Apenas administradores.</h3>", status_code=403)
+    with closing(db.conectar()) as conn:
+        trocou, erros = contas.trocar_senha(conn, login, senha)
+    destino = "/admin/contas?" + (
+        "erro=" + quote(" | ".join(erros)) if erros
+        else "ok=" + quote("Senha de {} trocada.".format(login)))
+    return RedirectResponse(destino, 303)
