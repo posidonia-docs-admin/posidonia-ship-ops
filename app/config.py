@@ -23,6 +23,9 @@ CAMINHO_BANCO = os.environ.get("SHIPOPS_BANCO") or str(DIR_DADOS / "shipops.db")
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "").strip()
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 
+# "libsql-local": forca o driver do Turso contra arquivo local (so testes).
+BACKEND = os.environ.get("SHIPOPS_BACKEND", "").strip().lower()
+
 # Fuso padrao da frota: Para, Amapa e Maranhao sao todos UTC-3.
 OFFSET_PADRAO = os.environ.get("SHIPOPS_OFFSET_PADRAO", "-03:00")
 
@@ -51,7 +54,18 @@ ADMIN_SENHA = os.environ.get("SHIPOPS_ADMIN_SENHA", "")
 
 
 def usando_turso() -> bool:
+    """Turso remoto de verdade."""
     return bool(TURSO_URL)
+
+
+def usar_libsql() -> bool:
+    """Usar o driver libSQL — remoto, ou contra arquivo local para testar.
+
+    SHIPOPS_BACKEND=libsql-local roda a suite inteira contra o MESMO driver de
+    producao, sem credencial nenhuma. E o que impede de repetir a falha que so
+    apareceu depois do deploy: o libsql devolve tuplas, o sqlite3 devolve Row.
+    """
+    return bool(TURSO_URL) or BACKEND == "libsql-local"
 
 
 def em_hospedagem_efemera() -> bool:

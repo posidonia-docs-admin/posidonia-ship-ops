@@ -39,17 +39,123 @@ def agora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# ---------------------------------------------------------------------------
+# Compatibilidade com o driver libSQL (Turso)
+#
+# O `libsql` NAO e o `sqlite3`: devolve tuplas puras, nao tem `row_factory` e o
+# cursor nao e iteravel. Como o codigo todo le por nome (`conta["perfil"]`) e
+# itera cursores, sem esta camada tudo funciona no SQLite local e quebra em
+# producao — exatamente o tipo de falha que so aparece depois do deploy.
+# ---------------------------------------------------------------------------
+
+class _Linha(tuple):
+    """Tupla com acesso por nome, como o sqlite3.Row.
+
+    O Jinja tenta atributo antes de item, entao `linha.nome_oficial` tambem
+    funciona nos templates — o mesmo comportamento do sqlite3.Row.
+    """
+
+    def __new__(cls, colunas, valores):
+        obj = super().__new__(cls, valores)
+        obj._colunas = colunas
+        return obj
+
+    def __getitem__(self, chave):
+        if isinstance(chave, str):
+            try:
+                return tuple.__getitem__(self, self._colunas.index(chave))
+            except ValueError:
+                raise KeyError(chave) from None
+        return tuple.__getitem__(self, chave)
+
+    def keys(self):
+        return list(self._colunas)
+
+
+class _Cursor:
+    def __init__(self, bruto):
+        self._bruto = bruto
+        descricao = getattr(bruto, "description", None) or ()
+        self._colunas = [coluna[0] for coluna in descricao]
+
+    def _converter(self, linha):
+        return None if linha is None else _Linha(self._colunas, linha)
+
+    def fetchone(self):
+        return self._converter(self._bruto.fetchone())
+
+    def fetchall(self):
+        return [self._converter(linha) for linha in self._bruto.fetchall()]
+
+    def fetchmany(self, tamanho=1):
+        return [self._converter(linha) for linha in self._bruto.fetchmany(tamanho)]
+
+    def __iter__(self):
+        # O cursor do libsql nao e iteravel; o do sqlite3 e. O codigo depende
+        # disso em varios `for linha in conn.execute(...)`.
+        return iter(self.fetchall())
+
+    @property
+    def lastrowid(self):
+        return self._bruto.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._bruto.rowcount
+
+    @property
+    def description(self):
+        return self._bruto.description
+
+
+class _Conexao:
+    """Faz o libsql parecer com o sqlite3 para o resto do codigo."""
+
+    def __init__(self, bruta):
+        self._bruta = bruta
+
+    def execute(self, sql, params=()):
+        return _Cursor(self._bruta.execute(sql, params))
+
+    def executemany(self, sql, seq):
+        return _Cursor(self._bruta.executemany(sql, seq))
+
+    def executescript(self, sql):
+        return self._bruta.executescript(sql)
+
+    def commit(self):
+        self._bruta.commit()
+
+    def rollback(self):
+        self._bruta.rollback()
+
+    def close(self):
+        self._bruta.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
 def conectar():
-    """Devolve uma conexao. Turso se configurado, SQLite local caso contrario."""
-    if config.usando_turso():
+    """Devolve uma conexao. libSQL se configurado, SQLite local caso contrario."""
+    if config.usar_libsql():
         import libsql  # importado so quando usado: nao pesa o boot local
 
-        conn = libsql.connect(
-            database=config.TURSO_URL,
-            auth_token=config.TURSO_TOKEN,
-            autocommit=False,
-        )
-        return conn
+        if config.usando_turso():
+            bruta = libsql.connect(
+                database=config.TURSO_URL,
+                auth_token=config.TURSO_TOKEN,
+                autocommit=False,
+            )
+        else:
+            # libsql contra arquivo local: e assim que a suite de testes exercita
+            # o driver de producao sem precisar de credencial nenhuma.
+            Path(config.CAMINHO_BANCO).parent.mkdir(parents=True, exist_ok=True)
+            bruta = libsql.connect(config.CAMINHO_BANCO)
+        return _Conexao(bruta)
 
     Path(config.CAMINHO_BANCO).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(config.CAMINHO_BANCO, timeout=10)

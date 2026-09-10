@@ -97,6 +97,12 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 - **Não inventar identificador.** `navio.imo` e `porto.un_locode` ficam **NULOS** até a operação
   confirmar. Número inventado parece certo, e por isso é pior que número ausente.
 - **Mudou `schema.sql`?** Incremente `VERSAO_SCHEMA` em `db.py` **e** o `PRAGMA user_version`.
+- **Rode a suite nos DOIS drivers antes de publicar.** `SHIPOPS_BACKEND=libsql-local` usa o
+  driver do Turso. O `libsql` devolve **tuplas puras** e o cursor **nao e iteravel**; o
+  `sqlite3` devolve `Row` e o cursor itera. Rodar so num dos dois nao prova nada — foi
+  assim que o app subiu verde e deu 500 no primeiro login em producao (10/set/2026).
+  A camada de compatibilidade (`_Linha`, `_Cursor`, `_Conexao`) vive em `db.py` e o CI
+  roda a matriz.
 
 ---
 

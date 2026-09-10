@@ -11,9 +11,18 @@ permissions:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # A suite roda nos DOIS drivers. O libsql e o de producao (Turso) e
+        # devolve tuplas onde o sqlite3 devolve Row — diferenca que ja derrubou
+        # o app depois de um deploy. Rodar so num dos dois nao prova nada.
+        backend: ["sqlite", "libsql-local"]
+    name: pytest (${{ matrix.backend }})
     env:
       SHIPOPS_SECRET_KEY: chave-de-ci-sem-valor-em-producao
+      SHIPOPS_BACKEND: ${{ matrix.backend == 'libsql-local' && 'libsql-local' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
