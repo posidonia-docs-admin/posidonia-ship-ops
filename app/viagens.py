@@ -249,7 +249,8 @@ def lancar_marco(
     acordar.
     """
     escala = conn.execute(
-        "SELECT e.tipo_escala, e.status, p.offset_padrao, e.origem, e.viagem_id "
+        "SELECT e.tipo_escala, e.status, p.offset_padrao, e.origem, e.viagem_id, "
+        "       e.codigo_porto "
         "  FROM escala e JOIN porto p ON p.codigo = e.codigo_porto "
         " WHERE e.id = ?",
         (escala_id,),
@@ -324,12 +325,41 @@ def lancar_marco(
         )
 
     conn.commit()
+
+    # O sailing de Alumar da escala de descarga fecha esta viagem e abre a
+    # seguinte. Feito aqui, o comandante nunca precisa pensar em "viagem": ele
+    # so ve a proxima parada esperando horario.
+    if escala[5] == PORTO_CICLO and escala[3] == "modelo" and tipo == "sailing":
+        encadear_ciclo(conn, escala[4])
+
     return cur.lastrowid, []
 
 
 # ---------------------------------------------------------------------------
 # Encerramento
 # ---------------------------------------------------------------------------
+
+def encadear_ciclo(conn, viagem_id: int) -> tuple[int | None, list[str]]:
+    """Fecha a viagem e abre a proxima, com as escalas do modelo ja criadas.
+
+    Silencioso de proposito: o marco em si foi gravado com sucesso, e devolver
+    o tropeco do encadeamento como erro faria o comandante achar que perdeu o
+    lancamento. Se faltar o unberth, a viagem simplesmente nao fecha e a
+    pendencia aparece na fila `escalas_incompletas` — que e onde ela tem de
+    aparecer.
+    """
+    linha = conn.execute(
+        "SELECT navio_id, status FROM viagem WHERE id = ?", (viagem_id,)
+    ).fetchone()
+    if linha is None or linha[1] != "aberta":
+        return None, []
+
+    fechou, avisos = encerrar_viagem(conn, viagem_id)
+    if not fechou:
+        return None, avisos
+
+    nova, erros = abrir_viagem(conn, linha[0], por="sistema")
+    return nova, avisos + erros
 
 def encerrar_viagem(conn, viagem_id: int) -> tuple[bool, list[str]]:
     """Fecha a viagem no `unberth` da escala de Alumar.

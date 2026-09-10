@@ -83,14 +83,41 @@ def _viagem_completa(conn, pathfinder, base_dia):
     return viagem_id, alumar
 
 
+def test_sailing_de_alumar_fecha_a_viagem_e_abre_a_seguinte_sozinho(conn, pathfinder):
+    """O comandante nunca pensa em 'viagem' — so ve a proxima parada."""
+    v1, _ = _viagem_completa(conn, pathfinder, base_dia=1)
+
+    assert conn.execute(
+        "SELECT status FROM viagem WHERE id = ?", (v1,)).fetchone()[0] == "encerrada"
+
+    abertas = conn.execute(
+        "SELECT id FROM viagem WHERE navio_id = ? AND status = 'aberta'",
+        (pathfinder,)).fetchall()
+    assert len(abertas) == 1 and abertas[0][0] != v1
+
+
+def test_encadeamento_nao_dispara_sem_o_unberth(conn, pathfinder):
+    """Sem unberth a viagem nao fecha, e a pendencia aparece na fila — nao some."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    alumar = conn.execute(
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 50", (viagem_id,)
+    ).fetchone()[0]
+
+    evento_id, erros = _lancar(conn, alumar, "sailing", "2026-03-15T10:00")
+    assert erros == [] and evento_id is not None      # o marco foi gravado
+    assert conn.execute(
+        "SELECT status FROM viagem WHERE id = ?", (viagem_id,)).fetchone()[0] == "aberta"
+    assert conn.execute(
+        "SELECT COUNT(*) FROM escalas_incompletas WHERE escala_id = ? "
+        "  AND marco_faltante = 'unberth'", (alumar,)).fetchone()[0] == 1
+
+
 def test_segunda_viagem_herda_o_sailing_de_alumar_e_nao_cria_escala_de_abertura(
         conn, pathfinder):
     v1, alumar1 = _viagem_completa(conn, pathfinder, base_dia=1)
-    ok, _ = viagens.encerrar_viagem(conn, v1)
-    assert ok
-
-    v2, erros = viagens.abrir_viagem(conn, pathfinder)
-    assert erros == []
+    v2 = conn.execute(
+        "SELECT id FROM viagem WHERE navio_id = ? AND status = 'aberta'",
+        (pathfinder,)).fetchone()[0]
 
     # a segunda viagem nao repete a escala de Alumar: ela a herda por evento-ancora
     origens = [r[0] for r in conn.execute(
@@ -111,7 +138,6 @@ def test_segunda_viagem_herda_o_sailing_de_alumar_e_nao_cria_escala_de_abertura(
 
 def test_viagem_fecha_no_unberth_de_alumar_nao_no_sailing(conn, pathfinder):
     v1, alumar1 = _viagem_completa(conn, pathfinder, base_dia=1)
-    viagens.encerrar_viagem(conn, v1)
 
     encerramento = conn.execute(
         "SELECT evento_encerramento_id FROM viagem WHERE id = ?", (v1,)).fetchone()[0]
@@ -195,8 +221,17 @@ def test_sailing_da_escala_de_abertura_vira_ancora_da_primeira_viagem(conn, path
 
 def test_duracao_da_viagem_sai_do_sailing_ao_unberth_de_alumar(conn, pathfinder):
     v1, _ = _viagem_completa(conn, pathfinder, base_dia=1)
-    viagens.encerrar_viagem(conn, v1)
     horas = conn.execute(
         "SELECT horas_viagem FROM viagem_completa WHERE viagem_id = ?", (v1,)
     ).fetchone()[0]
     assert horas is not None and horas > 0
+
+
+def test_macapa_resolve_para_fazendinha(conn):
+    """Mesma parada, duas grafias. Cadastrar dois portos duplicaria a escala."""
+    for alias in ("MACAPA", "MACAPA/AP", "FAZENDINHA"):
+        achado = conn.execute(
+            "SELECT codigo_porto FROM porto_alias WHERE alias = ?", (alias,)).fetchone()
+        assert achado is not None and achado[0] == "FAZENDINHA", alias
+    assert conn.execute(
+        "SELECT COUNT(*) FROM porto WHERE codigo = 'MACAPA'").fetchone()[0] == 0

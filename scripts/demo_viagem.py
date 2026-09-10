@@ -76,12 +76,12 @@ for r in conn.execute(
                      h(r["horas_espera_berco"]), h(r["horas_atracado"]),
                      h(r["horas_pos_operacao"]), h(r["horas_total_escala"])))
 
-ok, avisos = viagens.encerrar_viagem(conn, v1)
-print("\nEncerrada: {} {}".format(ok, avisos or ""))
-
-# ---- viagem 2 -------------------------------------------------------------
-v2, erros = viagens.abrir_viagem(conn, 1, por="vlo")
-print("Viagem 2 aberta (id {}) — erros: {}".format(v2, erros))
+# ---- viagem 2: nasceu sozinha no sailing de Alumar ------------------------
+v2 = conn.execute(
+    "SELECT id FROM viagem WHERE navio_id = 1 AND status = 'aberta'").fetchone()[0]
+print()
+print("O sailing de Alumar encerrou a viagem 1 e abriu a viagem 2 (id {}) "
+      "sem ninguem pedir.".format(v2))
 
 ancora = conn.execute(
     "SELECT e.codigo_porto, ev.tipo, ev.hora_local "

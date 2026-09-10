@@ -33,7 +33,7 @@ A viagem é um ciclo que **abre saindo de Alumar** e **fecha descarregando em Al
 
 | ordem | porto | atraca? | marcos | o que é |
 |---|---|---|---|---|
-| 10 | Fazendinha | não | A · S | passagem, **subida** |
+| 10 | Fazendinha | não | A · S | passagem, **subida** — também chamada **Macapá** |
 | 20 | Juruti | **sim** | A · B · U · S | carrega bauxita |
 | 30 | Fazendinha | não | A · S | passagem, **descida** |
 | 40 | Barra Norte | não | A · S | **espera de maré** |
@@ -42,7 +42,7 @@ A viagem é um ciclo que **abre saindo de Alumar** e **fecha descarregando em Al
 Eventuais, que entram como `origem = 'extra'`: **Icoaraci** (entrando por Mosqueiro) para bunker,
 e **Itaqui** para bunker fundeado.
 
-### As três regras que sustentam o modelo
+### As quatro regras que sustentam o modelo
 
 **1. A escala de Alumar serve a duas viagens, mas é gravada uma vez só.**
 Seus `arrival`/`berth`/`unberth` **fecham** a viagem; seu `sailing` **abre** a seguinte. Por isso
@@ -62,6 +62,19 @@ permite a análise separar as duas.
 Cobrar `berth` de uma escala de passagem é pedir dado que não existe — o comandante inventa ou
 desiste. A tabela `marco_exigido` é a fonte disso, e é ela que alimenta a fila
 `escalas_incompletas`.
+
+**4. O ciclo se encadeia sozinho.**
+Ao lançar o `sailing` da escala de Alumar (`origem = 'modelo'`), `encadear_ciclo()` fecha a viagem
+e abre a seguinte com as 5 escalas vazias. **O comandante nunca pensa em "viagem"** — ele só vê
+a próxima parada esperando horário.
+
+O encadeamento é **silencioso de propósito**: o marco em si foi gravado, e devolver o tropeço do
+encadeamento como erro faria o comandante achar que perdeu o lançamento. Se faltar o `unberth`, a
+viagem simplesmente não fecha e a pendência aparece em `escalas_incompletas` — que é onde ela
+tem de aparecer.
+
+**Macapá é a mesma parada que Fazendinha** (confirmado 10/set/2026): **um** porto, com as duas
+grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 
 ---
 
@@ -95,7 +108,7 @@ desiste. A tabela `marco_exigido` é a fonte disso, e é ela que alimenta a fila
 | `app/seed.sql` | 4 navios, 6 portos, `marco_exigido`, a rota-modelo. `INSERT OR IGNORE`, nunca destrutivo |
 | `app/db.py` | Conexão (SQLite local ⇄ Turso), `inicializar`, `agora()`, retry **só de leitura** |
 | `app/dominio.py` | Regras puras: `para_utc`, `erros_marco`. Sem banco, sem HTTP |
-| `app/viagens.py` | Serviço: `abrir_viagem`, `adicionar_escala_extra`, `lancar_marco`, `encerrar_viagem` |
+| `app/viagens.py` | Serviço: `abrir_viagem`, `adicionar_escala_extra`, `lancar_marco`, `encerrar_viagem`, `encadear_ciclo` |
 | `app/config.py` | Env vars. `SHIPOPS_SECRET_KEY` é **obrigatória** |
 | `scripts/demo_viagem.py` | Duas viagens completas em memória. Rode para ver o modelo funcionando |
 
@@ -108,7 +121,7 @@ programação, nunca lançamento inválido do comandante.
 ## Como rodar
 
 ```bash
-.venv/Scripts/python -m pytest -q          # 39 testes
+.venv/Scripts/python -m pytest -q          # 42 testes
 .venv/Scripts/python scripts/demo_viagem.py
 ```
 
@@ -123,7 +136,7 @@ arquivo aberto e cujo caminho longo estoura o `MAX_PATH` do Windows no `pip inst
 encerramento por evento-âncora, views de duração e as duas filas (pendências e conferência).
 
 **A fazer, na ordem:**
-2. Auth (senha por conta, `hashlib.scrypt`, cookie HMAC) + telas do comandante em Jinja2 + **fila
+2. **Fase 2** — Auth (senha por conta, `hashlib.scrypt`, cookie HMAC) + telas do comandante em Jinja2 + **fila
    local (IndexedDB)** — é ela que esconde o cold start do Render e faz o sistema ser usado.
 3. Painel e filas da supervisão.
 4. Deploy: Docker no Render (free) + **Turso desde o primeiro deploy** + ping externo em
@@ -133,15 +146,26 @@ encerramento por evento-âncora, views de duração e as duas filas (pendências
 
 ---
 
-## Pendências com a operação — decidem se o dado terá valor
+## O que "Arrival" significa aqui — resolvido em 10/set/2026
 
-1. **O que conta como "Arrival"?** Fundeadouro, barra ou estação de prático? Em Alumar o navio
-   fica fundeado, então a diferença é de horas — e sem convenção única a espera de berço vira
-   número sem sentido.
-2. **Icoaraci atraca ou faz bunker fundeado?** Decide `operacional` × `fundeio`.
-3. **Mosqueiro é escala ou só o canal de entrada de Icoaraci?**
-4. **Alumar e Itaqui são portos distintos?** São terminais diferentes em São Luís.
-5. **Que número de viagem** o comandante conhece e sabe informar? Hoje é gerado (`AAAA-NNN`).
-6. **Juruti e Alumar têm fundeio de espera** antes de atracar — escala separada ou embutido no
+**Não há convenção de fundeadouro, barra ou estação de prático.** Arrival é a **hora de chegada
+oficial**, como o comandante a reporta. É assim que a operação já trabalha, e forçar uma
+definição mais estrita só faria o comandante preencher errado com cara de certo.
+
+Consequência a carregar com honestidade: a **espera de berço** (`berth − arrival`) herda a
+variação de critério entre comandantes. Serve para ver tendência e ordem de grandeza; não serve,
+sozinha, como número contratual. Se um dia precisar dessa precisão, o caminho é acrescentar o
+marco **NOR**, que tem definição formal — não apertar a regra do Arrival.
+
+**Icoaraci: fundeia, não atraca** (confirmado 10/set/2026). Escala de `tipo_escala = 'fundeio'`.
+
+---
+
+## Pendências com a operação
+
+1. **Mosqueiro é escala ou só o canal de entrada de Icoaraci?**
+2. **Alumar e Itaqui são portos distintos?** São terminais diferentes em São Luís.
+3. **Que número de viagem** o comandante conhece e sabe informar? Hoje é gerado (`AAAA-NNN`).
+4. **Juruti e Alumar têm fundeio de espera** antes de atracar — escala separada ou embutido no
    intervalo `arrival → berth`?
-7. **IMO dos 4 navios** e **UN/LOCODE dos 6 portos**, para preencher os campos deixados nulos.
+5. **IMO dos 4 navios** e **UN/LOCODE dos 6 portos**, para preencher os campos deixados nulos.

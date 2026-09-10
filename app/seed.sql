@@ -28,18 +28,21 @@ INSERT OR IGNORE INTO porto (codigo, nome, un_locode, uf, pais, offset_padrao, a
     ('JURUTI',      'Juruti',      NULL, 'PA', 'BR', '-03:00', 1,
      'Mina, rio Amazonas. Carrega bauxita.'),
     ('FAZENDINHA',  'Fazendinha',  NULL, 'AP', 'BR', '-03:00', 1,
-     'Passagem no trecho fluvial. Nao atraca. Aparece duas vezes por viagem.'),
+     'Passagem no trecho fluvial. Nao atraca. Aparece duas vezes por viagem. '
+     || 'Tambem chamada de Macapa — mesma parada, ver porto_alias.'),
     ('BARRA_NORTE', 'Barra Norte', NULL, 'AP', 'BR', '-03:00', 1,
      'Parada por conta da mare. Nao atraca.'),
     ('ICOARACI',    'Icoaraci',    NULL, 'PA', 'BR', '-03:00', 1,
-     'Eventual, para bunker. Entrada por Mosqueiro. ATRACA OU FUNDEIA? — a confirmar.'),
+     'Eventual, para bunker. Entrada por Mosqueiro. FUNDEIA — nao atraca (confirmado 10/set/2026).'),
     ('ITAQUI',      'Itaqui',      NULL, 'MA', 'BR', '-03:00', 1,
      'Eventual, fundeio para bunker. Terminal distinto de Alumar — confirmar com a operacao.');
 
 INSERT OR IGNORE INTO porto_alias (alias, codigo_porto) VALUES
     ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'), ('SAO LUIS - ALUMAR', 'ALUMAR'),
     ('JURUTI', 'JURUTI'), ('PORTO DE JURUTI', 'JURUTI'),
-    ('FAZENDINHA', 'FAZENDINHA'),
+    -- Macapa e a mesma parada que Fazendinha (confirmado 10/set/2026): um porto so,
+    -- com as duas grafias resolvendo para ele. Cadastrar dois duplicaria a escala.
+    ('FAZENDINHA', 'FAZENDINHA'), ('MACAPA', 'FAZENDINHA'), ('MACAPA/AP', 'FAZENDINHA'),
     ('BARRA NORTE', 'BARRA_NORTE'), ('BARRA-NORTE', 'BARRA_NORTE'),
     ('ICOARACI', 'ICOARACI'),
     ('ITAQUI', 'ITAQUI'), ('ITQ', 'ITAQUI'), ('IQI', 'ITAQUI'), ('PORTO DO ITAQUI', 'ITAQUI');
