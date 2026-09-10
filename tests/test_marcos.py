@@ -49,7 +49,7 @@ def test_escala_de_passagem_nao_aceita_berth(conn, viagem):
     _, escalas = viagem
     evento_id, erros = lancar(conn, escalas[40], "berth", "2026-03-01T07:00")
     assert evento_id is None
-    assert any("nao atraca aqui" in e for e in erros)
+    assert any("não atraca aqui" in e for e in erros)
 
 
 def test_escala_operacional_aceita_os_quatro_marcos(conn, viagem):
@@ -70,7 +70,7 @@ def test_berth_nao_pode_ser_anterior_ao_arrival(conn, viagem):
     lancar(conn, escalas[20], "arrival", "2026-03-02T10:00")
     evento_id, erros = lancar(conn, escalas[20], "berth", "2026-03-01T10:00")
     assert evento_id is None
-    assert any("nao pode ser anterior" in e for e in erros)
+    assert any("não pode ser anterior" in e for e in erros)
 
 
 def test_arrival_nao_pode_ser_posterior_ao_sailing(conn, viagem):
@@ -78,7 +78,7 @@ def test_arrival_nao_pode_ser_posterior_ao_sailing(conn, viagem):
     lancar(conn, escalas[40], "sailing", "2026-03-01T10:00")
     evento_id, erros = lancar(conn, escalas[40], "arrival", "2026-03-05T10:00")
     assert evento_id is None
-    assert any("nao pode ser posterior" in e for e in erros)
+    assert any("não pode ser posterior" in e for e in erros)
 
 
 def test_marco_no_futuro_e_recusado(conn, viagem):
@@ -106,7 +106,7 @@ def test_correcao_sem_motivo_e_recusada(conn, viagem):
     lancar(conn, escalas[20], "arrival", "2026-03-01T10:00")
     evento_id, erros = lancar(conn, escalas[20], "arrival", "2026-03-01T10:45")
     assert evento_id is None
-    assert any("motivo da correcao" in e for e in erros)
+    assert any("motivo da correção" in e for e in erros)
 
 
 def test_correcao_preserva_a_versao_anterior(conn, viagem):

@@ -1,8 +1,16 @@
+import os
+import pathlib
 import sqlite3
+import tempfile
 
-import pytest
+# Precisa vir ANTES de importar app.config: as constantes sao lidas no import.
+_TMP = pathlib.Path(tempfile.mkdtemp(prefix="shipops-testes-"))
+os.environ.setdefault("SHIPOPS_BANCO", str(_TMP / "teste.db"))
+os.environ.setdefault("SHIPOPS_SECRET_KEY", "chave-longa-apenas-para-os-testes-xyz")
 
-from app import db
+import pytest  # noqa: E402
+
+from app import db  # noqa: E402
 
 
 @pytest.fixture()

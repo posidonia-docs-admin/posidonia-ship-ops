@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titulo %}{{ conta.navio_nome }}{% endblock %}
+
+{% block topo %}
+<div class="topo">
+  <div>
+    <div class="navio">{{ conta.navio_nome }}</div>
+    <div class="viagem">Viagem {{ viagem.numero if viagem else "—" }}</div>
+  </div>
+  <a href="/logout">sair</a>
+</div>
+{% endblock %}
+
+{% block conteudo %}
+{% if request.query_params.get("erro") %}
+  <p class="aviso aviso-erro">{{ request.query_params.get("erro") }}</p>
+{% endif %}
+
+<h1>Marcos da viagem</h1>
+<p class="legenda">
+  Toque no marco para lançar a hora. O lançamento é salvo no aparelho na hora e
+  enviado sozinho — pode fechar o app.
+</p>
+
+{% for bloco in blocos %}
+  {% set e = bloco.escala %}
+  <section class="escala{% if bloco.completa %} completa{% endif %}">
+    <div class="escala-cab">
+      <div>
+        <div class="porto">{{ e.porto_nome }}</div>
+        <div class="detalhe">
+          {{ ROTULO_MOTIVO.get(e.motivo, e.motivo) }}{% if e.sentido != "na" %} · {{ e.sentido }}{% endif %}
+        </div>
+      </div>
+      {% if e.origem == "extra" %}<span class="etiqueta">fora do padrão</span>
+      {% elif e.origem == "abertura" %}<span class="etiqueta">saída</span>
+      {% elif not bloco.completa %}<span class="etiqueta">a lançar</span>{% endif %}
+    </div>
+
+    {% for m in bloco.marcos %}
+      <a class="marco" href="/navio/marco/{{ e.id }}/{{ m.tipo }}"
+         data-escala="{{ e.id }}" data-tipo="{{ m.tipo }}">
+        <span class="nome">{{ m.rotulo }}</span>
+        {% if m.lancado %}
+          <span class="valor">
+            {{ m.lancado.hora_local|replace("T", " ") }}
+            <span class="sub">
+              {{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}
+            </span>
+          </span>
+        {% else %}
+          <span class="vazio">lançar</span>
+        {% endif %}
+        <span data-estado></span>
+      </a>
+    {% endfor %}
+  </section>
+{% endfor %}
+
+<details>
+  <summary>Parada fora do padrão (bunker, docagem…)</summary>
+  <form method="post" action="/navio/escala-extra">
+    <label>Porto
+      <select name="codigo_porto" required>
+        {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Motivo
+      <select name="motivo">
+        <option value="bunker">Bunker</option>
+        <option value="docagem">Docagem</option>
+        <option value="espera_mare">Espera de maré</option>
+        <option value="outro">Outro</option>
+      </select>
+    </label>
+    <label>Atraca?
+      <select name="tipo_escala">
+        <option value="fundeio">Não — fica fundeado</option>
+        <option value="operacional">Sim — atraca</option>
+        <option value="passagem">Só passagem</option>
+      </select>
+    </label>
+    <label>Depois de qual parada?
+      <select name="apos_ordem">
+        {% for bloco in blocos %}
+          <option value="{{ bloco.escala.ordem }}">{{ bloco.escala.porto_nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Acrescentar parada</button>
+  </form>
+</details>
+{% endblock %}
+
+{% block scripts %}<script src="/static/fila.js"></script>{% endblock %}

@@ -89,7 +89,7 @@ def abrir_viagem(
         "SELECT id, ativo FROM navio WHERE id = ?", (navio_id,)
     ).fetchone()
     if navio is None:
-        return None, ["Navio {} nao cadastrado.".format(navio_id)]
+        return None, ["Navio {} não cadastrado.".format(navio_id)]
     if not navio[1]:
         erros.append("Navio inativo.")
 
@@ -99,7 +99,7 @@ def abrir_viagem(
     ).fetchone()
     if aberta is not None:
         erros.append(
-            "Este navio ja tem a viagem {} aberta. "
+            "Este navio já tem a viagem {} aberta. "
             "Encerre-a antes de abrir outra.".format(aberta[0])
         )
 
@@ -109,7 +109,7 @@ def abrir_viagem(
         (rota_modelo_id,),
     ).fetchall()
     if not etapas:
-        erros.append("Rota-modelo {} nao tem etapas cadastradas.".format(rota_modelo_id))
+        erros.append("Rota-modelo {} não tem etapas cadastradas.".format(rota_modelo_id))
 
     if erros:
         return None, erros
@@ -178,22 +178,22 @@ def adicionar_escala_extra(
         "SELECT status FROM viagem WHERE id = ?", (viagem_id,)
     ).fetchone()
     if viagem is None:
-        return None, ["Viagem {} nao existe.".format(viagem_id)]
+        return None, ["Viagem {} não existe.".format(viagem_id)]
     if viagem[0] != "aberta":
         erros.append(
-            "Viagem {} esta {} — nao aceita escala nova.".format(viagem_id, viagem[0])
+            "Viagem {} está {} — não aceita escala nova.".format(viagem_id, viagem[0])
         )
 
     if conn.execute(
         "SELECT 1 FROM porto WHERE codigo = ? AND ativo = 1", (codigo_porto,)
     ).fetchone() is None:
-        erros.append("Porto {!r} nao cadastrado ou inativo.".format(codigo_porto))
+        erros.append("Porto {!r} não cadastrado ou inativo.".format(codigo_porto))
     if tipo_escala not in dominio.TIPOS_ESCALA or tipo_escala == "abertura":
-        erros.append("Tipo de escala invalido: {!r}.".format(tipo_escala))
+        erros.append("Tipo de escala inválido: {!r}.".format(tipo_escala))
     if motivo not in dominio.MOTIVOS:
-        erros.append("Motivo invalido: {!r}.".format(motivo))
+        erros.append("Motivo inválido: {!r}.".format(motivo))
     if sentido not in dominio.SENTIDOS:
-        erros.append("Sentido invalido: {!r}.".format(sentido))
+        erros.append("Sentido inválido: {!r}.".format(sentido))
     if erros:
         return None, erros
 
@@ -205,7 +205,7 @@ def adicionar_escala_extra(
     nova_ordem = (apos_ordem + limite) // 2
     if nova_ordem <= apos_ordem or nova_ordem >= limite:
         return None, [
-            "Nao ha espaco de ordenacao entre estas escalas. "
+            "Não há espaço de ordenação entre estas escalas. "
             "Renumere a viagem antes de inserir outra aqui."
         ]
 
@@ -256,9 +256,9 @@ def lancar_marco(
         (escala_id,),
     ).fetchone()
     if escala is None:
-        return None, ["Escala {} nao existe.".format(escala_id)]
+        return None, ["Escala {} não existe.".format(escala_id)]
     if escala[1] == "cancelada":
-        return None, ["Escala cancelada nao aceita lancamento."]
+        return None, ["Escala cancelada não aceita lançamento."]
 
     id_cliente = id_cliente or str(uuid.uuid4())
     ja = conn.execute(
@@ -288,8 +288,8 @@ def lancar_marco(
     ).fetchone()
     if vigente_atual is not None and not (motivo_correcao or "").strip():
         return None, [
-            "Ja existe {} nesta escala. Para alterar, informe o motivo da "
-            "correcao.".format(dominio.ROTULO_MARCO[tipo])
+            "Já existe {} nesta escala. Para alterar, informe o motivo da "
+            "correção.".format(dominio.ROTULO_MARCO[tipo])
         ]
 
     hora_utc = dominio.para_utc(hora_local, offset) if precisao != "tbc" else None
@@ -371,9 +371,9 @@ def encerrar_viagem(conn, viagem_id: int) -> tuple[bool, list[str]]:
         "SELECT status FROM viagem WHERE id = ?", (viagem_id,)
     ).fetchone()
     if viagem is None:
-        return False, ["Viagem {} nao existe.".format(viagem_id)]
+        return False, ["Viagem {} não existe.".format(viagem_id)]
     if viagem[0] != "aberta":
-        return False, ["Viagem ja esta {}.".format(viagem[0])]
+        return False, ["Viagem já está {}.".format(viagem[0])]
 
     ancora = conn.execute(
         "SELECT ev.id "
@@ -386,7 +386,7 @@ def encerrar_viagem(conn, viagem_id: int) -> tuple[bool, list[str]]:
     ).fetchone()
     if ancora is None:
         return False, [
-            "Falta o Unberth de {} — e ele que encerra a viagem.".format(PORTO_CICLO)
+            "Falta o Unberth de {} — é ele que encerra a viagem.".format(PORTO_CICLO)
         ]
 
     faltantes = conn.execute(

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titulo %}{{ rotulo }} · {{ escala.porto_nome }}{% endblock %}
+
+{% block topo %}
+<div class="topo">
+  <div>
+    <div class="navio">{{ escala.porto_nome }}</div>
+    <div class="viagem">Viagem {{ escala.numero }}</div>
+  </div>
+  <a href="/navio">fechar</a>
+</div>
+{% endblock %}
+
+{% block conteudo %}
+<a class="voltar" href="/navio">&larr; Voltar</a>
+<h1>{{ rotulo }}</h1>
+
+{% if atual %}
+  <p class="aviso">
+    Já registrado: <strong>{{ atual.hora_local|replace("T", " ") }}</strong>
+    por {{ atual.nome_responsavel }}.
+    Alterar cria uma nova versão — a anterior fica guardada.
+  </p>
+{% endif %}
+
+<form id="form-marco"
+      data-escala="{{ escala.id }}"
+      data-tipo="{{ tipo }}"
+      data-correcao="{{ 1 if atual else 0 }}">
+
+  <label>Data
+    <input type="date" name="data" required
+           value="{{ atual.hora_local[:10] if atual else "" }}">
+  </label>
+
+  <div class="dupla">
+    <label>Hora
+      <input type="time" name="hora" required
+             value="{{ atual.hora_local[11:16] if atual else "" }}">
+    </label>
+    <label>Fuso
+      <select name="offset">
+        {% set atualoff = atual.offset_utc if atual else offset_padrao %}
+        {% for op in ["-03:00", "-04:00", "-02:00", "+00:00"] %}
+          <option value="{{ op }}" {% if op == atualoff %}selected{% endif %}>UTC{{ op }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <label>Quem preencheu <span class="dica">— fica registrado no lançamento</span>
+    <input type="text" name="nome_responsavel" required autocomplete="name"
+           placeholder="Nome de quem está lançando"
+           value="{{ atual.nome_responsavel if atual else "" }}">
+  </label>
+
+  {% if atual %}
+  <label>Motivo da correção <span class="dica">— obrigatório</span>
+    <input type="text" name="motivo_correcao" required
+           placeholder="Ex.: conferido no diário de bordo">
+  </label>
+  {% endif %}
+
+  <label>Observação <span class="dica">— opcional</span>
+    <textarea name="observacao" placeholder="Algo que ajude a entender este horário"></textarea>
+  </label>
+
+  <button type="submit">{{ "Salvar correção" if atual else "Salvar" }}</button>
+  <a class="botao botao-fraco" href="/navio">Cancelar</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/fila.js"></script>
+<script src="/static/marco.js"></script>
+{% endblock %}

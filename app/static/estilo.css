@@ -1,0 +1,181 @@
+/* Mobile-first. O comandante esta no celular, muitas vezes com uma mao so.
+   Alvo de toque nunca menor que 44px. */
+
+:root {
+  --fundo: #f5f6f8;
+  --papel: #ffffff;
+  --tinta: #16202e;
+  --suave: #5d6b7d;
+  --borda: #dde2e9;
+  --mar: #0a4d8c;
+  --mar-claro: #e8f0f9;
+  --ok: #1a7a4c;
+  --alerta: #9a5b00;
+  --erro: #b3261e;
+  --raio: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #10151c;
+    --papel: #1a212b;
+    --tinta: #e8edf3;
+    --suave: #9aa7b6;
+    --borda: #2c3542;
+    --mar: #6aa9e8;
+    --mar-claro: #1d2a3a;
+    --ok: #56c98a;
+    --alerta: #e0a44a;
+    --erro: #f2837c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.topo {
+  background: var(--mar);
+  color: #fff;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.topo a { color: #fff; text-decoration: none; }
+.topo .navio { font-weight: 600; letter-spacing: .02em; }
+.topo .viagem { font-size: 13px; opacity: .85; }
+
+main { padding: 16px; max-width: 720px; margin: 0 auto; }
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0; }
+.legenda { color: var(--suave); font-size: 14px; margin: 0 0 20px; }
+
+/* ---- escala ---------------------------------------------------------- */
+
+.escala {
+  background: var(--papel);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.escala.completa { opacity: .72; }
+.escala-cab {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--borda);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.escala-cab .porto { font-weight: 600; }
+.escala-cab .detalhe { color: var(--suave); font-size: 13px; }
+.etiqueta {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--mar-claro);
+  color: var(--mar);
+  white-space: nowrap;
+}
+
+.marco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  min-height: 52px;
+  border-top: 1px solid var(--borda);
+  text-decoration: none;
+  color: inherit;
+}
+.marco:first-of-type { border-top: 0; }
+.marco .nome { font-size: 14px; }
+.marco .valor { font-variant-numeric: tabular-nums; font-weight: 600; }
+.marco .vazio { color: var(--mar); font-weight: 600; font-size: 14px; }
+.marco .sub { display: block; color: var(--suave); font-size: 12px; font-weight: 400; }
+
+.selo { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.selo-pendente { background: var(--mar-claro); color: var(--alerta); }
+.selo-erro { background: rgba(179, 38, 30, .12); color: var(--erro); }
+
+/* ---- formulario ------------------------------------------------------- */
+
+form { background: var(--papel); border: 1px solid var(--borda);
+       border-radius: var(--raio); padding: 16px; }
+
+label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+label:first-child { margin-top: 0; }
+.dica { font-weight: 400; color: var(--suave); font-size: 13px; }
+
+input, select, textarea {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 48px;
+}
+textarea { min-height: 76px; resize: vertical; }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--mar); outline-offset: 1px;
+}
+
+.dupla { display: flex; gap: 10px; }
+.dupla > * { flex: 1; }
+
+button, .botao {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  padding: 14px;
+  min-height: 50px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--mar);
+  border: 0;
+  border-radius: 8px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.botao-fraco { background: transparent; color: var(--mar); border: 1px solid var(--borda); }
+
+.aviso {
+  border-left: 3px solid var(--alerta);
+  background: var(--papel);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.aviso-erro { border-left-color: var(--erro); color: var(--erro); }
+
+.voltar { display: inline-block; color: var(--mar); text-decoration: none;
+          font-size: 14px; margin-bottom: 14px; }
+
+details { background: var(--papel); border: 1px solid var(--borda);
+          border-radius: var(--raio); padding: 12px 14px; margin-top: 18px; }
+summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details form { border: 0; padding: 12px 0 0; background: transparent; }
+
+table { width: 100%; border-collapse: collapse; background: var(--papel); }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borda);
+         font-size: 14px; }
+th { color: var(--suave); font-weight: 600; font-size: 12px;
+     text-transform: uppercase; letter-spacing: .05em; }

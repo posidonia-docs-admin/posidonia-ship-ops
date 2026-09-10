@@ -21,5 +21,5 @@ Sem `TURSO_DATABASE_URL`, usa SQLite local em `%LOCALAPPDATA%\PosidoniaShipOps`.
 
 ## Contexto e regras
 
-`CLAUDE.md` — inclui as três regras que sustentam o modelo do circuito e as
+`CLAUDE.md` — inclui as quatro regras que sustentam o modelo do circuito e as
 pendências abertas com a operação.

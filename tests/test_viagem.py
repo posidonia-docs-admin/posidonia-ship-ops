@@ -48,7 +48,7 @@ def test_um_navio_so_tem_uma_viagem_aberta(conn, pathfinder):
     viagens.abrir_viagem(conn, pathfinder)
     segunda, erros = viagens.abrir_viagem(conn, pathfinder)
     assert segunda is None
-    assert any("ja tem a viagem" in e for e in erros)
+    assert any("já tem a viagem" in e for e in erros)
 
 
 def test_numero_da_viagem_e_sequencial_por_navio(conn, pathfinder):
@@ -197,7 +197,7 @@ def test_escala_extra_recusa_porto_desconhecido(conn, pathfinder):
         conn, viagem_id, codigo_porto="SANTOS", tipo_escala="fundeio",
         motivo="bunker", apos_ordem=10)
     assert escala_id is None
-    assert any("nao cadastrado" in e for e in erros)
+    assert any("não cadastrado" in e for e in erros)
 
 
 def test_sailing_da_escala_de_abertura_vira_ancora_da_primeira_viagem(conn, pathfinder):

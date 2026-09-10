@@ -32,11 +32,22 @@ MARCOS_POR_TIPO = {
     "abertura": ("sailing",),
 }
 
+ROTULO_MOTIVO = {
+    "carregamento": "Carregamento",
+    "descarga": "Descarga",
+    "espera_mare": "Espera de maré",
+    "bunker": "Bunker",
+    "docagem": "Docagem",
+    "passagem": "Passagem",
+    "abertura": "Saída que abre a viagem",
+    "outro": "Outro",
+}
+
 ROTULO_MARCO = {
     "arrival": "Arrival (chegada)",
-    "berth": "Berth (atracacao)",
-    "unberth": "Unberth (desatracacao)",
-    "sailing": "Sailing (saida)",
+    "berth": "Berth (atracação)",
+    "unberth": "Unberth (desatracação)",
+    "sailing": "Sailing (saída)",
 }
 
 
@@ -69,17 +80,17 @@ def erros_marco(
     erros: list[str] = []
 
     if tipo_evento not in TIPOS_EVENTO:
-        return [f"Marco desconhecido: {tipo_evento!r}."]
+        return ["Marco desconhecido: {!r}.".format(tipo_evento)]
     if tipo_escala not in MARCOS_POR_TIPO:
-        return [f"Tipo de escala desconhecido: {tipo_escala!r}."]
+        return ["Tipo de escala desconhecido: {!r}.".format(tipo_escala)]
     if precisao not in PRECISOES:
-        erros.append(f"Precisao desconhecida: {precisao!r}.")
+        erros.append("Precisão desconhecida: {!r}.".format(precisao))
 
     # Cobrar berth de quem nao atracou e pedir dado que nao existe.
     if tipo_evento not in MARCOS_POR_TIPO[tipo_escala]:
         erros.append(
-            f"Escala de {tipo_escala} nao tem {ROTULO_MARCO[tipo_evento]} — "
-            f"o navio nao atraca aqui."
+            "Escala de {} não tem {} — o navio não atraca aqui.".format(
+                tipo_escala, ROTULO_MARCO[tipo_evento])
         )
 
     if not (nome_responsavel or "").strip():
@@ -98,7 +109,7 @@ def erros_marco(
     try:
         hora_utc = para_utc(hora_local, offset)
     except ValueError:
-        erros.append(f"Data/hora ou fuso invalidos: {hora_local!r} {offset!r}.")
+        erros.append("Data/hora ou fuso inválidos: {!r} {!r}.".format(hora_local, offset))
         return erros
 
     referencia = agora_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -108,8 +119,8 @@ def erros_marco(
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     if hora_utc > limite:
         erros.append(
-            f"{ROTULO_MARCO[tipo_evento]} esta no futuro "
-            f"(mais de {config.TOLERANCIA_FUTURO_HORAS:g}h a frente)."
+            "{} está no futuro (mais de {:g}h à frente).".format(
+                ROTULO_MARCO[tipo_evento], config.TOLERANCIA_FUTURO_HORAS)
         )
 
     for outro, hora_outro in (marcos_existentes or {}).items():
@@ -117,13 +128,13 @@ def erros_marco(
             continue
         if ORDEM_MARCO[outro] < ORDEM_MARCO[tipo_evento] and hora_outro > hora_utc:
             erros.append(
-                f"{ROTULO_MARCO[tipo_evento]} nao pode ser anterior a "
-                f"{ROTULO_MARCO[outro]}."
+                "{} não pode ser anterior a {}.".format(
+                    ROTULO_MARCO[tipo_evento], ROTULO_MARCO[outro])
             )
         if ORDEM_MARCO[outro] > ORDEM_MARCO[tipo_evento] and hora_outro < hora_utc:
             erros.append(
-                f"{ROTULO_MARCO[tipo_evento]} nao pode ser posterior a "
-                f"{ROTULO_MARCO[outro]}."
+                "{} não pode ser posterior a {}.".format(
+                    ROTULO_MARCO[tipo_evento], ROTULO_MARCO[outro])
             )
 
     return erros

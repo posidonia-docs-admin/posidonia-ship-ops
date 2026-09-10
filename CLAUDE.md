@@ -107,42 +107,101 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 | `app/schema.sql` | 12 tabelas + 6 views. A fonte da verdade da estrutura |
 | `app/seed.sql` | 4 navios, 6 portos, `marco_exigido`, a rota-modelo. `INSERT OR IGNORE`, nunca destrutivo |
 | `app/db.py` | Conexão (SQLite local ⇄ Turso), `inicializar`, `agora()`, retry **só de leitura** |
-| `app/dominio.py` | Regras puras: `para_utc`, `erros_marco`. Sem banco, sem HTTP |
-| `app/viagens.py` | Serviço: `abrir_viagem`, `adicionar_escala_extra`, `lancar_marco`, `encerrar_viagem`, `encadear_ciclo` |
-| `app/config.py` | Env vars. `SHIPOPS_SECRET_KEY` é **obrigatória** |
-| `scripts/demo_viagem.py` | Duas viagens completas em memória. Rode para ver o modelo funcionando |
+| `app/dominio.py` | Regras puras: `para_utc`, `erros_marco`, rótulos. Sem banco, sem HTTP |
+| `app/viagens.py` | `abrir_viagem`, `adicionar_escala_extra`, `lancar_marco`, `encerrar_viagem`, `encadear_ciclo` |
+| `app/auth.py` | Hash de senha (scrypt) e sessão em cookie HMAC. Sem tabela de sessão |
+| `app/contas.py` | Contas, perfis e log de acesso |
+| `app/main.py` | FastAPI: middlewares, login, telas do comandante, `/api/marco`, painel |
+| `templates/` | Jinja2. `base` · `login` · `navio_inicio` · `navio_marco` · `painel` |
+| `app/static/fila.js` | **A fila local (IndexedDB)** — a peça que decide a adoção |
+| `app/static/marco.js` | Formulário de marco: enfileira e volta na hora |
+| `scripts/criar_conta.py` | Cria conta; a senha é pedida no terminal, nunca fica no código |
+| `scripts/demo_viagem.py` | Duas viagens completas em memória |
 
-**Convenção de retorno:** todo serviço devolve `(resultado, erros)`, com a lista de erros vazia em
-caso de sucesso — e devolve **todos** os erros de uma vez, não o primeiro. Exceção aqui é falha de
+**Convenção de retorno:** todo serviço devolve `(resultado, erros)`, com a lista vazia em caso de
+sucesso — e devolve **todos** os erros de uma vez, não o primeiro. Exceção aqui é falha de
 programação, nunca lançamento inválido do comandante.
+
+---
+
+## A fila local — a peça central da Fase 2
+
+O comandante toca *Salvar*: o lançamento vai para o **IndexedDB do aparelho** e a tela volta na
+hora. O envio ao servidor acontece em segundo plano, com repetição. Se o Render levar 50 s para
+acordar, ninguém percebe.
+
+**A distinção que faz isso funcionar** está em `fila.js`:
+
+| Resposta | O que a fila faz | Por quê |
+|---|---|---|
+| `200` | apaga da fila | chegou |
+| **`422`** (validação), `403`, `404` | **para de tentar** e mostra o erro | reenviar não conserta o dado |
+| `5xx`, rede caída, servidor dormindo | mantém e tenta depois | é transitório |
+
+Sem o `422` a fila repetiria um dado inválido para sempre. Por isso `/api/marco` **nunca**
+devolve redirect nem HTML de erro — sempre JSON com código honesto.
+
+O `id_cliente` é gerado no aparelho e é `UNIQUE` no banco: reenvio do mesmo item devolve o mesmo
+evento. Tocar duas vezes não cria lançamento duplicado.
+
+`marco.js` guarda o **nome de quem preenche** em `localStorage` — ele digita uma vez. E tem
+caminho de escape: se o IndexedDB estiver bloqueado (aba anônima, storage desligado), envia
+direto em vez de falhar calado.
+
+---
+
+## Perfis e acesso
+
+| Perfil | O que pode |
+|---|---|
+| `navio` | Só a própria viagem. Lança e corrige marcos, acrescenta parada fora do padrão |
+| `supervisor` | Painel da frota (filas de conferência entram na Fase 3) |
+| `analytics` | **Só leitura** — bloqueado em qualquer método que não seja GET/HEAD/OPTIONS |
+| `admin` | Tudo |
+
+A guarda é um **middleware global**: rota nova nasce protegida, sem depender de ninguém lembrar
+de um decorador. O bloqueio de escrita é por **método HTTP**, não rota a rota — barato de aplicar
+e difícil de esquecer.
+
+A conta é **por navio**, não por pessoa. `nome_responsavel`, obrigatório em todo lançamento, é o
+que devolve o rastro individual.
 
 ---
 
 ## Como rodar
 
 ```bash
-.venv/Scripts/python -m pytest -q          # 42 testes
-.venv/Scripts/python scripts/demo_viagem.py
+.venv/Scripts/python -m pytest -q            # 60 testes
+.venv/Scripts/python scripts/demo_viagem.py  # duas viagens, em memória
+
+export SHIPOPS_SECRET_KEY="uma-chave-longa-e-aleatoria"
+.venv/Scripts/python scripts/criar_conta.py navio.pathfinder "Amazon Pathfinder" navio --navio 1
+.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
 ```
 
 O banco fica em `%LOCALAPPDATA%\PosidoniaShipOps\shipops.db` — **fora do OneDrive**, que corrompe
 arquivo aberto e cujo caminho longo estoura o `MAX_PATH` do Windows no `pip install`.
+
+> **Teste no celular, não no desktop.** É onde o comandante vai estar, e é a única forma de ver
+> se o alvo de toque e a fila funcionam de verdade.
 
 ---
 
 ## Estado e próximos passos
 
 **Fase 1 — pronta.** Schema, seed, rota-modelo, escalas extras, lançamento, correção versionada,
-encerramento por evento-âncora, views de duração e as duas filas (pendências e conferência).
+encerramento e encadeamento por evento-âncora, views de duração e as duas filas.
 
-**A fazer, na ordem:**
-2. **Fase 2** — Auth (senha por conta, `hashlib.scrypt`, cookie HMAC) + telas do comandante em Jinja2 + **fila
-   local (IndexedDB)** — é ela que esconde o cold start do Render e faz o sistema ser usado.
-3. Painel e filas da supervisão.
-4. Deploy: Docker no Render (free) + **Turso desde o primeiro deploy** + ping externo em
-   `/api/health`.
-5. Views de análise + export CSV com token na URL (o Excel não faz login por tela).
-6. Piloto: **um** navio, 2 viagens completas.
+**Fase 2 — pronta.** Login por conta com senha própria (scrypt) e sessão de 30 dias, telas do
+comandante em Jinja2 pensadas para o dedo, fila local em IndexedDB, `/api/marco` idempotente,
+CSP estrita, painel mínimo da equipe em terra.
+
+**A fazer:**
+3. **Fase 3** — filas de conferência e de cobrança para a supervisão; conferir/contestar.
+4. **Fase 4** — Docker no Render (free) + **Turso desde o primeiro deploy** (`libsql` já
+   verificado no Python 3.13) + ping externo em `/api/health`.
+5. **Fase 5** — views de análise + export CSV com token na URL (o Excel não faz login por tela).
+6. **Fase 6** — piloto: **um** navio, 2 viagens completas.
 
 ---
 
