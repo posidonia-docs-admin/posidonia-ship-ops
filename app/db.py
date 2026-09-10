@@ -272,13 +272,35 @@ def _indices_de(tabela: str) -> list[str]:
             if c.upper().startswith("CREATE") and "INDEX" in c.upper() and marca in c]
 
 
-def _recriar_com_check_novo(conn) -> None:
-    """Reconstroi a tabela preservando as linhas. Idempotente.
+# Tabelas que sao pura CONFIGURACAO: o seed as reenche. Nao ha dado a preservar,
+# entao a reconstrucao delas e apagar e recriar.
+_TABELAS_SEM_DADO = ("marco_exigido", "rota_etapa")
 
-    `legacy_alter_table` fica LIGADO durante a operacao: sem ele, renomear uma
-    tabela referenciada por outra faz o SQLite reescrever a chave estrangeira
-    da outra para o nome temporario — e a referencia fica apontando para o
-    lugar errado depois que o temporario e apagado.
+
+def _pragma(conn, comando: str) -> None:
+    """Executa um PRAGMA que pode nao existir no destino.
+
+    O Turso remoto tem uma LISTA DE COMANDOS PERMITIDOS e recusa varios PRAGMAs
+    com SQL_PARSE_ERROR. Essa lista NAO e a do libsql local — um teste local
+    passa e o deploy quebra. Por isso: nada aqui pode DEPENDER de um PRAGMA.
+    """
+    try:
+        conn.execute(comando)
+    except Exception:  # noqa: BLE001 — indisponivel e um caso previsto, nao erro
+        pass
+
+
+def _recriar_com_check_novo(conn) -> None:
+    """Reconstroi tabela cujo CHECK ficou para tras. Idempotente.
+
+    A ORDEM e deliberada: cria a nova com nome TEMPORARIO, copia, apaga a
+    velha e so entao renomeia a temporaria para o nome real.
+
+    Renomear a tabela ORIGINAL primeiro faria o SQLite reescrever a chave
+    estrangeira de quem a referencia para o nome temporario — e ela ficaria
+    apontando para o vazio. A saida usual seria `PRAGMA legacy_alter_table`,
+    que o Turso RECUSA. Nesta ordem o problema nao existe: o que se renomeia e
+    a tabela temporaria, e nada aponta para ela.
     """
     for tabela, marca in _TABELAS_RECRIAR:
         linha = conn.execute(
@@ -287,25 +309,29 @@ def _recriar_com_check_novo(conn) -> None:
         if linha is None or marca in (linha[0] or ""):
             continue
 
-        colunas = [c[1] for c in conn.execute("PRAGMA table_info({})".format(tabela))]
-        lista = ", ".join(colunas)
-        antiga = "{}_antiga".format(tabela)
-
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.execute("PRAGMA legacy_alter_table = ON")
+        _pragma(conn, "PRAGMA foreign_keys = OFF")
         try:
-            conn.execute("DROP TABLE IF EXISTS {}".format(antiga))
-            conn.execute("ALTER TABLE {} RENAME TO {}".format(tabela, antiga))
-            conn.execute(_comando_de_criacao(tabela))
-            conn.execute("INSERT INTO {} ({}) SELECT {} FROM {}".format(
-                tabela, lista, lista, antiga))
-            conn.execute("DROP TABLE {}".format(antiga))
+            if tabela in _TABELAS_SEM_DADO:
+                conn.execute("DROP TABLE {}".format(tabela))
+                conn.execute(_comando_de_criacao(tabela))
+            else:
+                colunas = [c[1] for c in
+                           conn.execute("PRAGMA table_info({})".format(tabela))]
+                lista = ", ".join(colunas)
+                temporaria = "{}__novo".format(tabela)
+                conn.execute("DROP TABLE IF EXISTS {}".format(temporaria))
+                conn.execute(_comando_de_criacao(tabela).replace(
+                    "IF NOT EXISTS {} (".format(tabela),
+                    "IF NOT EXISTS {} (".format(temporaria), 1))
+                conn.execute("INSERT INTO {} ({}) SELECT {} FROM {}".format(
+                    temporaria, lista, lista, tabela))
+                conn.execute("DROP TABLE {}".format(tabela))
+                conn.execute("ALTER TABLE {} RENAME TO {}".format(temporaria, tabela))
             for indice in _indices_de(tabela):
                 conn.execute(indice)
             conn.commit()
         finally:
-            conn.execute("PRAGMA legacy_alter_table = OFF")
-            conn.execute("PRAGMA foreign_keys = ON")
+            _pragma(conn, "PRAGMA foreign_keys = ON")
 
 
 def _migrar(conn) -> None:
@@ -325,7 +351,8 @@ def _migrar(conn) -> None:
 
 
 def _versao_schema(conn) -> int:
-    """PRAGMA nem sempre existe fora do SQLite local. Ausencia = banco novo."""
+    """A versao do schema. O PRAGMA nem sempre existe fora do SQLite local;
+    ausencia significa banco novo."""
     try:
         return conn.execute("PRAGMA user_version").fetchone()[0]
     except Exception:  # noqa: BLE001

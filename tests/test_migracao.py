@@ -176,3 +176,40 @@ def test_escala_de_encerramento_nao_nasce_completa(tmp_path):
         (viagem_id,)).fetchone()[0]
     assert faltantes == 3
     conn.close()
+
+
+def test_migracao_so_usa_pragma_que_o_turso_aceita():
+    """O Turso remoto tem uma LISTA DE COMANDOS PERMITIDOS, e ela NAO e a do
+    libsql local: um teste local passa e o deploy quebra.
+
+    `PRAGMA legacy_alter_table` derrubou um deploy de verdade. Este teste e o
+    guarda para nao acontecer de novo — cada PRAGMA aqui precisa de evidencia
+    de que o servidor aceita.
+    """
+    import pathlib
+    import re
+
+    # Evidencia, nesta ordem de confianca:
+    #   foreign_keys  — o log do deploy que falhou mostra que ELE passou; a
+    #                   excecao veio na linha SEGUINTE (legacy_alter_table).
+    #   table_info    — ja rodou em producao nos deploys anteriores.
+    #   user_version  — envolvido em try/except; ausencia significa banco novo.
+    ACEITOS = {"foreign_keys", "table_info", "user_version"}
+
+    # So o que e EXECUTADO: PRAGMA em SQL comeca logo depois da aspa. Comentario
+    # que menciona um PRAGMA (para explicar por que nao usamos) nao conta.
+    fonte = pathlib.Path(db.__file__).read_text(encoding="utf-8")
+    usados = set(re.findall(r'"PRAGMA (\w+)', fonte))
+    assert usados, "o regex parou de casar — conferir antes de confiar no guarda"
+    assert usados <= ACEITOS, "PRAGMA sem evidencia: {}".format(usados - ACEITOS)
+
+
+def test_a_reconstrucao_nao_depende_de_renomear_a_tabela_original(tmp_path):
+    """Renomear a original faria o SQLite reescrever a chave estrangeira de
+    quem a referencia. A ordem correta cria a nova com nome temporario e so
+    renomeia ela — e por isso nao precisa de `legacy_alter_table`."""
+    import pathlib
+
+    fonte = pathlib.Path(db.__file__).read_text(encoding="utf-8")
+    assert '"PRAGMA legacy_alter_table' not in fonte      # citado, nunca executado
+    assert 'ALTER TABLE {} RENAME TO {}".format(temporaria, tabela)' in fonte

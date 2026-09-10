@@ -249,6 +249,16 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
   aparece na migração, e um `CREATE VIEW`/`CREATE INDEX` sobre ela antes disso derruba o
   arranque inteiro. Os testes normais partem de banco vazio e **não pegam isso**;
   `tests/test_migracao.py` pega.
+- **O Turso remoto NÃO é o libsql local.** O servidor tem uma **lista de comandos
+  permitidos** e recusa vários PRAGMAs com `SQL_PARSE_ERROR` — `PRAGMA legacy_alter_table`
+  derrubou um deploy inteiro. A suite local passa e o deploy quebra, porque `libsql-local`
+  não aplica essa lista. **Nada na migração pode DEPENDER de um PRAGMA**; use `_pragma()`,
+  que tolera recusa. O guarda é `test_migracao_so_usa_pragma_que_o_turso_aceita` — só passam
+  `foreign_keys`, `table_info` e `user_version`, cada um com evidência anotada.
+- **Reconstruir tabela: crie a nova com nome TEMPORÁRIO, copie, apague a velha e só então
+  renomeie.** Renomear a ORIGINAL primeiro faz o SQLite reescrever a chave estrangeira de
+  quem a referencia para o nome temporário. A saída usual seria `legacy_alter_table`, que o
+  Turso recusa — nesta ordem ela não é necessária.
 - **Enum que cresce e caro.** O SQLite grava o `CHECK` na DEFINICAO da tabela: `CREATE TABLE IF NOT EXISTS` nao o atualiza e nao ha `ALTER` para ele, entao um valor novo **derruba o arranque de qualquer banco que ja exista**. A saida esta em `_TABELAS_RECRIAR` (`db.py`), que reconstroi a tabela preservando as linhas. Se essa lista comecar a crescer, troque o `CHECK` por chave estrangeira para uma tabela de referencia — ai acrescentar valor vira um `INSERT`.
 - **Coluna nova precisa de preenchimento retroativo no `seed.sql`.** `INSERT OR IGNORE` não toca
   linha que já existe: sem um `UPDATE ... WHERE col IS NULL`, a viagem que estava aberta em
