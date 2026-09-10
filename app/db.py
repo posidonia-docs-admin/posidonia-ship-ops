@@ -248,6 +248,10 @@ _INDICES_POSTERIORES = (
 # troque o CHECK por chave estrangeira para uma tabela de referencia — ai
 # acrescentar valor e um INSERT, nao uma reconstrucao.
 _TABELAS_RECRIAR = (
+    # marco_exigido PRIMEIRO: sem os marcos do tipo novo, uma escala sem nada
+    # exigido se declara COMPLETA (all([]) e verdadeiro) — e o pior e que o
+    # `INSERT OR IGNORE` do seed ENGOLE a violacao de CHECK sem uma palavra.
+    ("marco_exigido", "encerramento"),
     ("rota_etapa", "encerramento"),
     ("escala", "encerramento"),
 )

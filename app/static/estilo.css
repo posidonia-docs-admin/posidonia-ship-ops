@@ -1,27 +1,42 @@
 /* Posidonia Ship Ops.
-   Mesma paleta do Posidonia Docs, para os dois sistemas parecerem familia.
-   Mobile-first: o comandante esta no celular. Alvo de toque nunca < 44px.
+   Paleta da Posidonia (navy + teal, a mesma do Posidonia Docs) sobre a
+   linguagem de forma aprovada em 10/set/2026: paineis flutuantes de cantos
+   bem arredondados sobre um fundo mais frio, cartoes limpos e pouca palavra.
 
-   A tela do comandante tem UMA acao obvia por vez. Quinze formularios abertos
-   ao mesmo tempo, que era o desenho anterior, viram um paredao no celular. */
+   O COMPUTADOR e o caso principal — os comandantes usam mais o computador que
+   o celular. O celular e o compacto do mesmo desenho, nao o contrario. */
 
 :root {
   --navy: #0a2540;
   --teal: #12a7c9;
-  --ink: #16202b;
-  --muted: #5f7183;
-  --faint: #8a99a8;
-  --line: #e7edf3;
-  --surface: #ffffff;
-  --fundo: #f4f7fa;
+  --teal-fundo: #0b7f9b;
+
+  --fundo: #eef2f6;          /* o chao, fora dos paineis */
+  --painel: #ffffff;         /* o painel branco flutuante */
+  --campo: #f2f6f9;          /* campos e cartoes de apoio */
+  --campo-borda: #dfe6ed;
+
+  --tinta: #16202b;
+  --suave: #7f8fa0;
+  --tenue: #9aa8b5;
+  --linha: #e7edf3;
+
   --ok: #12805c;
   --alerta: #9a5b00;
   --erro: #b3261e;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --shadow-sm: 0 1px 2px rgba(16,42,67,.06), 0 2px 6px rgba(16,42,67,.05);
-  --shadow-md: 0 14px 34px -16px rgba(13,42,74,.28);
-  --ring: 0 0 0 3px rgba(18,167,201,.26);
+
+  /* raios grandes: a marca visual desta direcao */
+  --r-painel: 24px;
+  --r-cartao: 22px;
+  --r-campo: 14px;
+  --r-chip: 999px;
+
+  --sombra: 0 18px 40px -28px rgba(13,42,74,.4);
+  --sombra-forte: 0 24px 50px -30px rgba(13,42,74,.55);
+  --foco: 0 0 0 3px rgba(18,167,201,.26);
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -29,295 +44,389 @@
 body {
   margin: 0;
   background: var(--fundo);
-  color: var(--ink);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--tinta);
+  font: 15px/1.55 var(--sans);
   -webkit-text-size-adjust: 100%;
 }
-a { color: var(--teal); }
+a { color: var(--teal); text-decoration: none; }
+a:hover { color: var(--teal-fundo); }
 
-/* ---- estrutura -------------------------------------------------------- */
+.mono { font-family: var(--mono); }
 
-.app { min-height: 100vh; }
+/* rotulo pequeno em caixa alta — o conector visual da direcao inteira */
+.rot {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--suave);
+}
+
+/* ---- a casca ----------------------------------------------------------- */
+
+.app { min-height: 100vh; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
 .lateral {
   background: var(--navy);
   color: #fff;
-  padding: 14px 16px;
+  border-radius: var(--r-painel);
+  padding: 16px 18px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
-.marca { font-weight: 700; letter-spacing: .02em; font-size: 15px; }
-.marca small { display: block; font-weight: 400; font-size: 12px; color: #9dc4de; }
+.marca { font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+.marca small { display: block; font-weight: 400; font-size: 11.5px; color: #7fb2d4; }
 
-.menu { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.menu { display: flex; gap: 5px; margin-left: auto; flex-wrap: wrap; }
 .menu a {
-  color: #cfe3f1; text-decoration: none; font-size: 14px;
-  padding: 9px 13px; min-height: 40px; display: flex; align-items: center;
-  border-radius: var(--radius-sm);
+  color: #9dc4de; font-size: 14px; padding: 10px 14px; min-height: 44px;
+  display: flex; align-items: center; gap: 10px; border-radius: var(--r-campo);
 }
 .menu a:hover { background: rgba(255,255,255,.08); color: #fff; }
 .menu a.ativo { background: var(--teal); color: #fff; font-weight: 600; }
+.menu svg { flex: 0 0 18px; }
 
-.conteudo { padding: 18px 16px 60px; max-width: 700px; margin: 0 auto; }
+.rodape-lateral { width: 100%; }
 
-@media (min-width: 900px) {
-  .app { display: grid; grid-template-columns: 232px 1fr; }
-  .lateral { flex-direction: column; align-items: stretch; min-height: 100vh;
-             padding: 22px 16px; gap: 22px; }
-  .menu { flex-direction: column; margin-left: 0; gap: 3px; }
-  .conteudo { padding: 30px 34px 70px; margin: 0; }
+.painel {
+  background: var(--painel);
+  border-radius: var(--r-painel);
+  padding: 20px 18px 40px;
+  flex: 1;
 }
 
-h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.01em; }
-.legenda { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
-.titulo-trilha {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--muted); margin: 26px 0 10px;
+@media (min-width: 1100px) {
+  .app {
+    flex-direction: row;
+    align-items: stretch;
+    padding: 24px;
+    gap: 20px;
+    height: 100vh;
+  }
+  .lateral {
+    width: 240px;
+    flex: 0 0 240px;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 26px 18px;
+    gap: 26px;
+  }
+  .menu { flex-direction: column; margin-left: 0; gap: 4px; }
+  .rodape-lateral { margin-top: auto; }
+  .painel { padding: 26px 28px 34px; overflow-y: auto; }
 }
 
+/* o campo de quem preenche, no pe da barra lateral */
+.responsavel {
+  background: rgba(255,255,255,.07);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.responsavel label { margin: 0; color: #7fb2d4; }
+.responsavel input {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
+  color: #fff; border-radius: 12px; padding: 11px 12px; min-height: 44px;
+  font-size: 14px; width: 100%;
+}
+.responsavel input::placeholder { color: #6c9cbe; }
+.responsavel input:focus { outline: none; border-color: var(--teal); box-shadow: none; }
+.responsavel .dica { color: #7fb2d4; font-size: 11.5px; line-height: 1.45; }
+
+/* ---- topo do conteudo -------------------------------------------------- */
+
+.topo-conteudo {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
 .codigo {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-weight: 700; font-size: 16px; color: var(--navy); letter-spacing: .04em;
+  font-family: var(--mono); font-weight: 700; font-size: 19px;
+  color: var(--navy); letter-spacing: .04em;
 }
-.embarcacao { color: var(--muted); font-size: 13px; }
+.embarcacao { color: var(--suave); font-size: 13.5px; }
+.selo-conta {
+  margin-left: auto; display: flex; align-items: center; gap: 10px;
+  background: var(--campo); border-radius: var(--r-chip); padding: 7px 7px 7px 15px;
+}
+.selo-conta .quando { font-family: var(--mono); font-size: 12.5px; color: #47586b; }
+.selo-conta .iniciais {
+  width: 30px; height: 30px; border-radius: var(--r-chip); background: var(--navy);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 600;
+}
 
-/* ---- onde o navio esta ------------------------------------------------ */
+/* ---- a grade da tela do comandante ------------------------------------- */
+
+.tela { display: flex; flex-direction: column; gap: 16px; }
+
+@media (min-width: 1100px) {
+  .tela {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-areas: "situacao lado" "viagem lado";
+    gap: 18px 24px;
+    align-items: start;
+  }
+  .situacao { grid-area: situacao; }
+  .coluna-lado { grid-area: lado; }
+  .bloco-viagem { grid-area: viagem; }
+}
+
+.coluna-lado { display: flex; flex-direction: column; gap: 16px; }
+
+/* ---- onde o navio esta ------------------------------------------------- */
 
 .situacao {
-  background: var(--navy);
-  color: #fff;
-  border-radius: var(--radius);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-md);
+  background: var(--navy); color: #fff;
+  border-radius: var(--r-cartao); padding: 20px 22px;
+  position: relative; overflow: hidden;
 }
-.situacao-topo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.situacao-topo .codigo { color: #fff; }
-.situacao-topo .embarcacao { color: #9dc4de; }
-.situacao-agora {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px;
+/* o brilho de canto, emprestado da referencia */
+.situacao::after {
+  content: ""; position: absolute; right: -60px; top: -70px;
+  width: 220px; height: 220px; border-radius: var(--r-chip);
+  background: radial-gradient(circle, rgba(18,167,201,.45) 0%, rgba(18,167,201,0) 70%);
+  pointer-events: none;
 }
-.porto-agora { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.situacao > * { position: relative; }
+.situacao .rot { color: #7fb2d4; }
+.situacao-agora { display: flex; align-items: baseline; gap: 11px;
+                  flex-wrap: wrap; margin-top: 9px; }
+.porto-agora { font-size: 30px; font-weight: 600; letter-spacing: -.02em; }
 .situacao .condicao { background: rgba(255,255,255,.14); color: #cfe9f5; }
-.situacao-ultimo { color: #9dc4de; font-size: 13px; margin-top: 6px; }
 
-/* ---- a unica acao: o proximo lancamento ------------------------------- */
+.ancoras {
+  display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px;
+  padding-top: 16px; border-top: 1px solid rgba(255,255,255,.12);
+}
+.ancora { display: flex; flex-direction: column; gap: 3px; }
+.ancora .rot { color: #6c9cbe; }
+.ancora b { font-family: var(--mono); font-size: 13.5px; font-weight: 500; color: #fff; }
+
+/* ---- o proximo lancamento ---------------------------------------------- */
 
 .proximo {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--teal);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  padding: 16px 18px 18px;
-  margin-top: 14px;
+  background: var(--painel); border: 1px solid var(--linha);
+  border-radius: var(--r-cartao); padding: 20px 22px 22px;
+  box-shadow: var(--sombra);
+  display: flex; flex-direction: column; gap: 13px;
 }
-.proximo.completa { border-top-color: var(--ok); }
-.proximo-rot {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
-  font-weight: 700; color: var(--teal);
+.proximo.completa { border-color: rgba(18,128,92,.3); }
+.proximo-rot { display: flex; align-items: center; gap: 9px;
+               font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+               text-transform: uppercase; color: var(--teal); }
+.proximo-rot::before {
+  content: ""; width: 8px; height: 8px; border-radius: var(--r-chip);
+  background: var(--teal);
 }
 .proximo.completa .proximo-rot { color: var(--ok); }
-.proximo-titulo { font-size: 19px; margin: 6px 0 0; letter-spacing: -.01em; }
-.proximo-titulo .em { color: var(--muted); font-weight: 400; margin-left: 6px; }
-.proximo-dica { color: var(--muted); font-size: 13.5px; margin: 6px 0 14px; }
+.proximo.completa .proximo-rot::before { background: var(--ok); }
+.proximo-titulo { font-size: 23px; font-weight: 600; margin: 0;
+                  letter-spacing: -.015em; }
+.proximo-titulo .em { color: var(--suave); font-weight: 400; font-size: 15px;
+                      margin-left: 7px; }
+.proximo-dica { color: var(--suave); font-size: 13px; margin: -6px 0 2px; }
 
-form.destaque { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-form.destaque input[type=date] { grid-column: 1 / -1; }
-form.destaque .botao-largo { grid-column: 1 / -1; }
-form.destaque .estado { grid-column: 1 / -1; }
-form.destaque input { min-height: 50px; font-size: 16px; }
+/* ---- a viagem ---------------------------------------------------------- */
 
-.responsavel {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); padding: 11px 14px; margin-top: 14px;
-}
-.responsavel label { margin: 0; white-space: nowrap; }
-.responsavel input { flex: 1 1 180px; }
+.titulo-trilha { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.titulo-trilha .risco { flex: 1; height: 1px; background: var(--linha); }
+.titulo-trilha .contagem-geral { font-family: var(--mono); font-size: 12px;
+                                 color: var(--suave); }
 
-/* ---- a viagem, fechada ------------------------------------------------ */
-
-.trilha { list-style: none; margin: 0; padding: 0; }
-.trilha > li { position: relative; }
-/* a linha que liga as paradas */
-.trilha > li:not(:last-child)::before {
-  content: ""; position: absolute; left: 25px; top: 32px; bottom: -2px;
-  width: 2px; background: var(--line);
-}
+.trilha { list-style: none; margin: 0; padding: 0;
+          display: flex; flex-direction: column; gap: 7px; }
 
 .parada {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); margin-bottom: 6px; overflow: hidden;
-  position: relative;
+  background: #fbfcfe; border: 1px solid var(--linha);
+  border-radius: 16px; overflow: hidden;
 }
+.parada.atual { background: var(--painel); border-color: var(--teal);
+                box-shadow: var(--foco); }
 .parada > summary {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px; min-height: 52px; cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 13px;
+  padding: 13px 16px; min-height: 54px; cursor: pointer; list-style: none;
 }
 .parada > summary::-webkit-details-marker { display: none; }
 
-.marcador {
-  flex: 0 0 12px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--surface); border: 2px solid var(--line);
-}
-.parada.parcial .marcador { border-color: var(--alerta); background: var(--alerta); }
-.parada.pronta .marcador { border-color: var(--ok); background: var(--ok); }
-.parada.atual { border-color: var(--teal); box-shadow: var(--ring); }
-.parada.atual .marcador { border-color: var(--teal); background: var(--teal); }
+.marcador { flex: 0 0 10px; width: 10px; height: 10px; border-radius: var(--r-chip);
+            background: var(--campo-borda); }
+.parada.parcial .marcador { background: var(--alerta); }
+.parada.pronta .marcador { background: var(--ok); }
+.parada.atual .marcador { background: var(--teal); }
 
-.parada-nome { font-weight: 600; font-size: 15px; }
-.parada-nome small {
-  display: block; font-weight: 400; font-size: 11.5px; color: var(--faint);
-  text-transform: uppercase; letter-spacing: .05em;
-}
-.progresso {
-  margin-left: auto; font-size: 12px; color: var(--muted);
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.parada.pronta .progresso { color: var(--ok); }
-.parada-corpo { border-top: 1px solid var(--line); }
-.parada-obs { margin: 0; padding: 10px 14px; font-size: 13px; color: var(--muted);
-              background: #fbfdfe; }
+.parada-nome { font-weight: 600; font-size: 14.5px; }
+.parada-nome small { display: block; font-weight: 400; font-size: 11px;
+                     color: var(--tenue); }
 
-/* O que o navio esta fazendo: ballast, loading, laden, discharging... */
 .condicao {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-  font-weight: 700; padding: 3px 8px; border-radius: 999px;
-  background: rgba(10,37,64,.07); color: var(--navy); white-space: nowrap;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: var(--r-chip);
+  background: var(--fundo); color: #47586b; white-space: nowrap;
 }
 
-/* ---- marcos ----------------------------------------------------------- */
+/* os marcos ja lancados, na propria linha — so no computador */
+.marcos-resumo { display: none; }
+@media (min-width: 1100px) {
+  .parada > summary > .parada-nome { flex: 0 0 132px; }
+  .parada > summary > .condicao { flex: 0 0 96px; text-align: center; }
+  .marcos-resumo {
+    display: block; flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 12.5px; color: #47586b;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .marcos-resumo.vazio { color: var(--tenue); }
+}
 
-.marco { border-top: 1px solid var(--line); padding: 9px 14px; }
+.progresso { margin-left: auto; font-family: var(--mono); font-size: 12px;
+             color: var(--suave); white-space: nowrap; }
+.parada.pronta .progresso { color: var(--ok); }
+.parada-corpo { border-top: 1px solid var(--linha); background: var(--painel); }
+.parada-obs { margin: 0; padding: 11px 16px; font-size: 12.5px;
+              color: var(--suave); background: #fbfcfe; }
+
+/* ---- marcos ------------------------------------------------------------ */
+
+.marco { border-top: 1px solid var(--linha); padding: 10px 16px; }
 .marco:first-of-type { border-top: 0; }
 .marco.bunker { background: #fffdf6; }
 .marco.carga { background: #f6fbf8; }
-form.carregar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-                background: transparent; border: 0; padding: 0; }
-form.carregar input[type=number] { flex: 0 1 140px; }
-form.carregar.destaque input { width: 100%; min-height: 50px; font-size: 16px; }
-.marco-nome { font-size: 13px; color: var(--muted); min-width: 74px; }
+.marco-nome { font-size: 12.5px; color: var(--suave); min-width: 78px; }
 
-form.lancar, form.abastecer {
+form.lancar, form.abastecer, form.carregar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: transparent; border: 0; padding: 0;
 }
-form.lancar input[type=date] { flex: 1 1 140px; }
-form.lancar input[type=time] { flex: 0 1 108px; }
-form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 1 100px; }
+form.lancar input[type=date] { flex: 1 1 150px; }
+form.lancar input[type=time] { flex: 0 1 110px; }
+form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 1 104px; }
+form.carregar input[type=number] { flex: 0 1 150px; }
 form.lancar input[name=motivo_correcao] { flex: 1 1 100%; }
 
-.gravado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.gravado .valor {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-weight: 650; font-size: 14.5px;
-}
-.gravado .por { color: var(--faint); font-size: 12px; }
-.rob { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.gravado .corrigir {
-  margin-left: auto; font-size: 12.5px; cursor: pointer;
-  color: var(--teal); list-style: none;
-}
+/* o formulario em destaque do cartao "proximo lancamento" */
+form.destaque { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px; }
+form.destaque input[type=date] { grid-column: 1 / -1; }
+form.destaque input[name=mgo], form.destaque input[name=rob_mgo],
+form.destaque input[name=quantidade] { grid-column: 1 / -1; }
+form.destaque .botao-largo, form.destaque .estado { grid-column: 1 / -1; }
+form.destaque input { min-height: 50px; font-size: 16px; font-family: var(--mono); }
+
+.gravado { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.gravado .valor { font-family: var(--mono); font-weight: 600; font-size: 14px; }
+.gravado .por { color: var(--tenue); font-size: 11.5px; }
+.rob { font-family: var(--mono); font-size: 11.5px; color: var(--suave);
+       white-space: nowrap; }
+.gravado .corrigir { margin-left: auto; font-size: 12.5px; cursor: pointer;
+                     color: var(--teal); list-style: none; }
 .gravado .corrigir::-webkit-details-marker { display: none; }
 .gravado details { width: 100%; }
-.gravado details[open] .corrigir { margin-bottom: 8px; }
+.gravado details[open] .corrigir { margin-bottom: 9px; }
 
 .estado { font-size: 12px; font-weight: 600; }
 .estado.pendente { color: var(--alerta); }
 .estado.erro { color: var(--erro); }
 .estado.salvo { color: var(--ok); }
 
-/* ---- viagens anteriores ----------------------------------------------- */
+/* ---- combustivel a bordo ----------------------------------------------- */
 
-.viagem {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  margin-bottom: 10px; overflow: hidden;
-}
-.viagem > summary {
-  padding: 14px 18px; cursor: pointer; display: flex; align-items: center;
-  gap: 12px; list-style: none; min-height: 54px;
-}
+.bordo { background: var(--campo); border-radius: var(--r-cartao);
+         padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; }
+.bordo-numeros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                 gap: 16px; }
+.bordo-numero { display: flex; flex-direction: column; gap: 3px; }
+.bordo-numero b { font-family: var(--mono); font-size: 21px; font-weight: 600;
+                  color: var(--navy); letter-spacing: -.02em; }
+.bordo-numero span { font-size: 11px; color: var(--suave); }
+.bordo .quando { font-size: 11.5px; color: var(--tenue); line-height: 1.45; }
+
+/* ---- viagens anteriores ------------------------------------------------ */
+
+.viagem { background: var(--painel); border: 1px solid var(--linha);
+          border-radius: var(--r-cartao); margin-bottom: 9px; overflow: hidden; }
+.viagem > summary { padding: 15px 18px; cursor: pointer; display: flex;
+                    align-items: center; gap: 12px; list-style: none;
+                    min-height: 54px; }
 .viagem > summary::-webkit-details-marker { display: none; }
-.viagem > summary::after {
-  content: "\25BE"; margin-left: auto; color: var(--faint);
-  transition: transform .15s;
-}
+.viagem > summary::after { content: "\25BE"; margin-left: auto;
+                           color: var(--tenue); transition: transform .15s; }
 .viagem[open] > summary::after { transform: rotate(180deg); }
-.viagem[open] > summary { border-bottom: 1px solid var(--line); }
-.corpo { padding: 14px 16px 16px; }
+.viagem[open] > summary { border-bottom: 1px solid var(--linha); }
+.corpo { padding: 16px 18px 18px; }
 
-.selo {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-  font-weight: 700; padding: 3px 9px; border-radius: 999px;
-  background: rgba(18,167,201,.12); color: #0b7f9b; white-space: nowrap;
-}
-.selo-fechada { background: var(--line); color: var(--muted); }
+.selo { font-size: 10px; font-weight: 600; letter-spacing: .1em;
+        text-transform: uppercase; padding: 5px 11px; border-radius: var(--r-chip);
+        background: rgba(18,167,201,.12); color: var(--teal-fundo);
+        white-space: nowrap; }
+.selo-fechada { background: var(--fundo); color: #47586b; }
+.selo-falta { background: rgba(154,91,0,.12); color: var(--alerta); }
 
-/* ---- formularios ------------------------------------------------------ */
+/* ---- formularios ------------------------------------------------------- */
 
 input, select, textarea {
-  font: inherit; color: inherit; background: var(--surface);
-  border: 1px solid #cfdae4; border-radius: var(--radius-sm);
-  padding: 10px 11px; min-height: 44px; max-width: 100%;
+  font: inherit; color: inherit; background: var(--campo);
+  border: 1px solid var(--campo-borda); border-radius: var(--r-campo);
+  padding: 12px 13px; min-height: 46px; max-width: 100%;
 }
 input:focus, select:focus, textarea:focus {
-  outline: none; border-color: var(--teal); box-shadow: var(--ring);
+  outline: none; border-color: var(--teal); box-shadow: var(--foco);
 }
+input[type=number], input[type=date], input[type=time] { font-family: var(--mono); }
 
-label { display: block; font-size: 13.5px; font-weight: 600; margin: 14px 0 6px; }
+label { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+        text-transform: uppercase; color: var(--suave); margin: 15px 0 6px; }
 label:first-child { margin-top: 0; }
 label input, label select, label textarea { width: 100%; }
-.dica { font-weight: 400; color: var(--muted); }
+.dica { font-weight: 400; letter-spacing: 0; text-transform: none;
+        color: var(--suave); font-size: 12px; }
 
 button, .botao {
   font: inherit; font-weight: 600; font-size: 14px; color: #fff;
-  background: var(--teal); border: 0; border-radius: var(--radius-sm);
-  padding: 11px 16px; min-height: 44px; cursor: pointer; text-decoration: none;
+  background: var(--teal); border: 0; border-radius: var(--r-campo);
+  padding: 12px 18px; min-height: 46px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-button:disabled { opacity: .55; cursor: default; }
-.botao-largo { width: 100%; min-height: 50px; font-size: 15px; }
-.botao-fraco { background: var(--surface); color: var(--navy); border: 1px solid #cfdae4; }
+button:hover, .botao:hover { filter: brightness(1.06); color: #fff; }
+button:disabled { opacity: .5; cursor: default; filter: none; }
+.botao-largo { width: 100%; min-height: 52px; font-size: 15px; }
+.botao-fraco { background: var(--painel); color: var(--navy);
+               border: 1px solid var(--campo-borda); }
+.botao-fraco:hover { color: var(--navy); background: var(--campo); }
 
-.painel-form {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 18px;
-}
+.painel-form { background: var(--painel); border: 1px solid var(--linha);
+               border-radius: var(--r-cartao); box-shadow: var(--sombra);
+               padding: 22px; }
 
-details.extra {
-  border: 1px dashed #cfdae4; border-radius: var(--radius-sm);
-  padding: 12px 14px; margin-top: 18px; background: #fbfdfe;
-}
-details.extra summary {
-  cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--navy);
-}
-details.extra form { border: 0; padding: 12px 0 0; background: transparent; }
+details.extra { border: 1px dashed var(--campo-borda); border-radius: var(--r-cartao);
+                padding: 14px 16px; margin-top: 18px; background: #fbfcfe; }
+details.extra summary { cursor: pointer; font-size: 13.5px; font-weight: 600;
+                        color: var(--navy); }
+details.extra form { border: 0; padding: 14px 0 0; background: transparent; }
 
-.aviso {
-  border-left: 3px solid var(--teal); background: var(--surface);
-  padding: 11px 14px; border-radius: var(--radius-sm); font-size: 14px;
-  margin-bottom: 16px; box-shadow: var(--shadow-sm);
-}
+.aviso { background: var(--painel); border: 1px solid var(--linha);
+         border-left: 3px solid var(--teal); padding: 13px 16px;
+         border-radius: var(--r-campo); font-size: 14px; margin-bottom: 16px; }
 .aviso-erro { border-left-color: var(--erro); color: var(--erro); }
 
-table {
-  width: 100%; border-collapse: collapse; background: var(--surface);
-  border: 1px solid var(--line); border-radius: var(--radius);
-  overflow: hidden; box-shadow: var(--shadow-sm);
-}
-th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line);
+table { width: 100%; border-collapse: collapse; background: var(--painel);
+        border: 1px solid var(--linha); border-radius: var(--r-cartao);
+        overflow: hidden; }
+th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--linha);
          font-size: 14px; }
-th { color: var(--muted); font-weight: 700; font-size: 11.5px;
-     text-transform: uppercase; letter-spacing: .06em; background: #f7fafc; }
+th { font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+     letter-spacing: .1em; text-transform: uppercase; color: var(--suave);
+     background: var(--campo); }
 tr:last-child td { border-bottom: 0; }
 
-/* ---- login ------------------------------------------------------------ */
+h1 { font-size: 22px; margin: 0 0 5px; letter-spacing: -.015em; }
+.legenda { color: var(--suave); font-size: 14px; margin: 0 0 20px; }
 
-.login-caixa { max-width: 380px; margin: 8vh auto; padding: 0 16px; }
-.login-marca { text-align: center; margin-bottom: 22px; }
-.login-marca strong { display: block; font-size: 19px; color: var(--navy); }
-.login-marca span { color: var(--muted); font-size: 13.5px; }
+/* ---- login ------------------------------------------------------------- */
+
+.login-caixa { max-width: 400px; margin: 9vh auto; padding: 0 18px; }
+.login-marca { text-align: center; margin-bottom: 24px; }
+.login-marca strong { display: block; font-size: 20px; color: var(--navy);
+                      letter-spacing: -.01em; }
+.login-marca span { color: var(--suave); font-size: 13.5px; }

@@ -343,26 +343,34 @@ duração usam. A única exceção é o `value` de um `<input type="date">`, ond
 
 ---
 
-## A tela do comandante — uma ação óbvia por vez
+## A tela do comandante
 
-O desenho anterior abria **quinze formulários ao mesmo tempo**. Num celular isso é um paredão, e
-não respondia a pergunta que o comandante realmente tem: *o que eu lanço agora?*
+**O computador é o caso principal** — os comandantes usam mais o computador que o celular. O
+celular é o compacto do mesmo desenho, não o contrário.
 
-A tela hoje tem três camadas, nessa ordem:
+**A direção visual** (aprovada em 10/set/2026, a partir de uma referência que o Vinícius trouxe):
+painéis flutuantes de cantos bem arredondados sobre um fundo mais frio, barra lateral como bloco
+escuro próprio, cartões limpos, rótulos minúsculos em caixa alta e número grande. **A cor é a da
+Posidonia** — navy `#0a2540` e teal `#12a7c9`, a mesma do Posidonia Docs: da referência veio a
+forma, nunca a tinta. Tipografia **IBM Plex Sans + Mono**; todo número em mono, para alinhar em
+coluna.
 
-1. **Onde o navio está** — cartão escuro no topo: código da viagem, porto atual, condição e o
+Três camadas, nesta ordem:
+
+1. **Onde o navio está** — cartão navy: porto, condição, o `Sailing` que abriu a viagem e o
    último lançamento.
 2. **O próximo lançamento** — **um** formulário, em destaque. `_proximo_lancamento()` acha o
-   primeiro marco que falta na ordem da viagem. Ao salvar, a página recarrega e o cartão
-   **avança sozinho** para o marco seguinte: é assim que a viagem se traduz.
-3. **A viagem** — as paradas **fechadas**, com bolinha de estado (vazia / parcial / pronta),
-   contador `2/4` e a atual destacada. Ele abre uma parada só quando precisa voltar em algo, e
-   aí corrige no lugar, sem recarregar.
+   primeiro marco (ou bunker, ou carga) que falta na ordem da viagem. Ao salvar, a página
+   recarrega e o cartão **avança sozinho**.
+3. **A viagem** — as paradas fechadas, com bolinha de estado e contador por extenso
+   (`1 de 4`). **No computador cada parada mostra os marcos já lançados na própria linha**
+   (`marcos-resumo`): a viagem inteira se lê sem abrir nada.
 
-**Por que o cartão recarrega e a trilha não:** do cartão, o conteúdo inteiro mudou (há um próximo
-marco novo). Na trilha, só aquela linha mudou — recarregar perderia a posição dele na página.
+No computador (≥ 1100px) a grade põe situação e viagem à esquerda, próximo lançamento e
+combustível à direita. No celular vira uma coluna só.
 
-O menu do comandante tem **um item**: Viagens. `MENU` em `main.py` é declarativo, por perfil.
+**“Quem preenche” vive na barra lateral, uma única vez.** Dois campos com o mesmo `id` fariam o
+JavaScript ler o errado.
 
 ---
 

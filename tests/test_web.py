@@ -285,7 +285,7 @@ def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
 
     html = cliente.get("/navio").text
     assert 'class="trilha"' in html
-    assert "1/4" in html                          # Juruti: um dos quatro marcos
+    assert "1 de 4" in html                       # por extenso, nao fracao solta
     assert 'class="parada parcial' in html
 
 
@@ -594,3 +594,53 @@ def test_carga_de_outro_navio_e_bloqueada(cliente):
     resposta = cliente.post("/api/carga", json={
         "escala_id": alheia, "quantidade": "100", "nome_responsavel": "X"})
     assert resposta.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# O desenho aprovado em 10/set/2026
+# ---------------------------------------------------------------------------
+
+def test_sailing_de_abertura_aparece_no_cabecalho(cliente):
+    """Era o que faltava: o começo da história, antes invisível."""
+    entrar(cliente)
+    cliente.get("/navio")
+    saida = escala_de(cliente, ordem=10)
+    cliente.post("/api/marco", json={
+        "escala_id": saida, "tipo": "sailing", "hora_local": "2026-08-16T14:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "ab-1"})
+
+    html = cliente.get("/navio").text
+    assert "Saiu de Alumar" in html
+    assert "16/08/2026 14:00" in html
+
+
+def test_marcos_ja_lancados_aparecem_na_linha_da_parada(cliente):
+    """O ganho do computador: ver a viagem sem abrir parada nenhuma."""
+    entrar(cliente)
+    cliente.get("/navio")
+    juruti = escala_de(cliente, ordem=30)
+    for i, (tipo, hora) in enumerate((("arrival", "2026-08-21T04:20"),
+                                      ("berth", "2026-08-21T14:00"))):
+        cliente.post("/api/marco", json={
+            "escala_id": juruti, "tipo": tipo, "hora_local": hora,
+            "offset": "-03:00", "nome_responsavel": "Cmt.",
+            "id_cliente": "res-{}".format(i)})
+
+    html = cliente.get("/navio").text
+    assert 'class="marcos-resumo"' in html
+    assert "Arrival 21/08 04:20 · Berth 21/08 14:00" in html
+
+
+def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
+    """Dois campos com o mesmo id fariam o JavaScript ler o errado."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert html.count('id="responsavel"') == 1
+    assert html.index('id="responsavel"') < html.index('class="painel"')
+
+
+def test_a_tela_usa_a_grade_do_computador(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    for marca in ('class="tela"', 'class="coluna-lado"', 'class="bloco-viagem"'):
+        assert marca in html, marca

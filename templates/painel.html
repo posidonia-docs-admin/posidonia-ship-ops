@@ -1,21 +1,14 @@
 {% extends "base.html" %}
-{% block titulo %}Painel{% endblock %}
-
-{% block topo %}
-<div class="topo">
-  <div>
-    <div class="navio">Posidonia · Ship Ops</div>
-    <div class="viagem">{{ conta.nome_exibicao }}</div>
-  </div>
-  <a href="/logout">sair</a>
-</div>
-{% endblock %}
+{% block titulo %}Frota{% endblock %}
 
 {% block conteudo %}
-<h1>Frota</h1>
-<p class="legenda">
-  {{ a_conferir }} lançamento(s) aguardando conferência.
-</p>
+<div class="topo-conteudo">
+  <span class="codigo">Frota</span>
+  <span class="embarcacao">{{ conta.nome_exibicao }}</span>
+  <span class="selo-conta">
+    <span class="quando">{{ a_conferir }} a conferir</span>
+  </span>
+</div>
 
 <table>
   <thead>
@@ -25,18 +18,15 @@
     {% for n in frota %}
     <tr>
       <td>{{ n.nome_oficial }}</td>
-      <td>{{ n.numero or "sem viagem aberta" }}</td>
+      <td><span class="mono">{{ n.numero or "—" }}</span></td>
       <td>{{ n.faltantes if n.numero else "—" }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-{% if conta.perfil == "admin" %}
-<a class="botao botao-fraco" href="/admin/contas">Contas de acesso</a>
-{% endif %}
-
 <p class="legenda" style="margin-top:20px">
-  As filas de conferência e de cobrança entram na Fase 3.
+  As filas de conferência e de cobrança entram na próxima fase, junto com a
+  visão dos supervisores.
 </p>
 {% endblock %}

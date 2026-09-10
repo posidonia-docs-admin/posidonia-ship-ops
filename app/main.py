@@ -297,6 +297,21 @@ def _proximo_lancamento(blocos):
     return None
 
 
+def _resumo_marcos(marcos) -> str:
+    """'Arrival 06/08 04:20 · Berth 06/08 14:00' — o que ja foi lancado.
+
+    So aparece no computador, onde ha largura: e o ganho de ver a viagem
+    inteira sem abrir parada nenhuma.
+    """
+    feitos = []
+    for marco in marcos:
+        if marco["lancado"]:
+            hora = marco["lancado"]["hora_local"] or ""
+            feitos.append("{} {}/{} {}".format(
+                marco["curto"], hora[8:10], hora[5:7], hora[11:16]).strip())
+    return " · ".join(feitos)
+
+
 def _situacao(blocos):
     """Onde o navio esta e o que estava fazendo, pelo ultimo marco lancado."""
     ultimo = None
@@ -319,8 +334,11 @@ def navio_inicio(request: Request):
             viagens.abrir_viagem(conn, conta["navio_id"], por=conta["login"])
 
         linhas = conn.execute(
-            "SELECT id, numero, status FROM viagem WHERE navio_id = ? "
-            " ORDER BY (status = 'aberta') DESC, id DESC LIMIT 6",
+            "SELECT vg.id, vg.numero, vg.status, ev.hora_local AS abertura "
+            "  FROM viagem vg "
+            "  LEFT JOIN evento ev ON ev.id = vg.evento_abertura_id "
+            " WHERE vg.navio_id = ? "
+            " ORDER BY (vg.status = 'aberta') DESC, vg.id DESC LIMIT 6",
             (conta["navio_id"],)).fetchall()
 
         lista = []
@@ -335,11 +353,15 @@ def navio_inicio(request: Request):
                 bloco["total"] = len(bloco["marcos"])
                 bloco["estado"] = ("pronta" if bloco["completa"]
                                    else "parcial" if lancados else "vazia")
+                bloco["resumo"] = _resumo_marcos(bloco["marcos"])
             lista.append({
                 "viagem": viagem,
                 "aberta": viagem["status"] == "aberta",
                 "faltantes": faltantes,
                 "blocos": blocos,
+                # O Sailing de Alumar que abre a viagem — o comeco da historia,
+                # que antes ficava invisivel para quem estava preenchendo.
+                "abertura": viagem["abertura"],
                 "proximo": _proximo_lancamento(blocos),
                 "situacao": _situacao(blocos),
             })
@@ -347,8 +369,14 @@ def navio_inicio(request: Request):
         portos = conn.execute(
             "SELECT codigo, nome FROM porto WHERE ativo = 1 ORDER BY nome").fetchall()
 
+    corrente = next((v for v in lista if v["aberta"]), None)
+    lancados = sum(len([m for m in b["marcos"] if m["lancado"]])
+                   for b in (corrente["blocos"] if corrente else []))
+    total = sum(len(b["marcos"]) for b in (corrente["blocos"] if corrente else []))
+
     return templates.TemplateResponse(request, "navio_inicio.html", {
-        "conta": conta, "lista": lista, "portos": portos})
+        "conta": conta, "lista": lista, "portos": portos,
+        "corrente": corrente, "lancados": lancados, "total": total})
 
 
 @app.post("/api/marco")

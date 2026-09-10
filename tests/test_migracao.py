@@ -146,3 +146,33 @@ def test_reconstrucao_preserva_as_linhas_e_a_referencia(tmp_path):
     assert "REFERENCES escala(id)" in evento_sql
     assert "escala_antiga" not in evento_sql
     conn.close()
+
+
+def test_marcos_do_tipo_novo_chegam_num_banco_antigo(tmp_path):
+    """O INSERT OR IGNORE do seed ENGOLE a violacao de CHECK sem avisar.
+
+    Sem reconstruir marco_exigido, a escala de encerramento fica sem nenhum
+    marco exigido — e `all([])` faz ela se declarar COMPLETA com tudo em branco.
+    """
+    conn = _banco_com_check_antigo(str(tmp_path / "sem-marcos.db"))
+    db.inicializar(conn)
+
+    exigidos = {linha[0] for linha in conn.execute(
+        "SELECT tipo_evento FROM marco_exigido WHERE tipo_escala = 'encerramento'")}
+    assert exigidos == {"arrival", "berth", "unberth"}
+    conn.close()
+
+
+def test_escala_de_encerramento_nao_nasce_completa(tmp_path):
+    from app import viagens
+
+    conn = _banco_com_check_antigo(str(tmp_path / "completa.db"))
+    db.inicializar(conn)
+    viagem_id, _ = viagens.abrir_viagem(conn, 1)
+
+    faltantes = conn.execute(
+        "SELECT COUNT(*) FROM escalas_incompletas i JOIN escala e ON e.id = i.escala_id "
+        " WHERE i.viagem_id = ? AND e.tipo_escala = 'encerramento'",
+        (viagem_id,)).fetchone()[0]
+    assert faltantes == 3
+    conn.close()
