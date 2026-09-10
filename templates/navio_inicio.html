@@ -1,164 +1,263 @@
 {% extends "base.html" %}
-{% block titulo %}Viagens{% endblock %}
+{% block titulo %}Viagem{% endblock %}
+
+{#
+  Tela do comandante. Uma acao obvia por vez.
+
+  O paredao de quinze formularios abertos ficou para tras: agora ha o PROXIMO
+  lancamento em destaque e, abaixo, a viagem inteira fechada, que ele abre so
+  quando precisa voltar em algo.
+#}
+
+{% macro campos_marco(escala, marco, correcao) %}
+  <input type="date" name="data" required
+         value="{{ marco.lancado.hora_local[:10] if correcao else "" }}">
+  <input type="time" name="hora" required
+         value="{{ marco.lancado.hora_local[11:16] if correcao else "" }}">
+  <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t"
+         value="{{ marco.lancado.rob_vlsfo if correcao and marco.lancado.rob_vlsfo is not none else "" }}">
+  <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t"
+         value="{{ marco.lancado.rob_mgo if correcao and marco.lancado.rob_mgo is not none else "" }}">
+  {% if correcao %}
+    <input type="text" name="motivo_correcao" required placeholder="motivo da correção">
+  {% endif %}
+{% endmacro %}
 
 {% block conteudo %}
-<h1>Viagens</h1>
-<p class="legenda">
-  Registre a hora <strong>real</strong> de cada marco e o combustível a bordo
-  naquele momento. O que você salva fica guardado na hora — pode fechar e voltar.
-</p>
-
 {% if request.query_params.get("erro") %}
   <p class="aviso aviso-erro">{{ request.query_params.get("erro") }}</p>
 {% endif %}
 
-{% for v in lista %}
-<details class="viagem"{% if v.aberta %} open{% endif %}>
+{% for v in lista if v.aberta %}
+  {# ---------- onde o navio está ---------- #}
+  <section class="situacao">
+    <div class="situacao-topo">
+      <span class="codigo">{{ v.viagem.numero }}</span>
+      <span class="embarcacao">{{ conta.navio_nome }}</span>
+    </div>
+    {% if v.situacao %}
+      <div class="situacao-agora">
+        <span class="porto-agora">{{ v.situacao.escala.porto_nome }}</span>
+        {% if v.situacao.escala.condicao %}
+          <span class="condicao">{{ v.situacao.escala.condicao }}</span>
+        {% endif %}
+      </div>
+      <div class="situacao-ultimo">
+        Último lançamento: {{ v.situacao.marco.curto }}
+        {{ v.situacao.marco.lancado.hora_local|replace("T", " ") }}
+      </div>
+    {% else %}
+      <div class="situacao-agora"><span class="porto-agora">Viagem nova</span></div>
+      <div class="situacao-ultimo">Nada lançado ainda. Comece pela saída de Alumar.</div>
+    {% endif %}
+  </section>
+
+  <div class="responsavel">
+    <label for="responsavel">Quem preenche</label>
+    <input id="responsavel" type="text" autocomplete="name"
+           placeholder="Seu nome — fica registrado em cada lançamento">
+  </div>
+
+  {# ---------- a única ação: o próximo lançamento ---------- #}
+  {% if v.proximo %}
+  <section class="proximo">
+    <div class="proximo-rot">Próximo lançamento</div>
+    <h2 class="proximo-titulo">
+      {% if v.proximo.bunker %}Combustível abastecido{% else %}{{ v.proximo.marco.curto }}{% endif %}
+      <span class="em">em {{ v.proximo.escala.porto_nome }}</span>
+    </h2>
+    <p class="proximo-dica">
+      {% if v.proximo.bunker %}
+        Quantas toneladas entraram nesta parada.
+      {% else %}
+        {{ ROTULO_MARCO[v.proximo.marco.tipo] }} · hora real, não estimada.
+        O combustível a bordo é opcional.
+      {% endif %}
+    </p>
+
+    <div class="marco" data-escala="{{ v.proximo.escala.id }}"
+         data-tipo="{{ "abastecimento" if v.proximo.bunker else v.proximo.marco.tipo }}">
+      {% if v.proximo.bunker %}
+        <form class="abastecer destaque" data-avanca="1">
+          <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t">
+          <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t">
+          <button type="submit" class="botao-largo">Salvar</button>
+          <span class="estado" data-estado></span>
+        </form>
+      {% else %}
+        <form class="lancar destaque" data-offset="{{ v.proximo.escala.offset_padrao }}"
+              data-avanca="1"{% if v.proximo.marco.encerra %} data-encerra="1"{% endif %}>
+          {{ campos_marco(v.proximo.escala, v.proximo.marco, false) }}
+          <button type="submit" class="botao-largo">Salvar</button>
+          <span class="estado" data-estado></span>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+  {% else %}
+  <section class="proximo completa">
+    <div class="proximo-rot">Viagem completa</div>
+    <h2 class="proximo-titulo">Nada pendente<span class="em">nesta viagem</span></h2>
+    <p class="proximo-dica">
+      Assim que o Sailing de Alumar for lançado, a próxima viagem abre sozinha.
+    </p>
+  </section>
+  {% endif %}
+
+  {# ---------- a viagem inteira, fechada ---------- #}
+  <h3 class="titulo-trilha">A viagem</h3>
+  <ol class="trilha">
+    {% for b in v.blocos %}
+    <li>
+      {% set atual = v.proximo and v.proximo.escala.id == b.escala.id %}
+      <details class="parada {{ b.estado }}{{ " atual" if atual else "" }}">
+        <summary>
+          <span class="marcador"></span>
+          <span class="parada-nome">
+            {{ b.escala.porto_nome }}
+            {% if b.escala.sentido != "na" %}<small>{{ b.escala.sentido }}</small>{% endif %}
+          </span>
+          {% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}
+          <span class="progresso">
+            {% if b.completa %}completa{% else %}{{ b.lancados }}/{{ b.total }}{% endif %}
+          </span>
+        </summary>
+
+        <div class="parada-corpo">
+          {% if b.escala.origem == "extra" %}
+            <p class="parada-obs">Parada fora do padrão · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}</p>
+          {% endif %}
+
+          {% for m in b.marcos %}
+          <div class="marco" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
+            {% if m.lancado %}
+              <div class="gravado">
+                <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+                <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+                {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
+                  <span class="rob">VLSFO {{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "—" }}
+                    · MGO {{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "—" }}</span>
+                {% endif %}
+                <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
+                <span class="estado" data-estado></span>
+                <details>
+                  <summary class="corrigir">corrigir</summary>
+                  <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
+                    {{ campos_marco(b.escala, m, true) }}
+                    <button type="submit">salvar</button>
+                  </form>
+                </details>
+              </div>
+            {% else %}
+              <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
+                <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+                {{ campos_marco(b.escala, m, false) }}
+                <button type="submit">salvar</button>
+                <span class="estado" data-estado></span>
+              </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+          {% if b.e_bunker %}
+          <div class="marco bunker" data-escala="{{ b.escala.id }}" data-tipo="abastecimento">
+            <form class="abastecer">
+              <span class="marco-nome">Abastecido</span>
+              <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t"
+                     value="{{ b.bunker.vlsfo if b.bunker and b.bunker.vlsfo is not none else "" }}">
+              <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t"
+                     value="{{ b.bunker.mgo if b.bunker and b.bunker.mgo is not none else "" }}">
+              <button type="submit">salvar</button>
+              <span class="estado" data-estado></span>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <details class="extra">
+    <summary>Acrescentar parada fora do padrão</summary>
+    <form method="post" action="/navio/escala-extra">
+      <label>Porto
+        <select name="codigo_porto" required>
+          {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Motivo
+        <select name="motivo">
+          <option value="bunker">Bunker — abastecimento</option>
+          <option value="docagem">Docagem</option>
+          <option value="espera_mare">Espera de maré</option>
+          <option value="outro">Outro</option>
+        </select>
+      </label>
+      <label>Atraca?
+        <select name="tipo_escala">
+          <option value="fundeio">Não — fica fundeado</option>
+          <option value="operacional">Sim — atraca</option>
+          <option value="passagem">Só passagem</option>
+        </select>
+      </label>
+      <label>Depois de qual parada?
+        <select name="apos_ordem">
+          {% for b in v.blocos %}
+            <option value="{{ b.escala.ordem }}">{{ b.escala.porto_nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="botao-largo">Acrescentar</button>
+    </form>
+  </details>
+{% endfor %}
+
+{# ---------- viagens encerradas ---------- #}
+{% set fechadas = lista | rejectattr("aberta") | list %}
+{% if fechadas %}
+<h3 class="titulo-trilha">Viagens anteriores</h3>
+{% for v in fechadas %}
+<details class="viagem">
   <summary>
     <span class="codigo">{{ v.viagem.numero }}</span>
     <span class="embarcacao">{{ conta.navio_nome }}</span>
-    {% if v.aberta %}
-      {% if v.faltantes %}<span class="selo selo-falta">{{ v.faltantes }} a lançar</span>
-      {% else %}<span class="selo">completa</span>{% endif %}
-    {% else %}<span class="selo selo-fechada">encerrada</span>{% endif %}
+    <span class="selo selo-fechada">encerrada</span>
   </summary>
-
   <div class="corpo">
-    {% if v.aberta %}
-    <div class="responsavel">
-      <label for="responsavel">Quem preenche</label>
-      <input id="responsavel" type="text" autocomplete="name"
-             placeholder="Seu nome — fica registrado em cada lançamento">
-    </div>
-    {% endif %}
-
-    {% for b in v.blocos %}
-    <details class="escala{% if b.completa %} pronta{% endif %}"{% if v.aberta and not b.completa %} open{% endif %}>
-      <summary class="escala-cab">
-        <div>
-          <div class="porto">{{ b.escala.porto_nome }}</div>
-          <div class="detalhe">
-            {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}{% if b.escala.sentido != "na" %} · {{ b.escala.sentido }}{% endif %}
-          </div>
-        </div>
-        {% if b.escala.condicao %}
-          <span class="condicao" title="{{ ROTULO_CONDICAO.get(b.escala.condicao, "") }}">{{ b.escala.condicao }}</span>
-        {% endif %}
-        {% if b.escala.origem == "extra" %}<span class="selo">fora do padrão</span>{% endif %}
-      </summary>
-
-      <div class="marcos">
-      {% for m in b.marcos %}
-      <div class="marco" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
-        {% if m.lancado %}
-          <div class="gravado">
-            <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
-            <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
-            {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
-              <span class="rob">
-                VLSFO {{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "—" }} ·
-                MGO {{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "—" }}
-              </span>
-            {% endif %}
-            <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
-            <span class="estado" data-estado></span>
-            {% if v.aberta %}
-            <details>
-              <summary class="corrigir">corrigir</summary>
-              <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
-                <input type="date" name="data" required value="{{ m.lancado.hora_local[:10] }}">
-                <input type="time" name="hora" required value="{{ m.lancado.hora_local[11:16] }}">
-                <input type="number" step="0.001" min="0" name="rob_vlsfo"
-                       placeholder="VLSFO t" value="{{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "" }}">
-                <input type="number" step="0.001" min="0" name="rob_mgo"
-                       placeholder="MGO t" value="{{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "" }}">
-                <input type="text" name="motivo_correcao" required placeholder="motivo da correção">
-                <button type="submit">salvar</button>
-              </form>
-            </details>
-            {% endif %}
-          </div>
-        {% elif v.aberta %}
-          <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
-            <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
-            <input type="date" name="data" required>
-            <input type="time" name="hora" required>
-            <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t">
-            <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t">
-            <button type="submit">salvar</button>
-            <span class="estado" data-estado></span>
-          </form>
-        {% else %}
-          <div class="gravado">
-            <span class="marco-nome">{{ m.curto }}</span>
-            <span class="por">não lançado</span>
-          </div>
-        {% endif %}
-      </div>
-      {% endfor %}
-
-      {% if b.e_bunker %}
-      <div class="marco bunker" data-escala="{{ b.escala.id }}" data-tipo="abastecimento">
-        {% if v.aberta %}
-        <form class="abastecer">
-          <span class="marco-nome">Abastecido</span>
-          <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t"
-                 value="{{ b.bunker.vlsfo if b.bunker and b.bunker.vlsfo is not none else "" }}">
-          <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t"
-                 value="{{ b.bunker.mgo if b.bunker and b.bunker.mgo is not none else "" }}">
-          <button type="submit">salvar</button>
-          <span class="estado" data-estado></span>
-        </form>
-        {% elif b.bunker %}
-        <div class="gravado">
-          <span class="marco-nome">Abastecido</span>
-          <span class="valor">VLSFO {{ b.bunker.vlsfo or "—" }} · MGO {{ b.bunker.mgo or "—" }}</span>
-        </div>
-        {% endif %}
-      </div>
-      {% endif %}
-      </div>
-    </details>
-    {% endfor %}
-
-    {% if v.aberta %}
-    <details class="extra">
-      <summary>Acrescentar parada fora do padrão</summary>
-      <form method="post" action="/navio/escala-extra">
-        <label>Porto
-          <select name="codigo_porto" required>
-            {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Motivo
-          <select name="motivo">
-            <option value="bunker">Bunker — abastecimento</option>
-            <option value="docagem">Docagem</option>
-            <option value="espera_mare">Espera de maré</option>
-            <option value="outro">Outro</option>
-          </select>
-        </label>
-        <label>Atraca?
-          <select name="tipo_escala">
-            <option value="fundeio">Não — fica fundeado</option>
-            <option value="operacional">Sim — atraca</option>
-            <option value="passagem">Só passagem</option>
-          </select>
-        </label>
-        <label>Depois de qual parada?
-          <select name="apos_ordem">
-            {% for b in v.blocos %}
-              <option value="{{ b.escala.ordem }}">{{ b.escala.porto_nome }}</option>
+    <ol class="trilha">
+      {% for b in v.blocos %}
+      <li>
+        <details class="parada {{ b.estado }}">
+          <summary>
+            <span class="marcador"></span>
+            <span class="parada-nome">{{ b.escala.porto_nome }}</span>
+            {% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}
+            <span class="progresso">{{ b.lancados }}/{{ b.total }}</span>
+          </summary>
+          <div class="parada-corpo">
+            {% for m in b.marcos %}
+            <div class="marco">
+              <div class="gravado">
+                <span class="marco-nome">{{ m.curto }}</span>
+                {% if m.lancado %}
+                  <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+                  <span class="por">{{ m.lancado.nome_responsavel }}</span>
+                {% else %}
+                  <span class="por">não lançado</span>
+                {% endif %}
+              </div>
+            </div>
             {% endfor %}
-          </select>
-        </label>
-        <button type="submit" class="botao-largo">Acrescentar</button>
-      </form>
-    </details>
-    {% endif %}
+          </div>
+        </details>
+      </li>
+      {% endfor %}
+    </ol>
   </div>
 </details>
 {% endfor %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -234,12 +234,59 @@ def test_tela_nao_oferece_marco_que_a_escala_nao_tem(cliente):
     assert set(bloco) == {"arrival", "sailing"}
 
 
-def test_tela_mostra_o_codigo_da_viagem_e_abre_a_viagem_corrente(cliente):
+def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
+    from app.db import agora
+
     entrar(cliente)
     html = cliente.get("/navio").text
-    from app.db import agora
     assert "APT{}001".format(agora()[2:4]) in html
-    assert "<details class=\"viagem\" open>" in html
+    assert 'class="situacao"' in html
+    assert "Viagem nova" in html                 # nada lancado ainda
+
+
+def test_uma_acao_obvia_por_vez(cliente):
+    """O paredao de quinze formularios abertos foi o que motivou este desenho."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert html.count('class="lancar destaque"') == 1     # so o proximo em destaque
+    assert '<div class="proximo-rot">Próximo lançamento</div>' in html
+
+
+def test_o_proximo_lancamento_avanca_conforme_a_viagem(cliente):
+    """E o que faz a viagem 'se traduzir': o cartao anda sozinho."""
+    import re
+
+    entrar(cliente)
+    cliente.get("/navio")
+
+    def proximo():
+        html = cliente.get("/navio").text
+        titulo = re.search(r'<h2 class="proximo-titulo">\s*(\S+)\s*<span class="em">em ([^<]+)<',
+                           html)
+        return (titulo.group(1), titulo.group(2).strip()) if titulo else None
+
+    assert proximo() == ("Sailing", "Alumar")     # a saida que abre a viagem
+
+    abertura = escala_de(cliente, ordem=0)
+    cliente.post("/api/marco", json={
+        "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "av-1"})
+
+    assert proximo() == ("Arrival", "Fazendinha")  # o cartao andou
+
+
+def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    juruti = escala_de(cliente, ordem=20)
+    cliente.post("/api/marco", json={
+        "escala_id": juruti, "tipo": "arrival", "hora_local": "2026-03-02T08:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "tr-1"})
+
+    html = cliente.get("/navio").text
+    assert 'class="trilha"' in html
+    assert "1/4" in html                          # Juruti: um dos quatro marcos
+    assert 'class="parada parcial' in html
 
 
 def test_lancamento_acontece_na_propria_tela(cliente):
@@ -390,7 +437,7 @@ def test_fora_do_render_o_sqlite_local_e_aceito(cliente):
 def test_portos_sao_colapsaveis_e_mostram_a_condicao(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert html.count('<details class="escala') >= 5      # cada porto fecha
+    assert html.count('<details class="parada') >= 6      # cada porto fecha
     for condicao in ("ballast", "loading", "laden", "discharging"):
         assert '>{}</span>'.format(condicao) in html
 

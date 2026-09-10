@@ -88,8 +88,11 @@
         if (botao) botao.disabled = false;
         return;
       }
-      // A viagem fechou e outra nasceu: a pagina inteira mudou.
-      if (form.dataset.encerra === "1" && resultado && resultado.viagemMudou) {
+      // Do cartao "proximo lancamento" a pagina recarrega: e assim que a
+      // viagem se traduz — o cartao avanca sozinho para o marco seguinte.
+      // No resto da trilha a linha vira "gravado" sem sair do lugar.
+      if (form.dataset.avanca === "1" ||
+          (form.dataset.encerra === "1" && resultado && resultado.viagemMudou)) {
         window.location.reload();
         return;
       }
@@ -129,6 +132,9 @@
     window.Fila.enfileirar(payload, "/api/abastecimento").then(function (r) {
       if (r && r.erros && r.erros.length) {
         estado(bloco, "erro", r.erros.join(" "));
+      } else if (form.dataset.avanca === "1") {
+        window.location.reload();
+        return;
       } else {
         estado(bloco, "salvo", "salvo");
       }

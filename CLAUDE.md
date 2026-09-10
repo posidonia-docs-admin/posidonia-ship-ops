@@ -206,20 +206,41 @@ programação, nunca lançamento inválido do comandante.
 
 ---
 
-## A tela do comandante
+## Os três grupos de acesso
 
-Menu lateral **curto de propósito** (`MENU` em `main.py`, declarativo como o `NAV_TREE` do
-Posidonia Docs): o acesso dele é só lançar escala. Mesma paleta do Posidonia Docs — navy
-`#0a2540` e teal `#12a7c9` — para os dois sistemas parecerem família.
+| Grupo | Perfil | O que vê |
+|---|---|---|
+| **Comandante** | `navio` | Só a viagem do próprio navio. Lança e corrige |
+| **Supervisor** | `supervisor` | Acompanha a frota, confere lançamentos, lê os outputs |
+| **Analytics** | `analytics` | O mesmo do supervisor, **só leitura** |
+| **Administrador** | `admin` | Supervisor **+** cadastro de contas e grupos |
 
-As viagens aparecem em acordeão (`<details>` nativo, sem JS): **código + embarcação + selo**,
-com a viagem em andamento já aberta. Dentro dela, as 5 escalas do circuito na ordem, e cada marco
-é um **formulário na própria linha** — preenche, salva, a linha vira "gravado". **Nunca troca de
-tela.** A página só recarrega quando o `Sailing` de Alumar fecha a viagem e abre a seguinte, e a
-API avisa isso em `viagem_mudou`.
+A segregação é o ponto: o comandante **nunca** vê painel, frota ou contas. A guarda é um
+middleware global — rota nova nasce protegida — e o bloqueio de escrita do `analytics` é por
+**método HTTP**, não rota a rota.
 
-**"Quem preenche" é um campo só, no topo da viagem**, lembrado em `localStorage`. Pedi-lo em cada
-linha faria o comandante desistir na terceira.
+---
+
+## A tela do comandante — uma ação óbvia por vez
+
+O desenho anterior abria **quinze formulários ao mesmo tempo**. Num celular isso é um paredão, e
+não respondia a pergunta que o comandante realmente tem: *o que eu lanço agora?*
+
+A tela hoje tem três camadas, nessa ordem:
+
+1. **Onde o navio está** — cartão escuro no topo: código da viagem, porto atual, condição e o
+   último lançamento.
+2. **O próximo lançamento** — **um** formulário, em destaque. `_proximo_lancamento()` acha o
+   primeiro marco que falta na ordem da viagem. Ao salvar, a página recarrega e o cartão
+   **avança sozinho** para o marco seguinte: é assim que a viagem se traduz.
+3. **A viagem** — as paradas **fechadas**, com bolinha de estado (vazia / parcial / pronta),
+   contador `2/4` e a atual destacada. Ele abre uma parada só quando precisa voltar em algo, e
+   aí corrige no lugar, sem recarregar.
+
+**Por que o cartão recarrega e a trilha não:** do cartão, o conteúdo inteiro mudou (há um próximo
+marco novo). Na trilha, só aquela linha mudou — recarregar perderia a posição dele na página.
+
+O menu do comandante tem **um item**: Viagens. `MENU` em `main.py` é declarativo, por perfil.
 
 ---
 

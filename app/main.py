@@ -236,6 +236,31 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
     return saida
 
 
+def _proximo_lancamento(blocos):
+    """A primeira coisa que falta, na ordem da viagem.
+
+    E o que permite a tela ter UMA acao obvia em vez de quinze formularios
+    abertos: num celular, quinze formularios sao um paredao.
+    """
+    for bloco in blocos:
+        for marco in bloco["marcos"]:
+            if not marco["lancado"]:
+                return {"escala": bloco["escala"], "marco": marco, "bunker": False}
+        if bloco["e_bunker"] and bloco["bunker"] is None:
+            return {"escala": bloco["escala"], "marco": None, "bunker": True}
+    return None
+
+
+def _situacao(blocos):
+    """Onde o navio esta e o que estava fazendo, pelo ultimo marco lancado."""
+    ultimo = None
+    for bloco in blocos:
+        for marco in bloco["marcos"]:
+            if marco["lancado"]:
+                ultimo = {"escala": bloco["escala"], "marco": marco}
+    return ultimo
+
+
 @app.get("/navio", response_class=HTMLResponse)
 def navio_inicio(request: Request):
     conta = request.state.conta
@@ -257,11 +282,20 @@ def navio_inicio(request: Request):
             faltantes = conn.execute(
                 "SELECT COUNT(*) FROM escalas_incompletas WHERE viagem_id = ?",
                 (viagem["id"],)).fetchone()[0]
+            blocos = _escalas_com_marcos(conn, viagem["id"])
+            for bloco in blocos:
+                lancados = sum(1 for m in bloco["marcos"] if m["lancado"])
+                bloco["lancados"] = lancados
+                bloco["total"] = len(bloco["marcos"])
+                bloco["estado"] = ("pronta" if bloco["completa"]
+                                   else "parcial" if lancados else "vazia")
             lista.append({
                 "viagem": viagem,
                 "aberta": viagem["status"] == "aberta",
                 "faltantes": faltantes,
-                "blocos": _escalas_com_marcos(conn, viagem["id"]),
+                "blocos": blocos,
+                "proximo": _proximo_lancamento(blocos),
+                "situacao": _situacao(blocos),
             })
 
         portos = conn.execute(
