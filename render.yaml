@@ -6,7 +6,7 @@ services:
     name: posidonia-ship-ops
     runtime: docker
     plan: free
-    region: oregon
+    region: virginia   # mais perto do Brasil que Oregon
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
