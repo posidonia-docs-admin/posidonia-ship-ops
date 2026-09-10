@@ -57,3 +57,27 @@ def test_inicializar_duas_vezes_num_banco_antigo(tmp_path):
     db.inicializar(conn)
     assert conn.execute("SELECT COUNT(*) FROM navio").fetchone()[0] == 4
     conn.close()
+
+
+def test_escalas_antigas_herdam_a_condicao(tmp_path):
+    """A viagem que estava aberta em producao ficaria sem condicao para sempre."""
+    import sqlite3
+    from app import viagens
+
+    caminho = str(tmp_path / "sem-condicao.db")
+    conn = sqlite3.connect(caminho)
+    conn.row_factory = sqlite3.Row
+    db.inicializar(conn)
+
+    viagem_id, _ = viagens.abrir_viagem(conn, 1)
+    conn.execute("UPDATE escala SET condicao = NULL WHERE viagem_id = ?", (viagem_id,))
+    conn.commit()
+
+    db.inicializar(conn)          # o arranque seguinte
+
+    linhas = conn.execute(
+        "SELECT codigo_porto, condicao FROM escala WHERE viagem_id = ? ORDER BY ordem",
+        (viagem_id,)).fetchall()
+    assert [l["condicao"] for l in linhas] == [
+        "ballast", "ballast", "loading", "laden", "laden", "discharging"]
+    conn.close()

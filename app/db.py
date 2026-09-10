@@ -18,6 +18,7 @@ from . import config
 VERSAO_SCHEMA = 1
 
 _ARQ_SCHEMA = Path(__file__).with_name("schema.sql")
+_ARQ_VIEWS = Path(__file__).with_name("views.sql")
 _ARQ_SEED = Path(__file__).with_name("seed.sql")
 
 # Turso e remoto e cai de vez em quando. Repeticao SO EM LEITURA — escrita
@@ -217,6 +218,10 @@ def _rodar_script(conn, sql: str) -> None:
 # `CREATE TABLE IF NOT EXISTS` nao as adiciona a uma tabela que ja esta la.
 _COLUNAS_NOVAS = (
     ("navio", "prefixo", "TEXT"),
+    ("escala", "condicao", "TEXT"),
+    ("rota_etapa", "condicao", "TEXT"),
+    ("evento", "rob_vlsfo", "REAL"),
+    ("evento", "rob_mgo", "REAL"),
 )
 
 
@@ -268,8 +273,12 @@ def inicializar(conn=None) -> None:
                 "Banco na versao de schema {}, o codigo espera {}. "
                 "Migre antes de continuar.".format(versao, VERSAO_SCHEMA)
             )
+        # A ordem importa e ja quebrou o arranque uma vez:
+        #   tabelas -> colunas novas -> views -> seed
+        # View e indice que leem coluna nova precisam vir DEPOIS da migracao.
         _rodar_script(conn, _ARQ_SCHEMA.read_text(encoding="utf-8"))
-        _migrar(conn)   # antes do seed: o seed preenche colunas novas
+        _migrar(conn)
+        _rodar_script(conn, _ARQ_VIEWS.read_text(encoding="utf-8"))
         _rodar_script(conn, _ARQ_SEED.read_text(encoding="utf-8"))
         conn.commit()
     finally:

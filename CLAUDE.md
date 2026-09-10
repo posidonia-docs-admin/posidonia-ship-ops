@@ -62,6 +62,52 @@ já válido nunca é mexido (renumerar um válido o empurraria para a frente a c
 
 ---
 
+### O que o navio está fazendo — `condicao`
+
+Vocabulário da aba **`T_ESCALAS` do `MOTOR_FRETE`**, não um inventado aqui: o dado do comandante
+fala a mesma língua do motor de viagem quando os dois se encontrarem.
+
+| Escala | `condicao` | `motivo` |
+|---|---|---|
+| Alumar (saída) | `ballast` | abertura |
+| Fazendinha ↑ | `ballast` | passagem |
+| Juruti | `loading` | carregamento |
+| Fazendinha ↓ | `laden` | passagem |
+| Barra Norte | `laden` | espera_mare |
+| Alumar | `discharging` | descarga |
+| Icoaraci / Itaqui | `bunkering` | bunker |
+
+> **`condicao` e `motivo` são perguntas diferentes** e por isso duas colunas. Em Barra Norte o
+> navio está **laden** (condição) **esperando maré** (motivo). Fundi-las pareceria economia e
+> viraria ambiguidade na primeira análise.
+
+---
+
+### Combustível — a regra que decide se a conta fecha
+
+Cada marco carrega o **ROB** (combustível a bordo naquele instante): `evento.rob_vlsfo` e
+`evento.rob_mgo`, em toneladas. Escala de bunker carrega também quanto **entrou**, na tabela
+`abastecimento`.
+
+```
+consumo(anterior → atual) = ROB_anterior + abastecido_atual − ROB_atual
+```
+
+**A premissa que sustenta isso:** o ROB é sempre o que está a bordo **naquele instante, já
+contando o que acabou de receber**. Por isso o abastecimento de uma escala entra no **último
+marco** dela (a saída) — quando o navio deixa o porto o combustível já está dentro.
+
+> ⚠️ Se um dia o comandante passar a reportar o ROB **antes** de abastecer, essa conta passa a
+> contar o bunker **duas vezes**. É a premissa a vigiar.
+
+O ROB é **opcional**: campo vazio não segura o marco. Perder a hora do Arrival por causa de um
+número de combustível seria trocar o certo pelo útil. Vazio não é erro; número inválido é.
+
+Views: **`combustivel_bordo`** (porto · data · condição · ROB · abastecido) e
+**`consumo_combustivel`**, que acrescenta o delta e as horas entre leituras.
+
+---
+
 ### As quatro regras que sustentam o modelo
 
 **1. A escala de Alumar serve a duas viagens, mas é gravada uma vez só.**
@@ -117,10 +163,15 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 - **Não inventar identificador.** `navio.imo` e `porto.un_locode` ficam **NULOS** até a operação
   confirmar. Número inventado parece certo, e por isso é pior que número ausente.
 - **Mudou `schema.sql`?** Incremente `VERSAO_SCHEMA` em `db.py` **e** o `PRAGMA user_version`.
-- **Coluna nova vai em `_COLUNAS_NOVAS`, e o índice dela em `_INDICES_POSTERIORES`** (ambos em
-  `db.py`). O `schema.sql` roda **antes** da migração: num banco que já existe — como o do Turso
-  — a coluna ainda não está lá, e um `CREATE INDEX` sobre ela derruba o arranque inteiro. Os
-  testes normais partem de banco vazio e **não pegam isso**; `tests/test_migracao.py` pega.
+- **A ordem de arranque é `schema.sql` → `_migrar` → `views.sql` → `seed.sql`.** Coluna nova vai
+  em `_COLUNAS_NOVAS` e seu índice em `_INDICES_POSTERIORES` (ambos em `db.py`); **view fica em
+  `views.sql`, nunca no `schema.sql`**. Num banco que já existe — como o do Turso — a coluna só
+  aparece na migração, e um `CREATE VIEW`/`CREATE INDEX` sobre ela antes disso derruba o
+  arranque inteiro. Os testes normais partem de banco vazio e **não pegam isso**;
+  `tests/test_migracao.py` pega.
+- **Coluna nova precisa de preenchimento retroativo no `seed.sql`.** `INSERT OR IGNORE` não toca
+  linha que já existe: sem um `UPDATE ... WHERE col IS NULL`, a viagem que estava aberta em
+  produção fica sem o campo para sempre — e é justamente a que o comandante vai preencher.
 - **Rode a suite nos DOIS drivers antes de publicar.** `SHIPOPS_BACKEND=libsql-local` usa o
   driver do Turso. O `libsql` devolve **tuplas puras** e o cursor **nao e iteravel**; o
   `sqlite3` devolve `Row` e o cursor itera. Rodar so num dos dois nao prova nada — foi
@@ -134,7 +185,8 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 
 | Arquivo | O que é |
 |---|---|
-| `app/schema.sql` | 12 tabelas + 6 views. A fonte da verdade da estrutura |
+| `app/schema.sql` | As tabelas. **Sem views** — elas leem colunas que a migração cria |
+| `app/views.sql` | As views, aplicadas **depois** da migração |
 | `app/seed.sql` | 4 navios, 6 portos, `marco_exigido`, a rota-modelo. `INSERT OR IGNORE`, nunca destrutivo |
 | `app/db.py` | Conexão (SQLite local ⇄ Turso), `inicializar`, `agora()`, retry **só de leitura** |
 | `app/dominio.py` | Regras puras: `para_utc`, `erros_marco`, rótulos. Sem banco, sem HTTP |
@@ -218,7 +270,7 @@ que devolve o rastro individual.
 ## Como rodar
 
 ```bash
-.venv/Scripts/python -m pytest -q            # 87 testes (SQLite)
+.venv/Scripts/python -m pytest -q            # 109 testes (SQLite)
 SHIPOPS_BACKEND=libsql-local .venv/Scripts/python -m pytest -q   # e no driver do Turso
 .venv/Scripts/python scripts/demo_viagem.py  # duas viagens, em memória
 

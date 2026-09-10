@@ -143,23 +143,48 @@ h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.01em; }
 .escala-cab {
   padding: 11px 14px;
   background: #f7fafc;
-  border-bottom: 1px solid var(--line);
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  min-height: 52px;
 }
+.escala-cab::-webkit-details-marker { display: none; }
+.escala-cab::after { content: "\25BE"; margin-left: auto; color: var(--faint);
+                     transition: transform .15s; }
+.escala[open] > .escala-cab::after { transform: rotate(180deg); }
+.escala[open] > .escala-cab { border-bottom: 1px solid var(--line); }
+
+/* O que o navio esta fazendo: ballast, loading, laden, discharging... */
+.condicao {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(10,37,64,.07);
+  color: var(--navy);
+  white-space: nowrap;
+}
+.rob { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.marco.bunker { background: #fffdf6; }
 .escala-cab .porto { font-weight: 650; font-size: 15px; }
 .escala-cab .detalhe { color: var(--muted); font-size: 12.5px; }
-.escala-cab .selo { margin-left: auto; }
 
 .marco { border-top: 1px solid var(--line); padding: 9px 14px; }
 .marco:first-of-type { border-top: 0; }
 .marco-nome { font-size: 13px; color: var(--muted); min-width: 74px; }
 
-form.lancar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-              background: transparent; border: 0; padding: 0; }
+form.lancar, form.abastecer { display: flex; align-items: center; gap: 8px;
+                              flex-wrap: wrap; background: transparent;
+                              border: 0; padding: 0; }
 form.lancar input[type=date] { flex: 1 1 140px; }
 form.lancar input[type=time] { flex: 0 1 108px; }
+form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 1 104px; }
+form.lancar input[name=motivo_correcao] { flex: 1 1 100%; }
 
 .gravado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gravado .valor {

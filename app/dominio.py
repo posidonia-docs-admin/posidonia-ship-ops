@@ -32,6 +32,30 @@ MARCOS_POR_TIPO = {
     "abertura": ("sailing",),
 }
 
+# O que o navio esta FAZENDO. Vocabulario da aba T_ESCALAS do MOTOR_FRETE, para
+# o dado do comandante falar a mesma lingua do motor de viagem quando os dois se
+# encontrarem. NAO confundir com `motivo`, que diz por que a escala existe.
+CONDICOES = ("ballast", "loading", "laden", "discharging", "bunkering", "idle")
+
+ROTULO_CONDICAO = {
+    "ballast": "Ballast — navegando vazio",
+    "loading": "Loading — carregando",
+    "laden": "Laden — navegando carregado",
+    "discharging": "Discharging — descarregando",
+    "bunkering": "Bunkering — abastecendo",
+    "idle": "Idle — parado, sem operação",
+}
+
+# Condicao presumida de uma escala acrescentada fora do padrao. Presume, nao
+# adivinha: o comandante ve o valor e pode trocar.
+CONDICAO_POR_MOTIVO = {
+    "bunker": "bunkering",
+    "docagem": "idle",
+    "espera_mare": "idle",
+    "carregamento": "loading",
+    "descarga": "discharging",
+}
+
 # Rotulo curto, para a linha compacta da tela. O termo em ingles e o que a
 # operacao usa no dia a dia; o nome completo fica no `title` do elemento.
 ROTULO_CURTO = {

@@ -27,6 +27,7 @@ MENU = {
     "admin": ((("/painel"), "Frota"), (("/admin/contas"), "Contas")),
 }
 templates.env.globals["MENU"] = MENU
+templates.env.globals["ROTULO_CONDICAO"] = dominio.ROTULO_CONDICAO
 
 
 def _garantir_admin() -> None:
@@ -197,7 +198,7 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
     """Cada escala com a lista de marcos que ELA pede, na ordem cronologica."""
     escalas = conn.execute(
         "SELECT e.id, e.ordem, e.codigo_porto, e.tipo_escala, e.sentido, e.motivo, "
-        "       e.origem, p.nome AS porto_nome, p.offset_padrao "
+        "       e.origem, e.condicao, p.nome AS porto_nome, p.offset_padrao "
         "  FROM escala e JOIN porto p ON p.codigo = e.codigo_porto "
         " WHERE e.viagem_id = ? AND e.status <> 'cancelada' ORDER BY e.ordem",
         (viagem_id,)).fetchall()
@@ -208,8 +209,12 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "SELECT tipo_evento FROM marco_exigido WHERE tipo_escala = ? ORDER BY ordem",
             (escala["tipo_escala"],))]
         lancados = {r["tipo"]: r for r in conn.execute(
-            "SELECT tipo, hora_local, offset_utc, nome_responsavel, versao, observacao "
+            "SELECT tipo, hora_local, offset_utc, nome_responsavel, versao, observacao, "
+            "       rob_vlsfo, rob_mgo "
             "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
+        bunker = conn.execute(
+            "SELECT vlsfo, mgo, nome_responsavel FROM abastecimento WHERE escala_id = ?",
+            (escala["id"],)).fetchone()
         saida.append({
             "escala": escala,
             "marcos": [{
@@ -224,6 +229,9 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
                             and escala["origem"] == "modelo"),
             } for t in exigidos],
             "completa": all(t in lancados for t in exigidos),
+            # So escala de bunker pede quantidade abastecida.
+            "e_bunker": escala["motivo"] == "bunker",
+            "bunker": bunker,
         })
     return saida
 
@@ -293,6 +301,8 @@ async def api_marco(request: Request):
             id_cliente=corpo.get("id_cliente"),
             observacao=(corpo.get("observacao") or "").strip() or None,
             motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
+            rob_vlsfo=corpo.get("rob_vlsfo"),
+            rob_mgo=corpo.get("rob_mgo"),
         )
 
     if erros:
@@ -307,6 +317,36 @@ async def api_marco(request: Request):
             "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
             " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
     return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
+
+
+@app.post("/api/abastecimento")
+async def api_abastecimento(request: Request):
+    """Quanto entrou de combustivel nesta escala. Mesmo contrato do marco:
+    sempre JSON, 422 no dado invalido para a fila nao repetir."""
+    corpo = await request.json()
+    conta = request.state.conta
+
+    with closing(db.conectar()) as conn:
+        escala = conn.execute(
+            "SELECT e.id, vg.navio_id FROM escala e "
+            "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
+            (corpo.get("escala_id"),)).fetchone()
+        if escala is None:
+            return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
+        if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
+            return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+
+        gravou, erros = viagens.registrar_abastecimento(
+            conn, escala["id"],
+            vlsfo=corpo.get("vlsfo"),
+            mgo=corpo.get("mgo"),
+            nome_responsavel=corpo.get("nome_responsavel", ""),
+            registrado_por=conta["login"],
+            observacao=(corpo.get("observacao") or "").strip() or None)
+
+    if erros:
+        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    return {"ok": True}
 
 
 @app.post("/navio/escala-extra")

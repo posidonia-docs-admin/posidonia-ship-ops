@@ -79,7 +79,8 @@
   }
 
   function enviarUm(item) {
-    return fetch("/api/marco", {
+    // O destino vem no item: o mesmo mecanismo serve marco e abastecimento.
+    return fetch(item.url || "/api/marco", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(item.payload)
@@ -137,11 +138,12 @@
   /* ---- api usada pelas telas ------------------------------------------ */
 
   window.Fila = {
-    enfileirar: function (payload) {
+    enfileirar: function (payload, url) {
       payload.id_cliente = payload.id_cliente || uuid();
       var item = {
         id_cliente: payload.id_cliente,
         payload: payload,
+        url: url || "/api/marco",
         estado: "pendente",
         criado_em: new Date().toISOString()
       };

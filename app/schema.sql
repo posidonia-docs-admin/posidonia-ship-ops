@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS rota_etapa (
     tipo_escala    TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura')),
     sentido        TEXT NOT NULL DEFAULT 'na' CHECK (sentido IN ('subida', 'descida', 'na')),
     motivo         TEXT NOT NULL,
+    condicao       TEXT,                 -- ballast | loading | laden | discharging | ...
     observacao     TEXT,
     PRIMARY KEY (rota_modelo_id, ordem)
 );
@@ -144,6 +145,11 @@ CREATE TABLE IF NOT EXISTS escala (
                                                  'bunker', 'docagem', 'passagem',
                                                  'abertura', 'outro')),
     origem       TEXT NOT NULL CHECK (origem IN ('modelo', 'extra', 'abertura')),
+    -- O que o navio esta FAZENDO. Vocabulario do MOTOR_FRETE (aba T_ESCALAS),
+    -- para o dado do comandante falar a mesma lingua do motor de viagem.
+    -- Nao confundir com `motivo`, que diz POR QUE parou aqui: em Barra Norte a
+    -- condicao e `laden` e o motivo e `espera_mare`.
+    condicao     TEXT,
     status       TEXT NOT NULL DEFAULT 'aberta'
                  CHECK (status IN ('aberta', 'encerrada', 'cancelada')),
     criada_por   TEXT,
@@ -179,6 +185,11 @@ CREATE TABLE IF NOT EXISTS evento (
                         CHECK (precisao IN ('exata', 'periodo_am', 'periodo_pm',
                                             'apenas_data', 'tbc')),
 
+    -- Combustivel a bordo NO MOMENTO deste marco, em toneladas. E a serie que
+    -- permite calcular consumo: ROB anterior + abastecido - ROB atual.
+    rob_vlsfo           REAL,
+    rob_mgo             REAL,
+
     registrado_por      TEXT NOT NULL,          -- login da conta (do navio)
     registrado_em       TEXT NOT NULL,
     nome_responsavel    TEXT NOT NULL,          -- quem preencheu; devolve o rastro individual
@@ -201,6 +212,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_evento_vigente
     ON evento (escala_id, tipo) WHERE vigente = 1;
 CREATE INDEX IF NOT EXISTS ix_evento_escala ON evento (escala_id, tipo, versao);
 CREATE INDEX IF NOT EXISTS ix_evento_utc ON evento (hora_utc);
+
+-- ---------------------------------------------------------------------------
+-- abastecimento: quanto entrou de combustivel numa escala de bunker.
+--
+-- Sem isto o consumo nao fecha: se o navio tinha 100 t e amanhece com 600, a
+-- diferenca so faz sentido sabendo quanto foi abastecido no meio.
+-- Um por escala; reabastecer a mesma escala substitui o valor.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS abastecimento (
+    escala_id        INTEGER PRIMARY KEY REFERENCES escala(id),
+    vlsfo            REAL,                   -- toneladas recebidas
+    mgo              REAL,
+    registrado_por   TEXT NOT NULL,
+    registrado_em    TEXT NOT NULL,
+    nome_responsavel TEXT NOT NULL,
+    observacao       TEXT,
+    CHECK (vlsfo IS NOT NULL OR mgo IS NOT NULL)
+);
 
 -- ---------------------------------------------------------------------------
 -- conta / conferencia / log_acesso
@@ -240,99 +269,6 @@ CREATE TABLE IF NOT EXISTS log_acesso (
 );
 
 CREATE INDEX IF NOT EXISTS ix_log_quando ON log_acesso (quando);
-
--- ===========================================================================
--- VIEWS
--- ===========================================================================
-
-DROP VIEW IF EXISTS evento_vigente;
-CREATE VIEW evento_vigente AS
-SELECT * FROM evento WHERE vigente = 1;
-
--- Os quatro marcos de cada escala em colunas.
-DROP VIEW IF EXISTS escala_marcos;
-CREATE VIEW escala_marcos AS
-SELECT
-    e.id            AS escala_id,
-    e.viagem_id,
-    e.ordem,
-    e.codigo_porto,
-    p.nome          AS porto_nome,
-    e.tipo_escala,
-    e.sentido,
-    e.motivo,
-    e.origem,
-    e.status,
-    MAX(CASE WHEN v.tipo = 'arrival' THEN v.hora_utc END) AS arrival_utc,
-    MAX(CASE WHEN v.tipo = 'berth'   THEN v.hora_utc END) AS berth_utc,
-    MAX(CASE WHEN v.tipo = 'unberth' THEN v.hora_utc END) AS unberth_utc,
-    MAX(CASE WHEN v.tipo = 'sailing' THEN v.hora_utc END) AS sailing_utc,
-    COUNT(v.id)                                           AS marcos_lancados
-FROM escala e
-JOIN porto p ON p.codigo = e.codigo_porto
-LEFT JOIN evento_vigente v ON v.escala_id = e.id
-GROUP BY e.id;
-
--- As duracoes que hoje ninguem tem.
-DROP VIEW IF EXISTS escala_completa;
-CREATE VIEW escala_completa AS
-SELECT
-    m.*,
-    ROUND((julianday(m.berth_utc)   - julianday(m.arrival_utc)) * 24, 2) AS horas_espera_berco,
-    ROUND((julianday(m.unberth_utc) - julianday(m.berth_utc))   * 24, 2) AS horas_atracado,
-    ROUND((julianday(m.sailing_utc) - julianday(m.unberth_utc)) * 24, 2) AS horas_pos_operacao,
-    ROUND((julianday(m.sailing_utc) - julianday(m.arrival_utc)) * 24, 2) AS horas_total_escala
-FROM escala_marcos m;
-
--- Fila de cobranca: marco exigido pelo tipo da escala que ainda nao foi lancado.
-DROP VIEW IF EXISTS escalas_incompletas;
-CREATE VIEW escalas_incompletas AS
-SELECT
-    e.id           AS escala_id,
-    e.viagem_id,
-    e.ordem,
-    e.codigo_porto,
-    e.tipo_escala,
-    me.tipo_evento AS marco_faltante,
-    me.ordem       AS marco_ordem
-FROM escala e
-JOIN marco_exigido me ON me.tipo_escala = e.tipo_escala
-LEFT JOIN evento_vigente v ON v.escala_id = e.id AND v.tipo = me.tipo_evento
-WHERE e.status <> 'cancelada'
-  AND v.id IS NULL
-ORDER BY e.viagem_id, e.ordem, me.ordem;
-
--- Fila da supervisao: marco lancado que ainda nao passou por conferencia.
-DROP VIEW IF EXISTS escalas_a_conferir;
-CREATE VIEW escalas_a_conferir AS
-SELECT
-    v.id AS evento_id, v.escala_id, e.viagem_id, e.codigo_porto, e.ordem,
-    v.tipo, v.hora_local, v.offset_utc, v.hora_utc,
-    v.nome_responsavel, v.registrado_por, v.registrado_em, v.versao
-FROM evento_vigente v
-JOIN escala e ON e.id = v.escala_id
-LEFT JOIN conferencia c ON c.evento_id = v.id
-WHERE c.id IS NULL
-ORDER BY v.registrado_em;
-
--- A viagem inteira num relance.
-DROP VIEW IF EXISTS viagem_completa;
-CREATE VIEW viagem_completa AS
-SELECT
-    vg.id AS viagem_id,
-    vg.numero,
-    n.nome_oficial AS navio,
-    vg.status,
-    ab.hora_utc AS abertura_utc,
-    en.hora_utc AS encerramento_utc,
-    ROUND((julianday(en.hora_utc) - julianday(ab.hora_utc)) * 24, 2) AS horas_viagem,
-    (SELECT COUNT(*) FROM escala e WHERE e.viagem_id = vg.id)                        AS escalas,
-    (SELECT COUNT(*) FROM escala e WHERE e.viagem_id = vg.id AND e.origem = 'extra') AS escalas_extras,
-    (SELECT COUNT(*) FROM escalas_incompletas i WHERE i.viagem_id = vg.id)           AS marcos_faltantes
-FROM viagem vg
-JOIN navio n ON n.id = vg.navio_id
-LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id
-LEFT JOIN evento en ON en.id = vg.evento_encerramento_id;
 
 -- Manter em sincronia com VERSAO_SCHEMA em db.py.
 PRAGMA user_version = 1;

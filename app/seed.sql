@@ -85,15 +85,40 @@ INSERT OR IGNORE INTO rota_modelo (id, nome, descricao, ativo) VALUES
      'Circuito padrao dos 4 Amazon. Abre no sailing de Alumar da viagem '
      || 'anterior e fecha no unberth de Alumar desta viagem.', 1);
 
+-- `condicao` = o que o navio esta FAZENDO (vocabulario do MOTOR_FRETE).
+-- `motivo`   = por que parou aqui. Em Barra Norte: condicao `laden`, motivo
+-- `espera_mare` — perguntas diferentes, colunas diferentes.
 INSERT OR IGNORE INTO rota_etapa
-    (rota_modelo_id, ordem, codigo_porto, tipo_escala, sentido, motivo, observacao) VALUES
-    (1, 1, 'FAZENDINHA',  'passagem',    'subida',  'passagem',
-     'Passagem no trecho fluvial. Nao atraca.'),
-    (1, 2, 'JURUTI',      'operacional', 'subida',  'carregamento',
+    (rota_modelo_id, ordem, codigo_porto, tipo_escala, sentido, motivo, condicao,
+     observacao) VALUES
+    (1, 1, 'FAZENDINHA',  'passagem',    'subida',  'passagem',     'ballast',
+     'Passagem no trecho fluvial. Nao atraca. Segue vazio para Juruti.'),
+    (1, 2, 'JURUTI',      'operacional', 'subida',  'carregamento', 'loading',
      'Carrega bauxita.'),
-    (1, 3, 'FAZENDINHA',  'passagem',    'descida', 'passagem',
-     'Mesma Fazendinha da etapa 1, agora na descida.'),
-    (1, 4, 'BARRA_NORTE', 'passagem',    'descida', 'espera_mare',
-     'Parada por conta da mare. Nao atraca.'),
-    (1, 5, 'ALUMAR',      'operacional', 'descida', 'descarga',
+    (1, 3, 'FAZENDINHA',  'passagem',    'descida', 'passagem',     'laden',
+     'Mesma Fazendinha da etapa 1, agora na descida e carregado.'),
+    (1, 4, 'BARRA_NORTE', 'passagem',    'descida', 'espera_mare',  'laden',
+     'Parada por conta da mare. Nao atraca. Continua carregado.'),
+    (1, 5, 'ALUMAR',      'operacional', 'descida', 'descarga',     'discharging',
      'Descarrega. Seu unberth FECHA esta viagem; seu sailing ABRE a proxima.');
+
+-- Bancos criados antes da coluna `condicao` existir.
+UPDATE rota_etapa SET condicao = 'ballast'     WHERE rota_modelo_id = 1 AND ordem = 1 AND condicao IS NULL;
+UPDATE rota_etapa SET condicao = 'loading'     WHERE rota_modelo_id = 1 AND ordem = 2 AND condicao IS NULL;
+UPDATE rota_etapa SET condicao = 'laden'       WHERE rota_modelo_id = 1 AND ordem = 3 AND condicao IS NULL;
+UPDATE rota_etapa SET condicao = 'laden'       WHERE rota_modelo_id = 1 AND ordem = 4 AND condicao IS NULL;
+UPDATE rota_etapa SET condicao = 'discharging' WHERE rota_modelo_id = 1 AND ordem = 5 AND condicao IS NULL;
+
+-- Escalas ja criadas antes da coluna existir: herdam a condicao da etapa que as
+-- gerou. escala.ordem = rota_etapa.ordem * 10 (ver PASSO_ORDEM em viagens.py).
+-- Sem isto, a viagem que estava aberta em producao ficaria sem condicao para
+-- sempre — e e justamente a que o comandante vai preencher.
+UPDATE escala SET condicao = (
+        SELECT re.condicao FROM rota_etapa re
+         WHERE re.rota_modelo_id = (SELECT vg.rota_modelo_id FROM viagem vg
+                                     WHERE vg.id = escala.viagem_id)
+           AND re.ordem = escala.ordem / 10)
+ WHERE condicao IS NULL AND origem = 'modelo';
+
+UPDATE escala SET condicao = 'ballast'
+ WHERE condicao IS NULL AND origem = 'abertura';

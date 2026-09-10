@@ -131,7 +131,7 @@ def abrir_viagem(
         )
 
     etapas = conn.execute(
-        "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, observacao "
+        "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, condicao, observacao "
         "  FROM rota_etapa WHERE rota_modelo_id = ? ORDER BY ordem",
         (rota_modelo_id,),
     ).fetchall()
@@ -159,19 +159,24 @@ def abrir_viagem(
     if abertura is None:
         conn.execute(
             "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
-            "                    sentido, motivo, origem, criada_por, criada_em, observacao) "
-            "VALUES (?, ?, ?, 'abertura', 'na', 'abertura', 'abertura', ?, ?, ?)",
+            "                    sentido, motivo, origem, criada_por, criada_em, "
+            "                    observacao, condicao) "
+            "VALUES (?, ?, ?, 'abertura', 'na', 'abertura', 'abertura', ?, ?, ?, "
+            "        'ballast')",
             (viagem_id, ORDEM_ABERTURA, PORTO_CICLO, por, quando,
-             "Saida que abre a primeira viagem deste navio. So o Sailing."),
+             "Saida que abre a primeira viagem deste navio. So o Sailing. "
+             "Sai vazio: acabou de descarregar."),
         )
 
     for etapa in etapas:
         conn.execute(
             "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
-            "                    sentido, motivo, origem, criada_por, criada_em, observacao) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'modelo', ?, ?, ?)",
-            (viagem_id, etapa[0] * PASSO_ORDEM, etapa[1], etapa[2],
-             etapa[3], etapa[4], por, quando, etapa[5]),
+            "                    sentido, motivo, origem, criada_por, criada_em, "
+            "                    observacao, condicao) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'modelo', ?, ?, ?, ?)",
+            (viagem_id, etapa["ordem"] * PASSO_ORDEM, etapa["codigo_porto"],
+             etapa["tipo_escala"], etapa["sentido"], etapa["motivo"], por, quando,
+             etapa["observacao"], etapa["condicao"]),
         )
 
     conn.commit()
@@ -222,6 +227,7 @@ def adicionar_escala_extra(
     motivo: str,
     apos_ordem: int,
     sentido: str = "na",
+    condicao: str | None = None,
     por: str | None = None,
     observacao: str | None = None,
 ) -> tuple[int | None, list[str]]:
@@ -252,6 +258,8 @@ def adicionar_escala_extra(
         erros.append("Motivo inválido: {!r}.".format(motivo))
     if sentido not in dominio.SENTIDOS:
         erros.append("Sentido inválido: {!r}.".format(sentido))
+    if condicao is not None and condicao not in dominio.CONDICOES:
+        erros.append("Condição inválida: {!r}.".format(condicao))
     if erros:
         return None, erros
 
@@ -267,12 +275,17 @@ def adicionar_escala_extra(
             "Renumere a viagem antes de inserir outra aqui."
         ]
 
+    # Presume a condicao pelo motivo (bunker -> bunkering). Presumir e diferente
+    # de adivinhar: o valor fica visivel na tela e pode ser trocado.
+    condicao = condicao or dominio.CONDICAO_POR_MOTIVO.get(motivo)
+
     cur = conn.execute(
         "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
-        "                    sentido, motivo, origem, criada_por, criada_em, observacao) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'extra', ?, ?, ?)",
+        "                    sentido, motivo, origem, criada_por, criada_em, "
+        "                    observacao, condicao) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'extra', ?, ?, ?, ?)",
         (viagem_id, nova_ordem, codigo_porto, tipo_escala, sentido, motivo,
-         por, agora(), observacao),
+         por, agora(), observacao, condicao),
     )
     conn.commit()
     return cur.lastrowid, []
@@ -295,6 +308,8 @@ def lancar_marco(
     precisao: str = "exata",
     observacao: str | None = None,
     motivo_correcao: str | None = None,
+    rob_vlsfo: float | None = None,
+    rob_mgo: float | None = None,
 ) -> tuple[int | None, list[str]]:
     """Grava um marco. Se ja houver um vigente do mesmo tipo, e correcao.
 
@@ -337,6 +352,9 @@ def lancar_marco(
         precisao=precisao,
         marcos_existentes={k: v for k, v in anteriores.items() if k != tipo},
     )
+    # ROB e opcional: campo vazio nao e erro. Numero invalido e.
+    t_vlsfo = _numero_positivo(rob_vlsfo, "Combustível a bordo (VLSFO)", erros)
+    t_mgo = _numero_positivo(rob_mgo, "Combustível a bordo (MGO)", erros)
     if erros:
         return None, erros
 
@@ -362,13 +380,15 @@ def lancar_marco(
             "INSERT INTO evento (id_cliente, escala_id, tipo, hora_local, offset_utc, "
             "                    hora_utc, precisao, registrado_por, registrado_em, "
             "                    nome_responsavel, observacao, versao, vigente, "
-            "                    substitui_evento_id, motivo_correcao) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            "                    substitui_evento_id, motivo_correcao, "
+            "                    rob_vlsfo, rob_mgo) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
             (id_cliente, escala_id, tipo, hora_local, offset, hora_utc, precisao,
              registrado_por, quando, nome_responsavel.strip(), observacao,
              (vigente_atual[1] + 1) if vigente_atual else 1,
              vigente_atual[0] if vigente_atual else None,
-             (motivo_correcao or "").strip() or None),
+             (motivo_correcao or "").strip() or None,
+             t_vlsfo, t_mgo),
         )
     except sqlite3.IntegrityError as exc:
         conn.rollback()
@@ -391,6 +411,73 @@ def lancar_marco(
         encadear_ciclo(conn, escala[4])
 
     return cur.lastrowid, []
+
+
+def _numero_positivo(valor, rotulo: str, erros: list[str]):
+    """Devolve o numero, ou None. Texto vazio nao e erro — o campo e opcional."""
+    if valor is None or str(valor).strip() == "":
+        return None
+    try:
+        numero = float(str(valor).replace(",", "."))
+    except ValueError:
+        erros.append("{} precisa ser um número.".format(rotulo))
+        return None
+    if numero < 0:
+        erros.append("{} não pode ser negativo.".format(rotulo))
+        return None
+    return numero
+
+
+def registrar_abastecimento(
+    conn,
+    escala_id: int,
+    *,
+    vlsfo,
+    mgo,
+    nome_responsavel: str,
+    registrado_por: str,
+    observacao: str | None = None,
+) -> tuple[bool, list[str]]:
+    """Quanto entrou de combustivel nesta escala, em toneladas.
+
+    Sem isto o consumo nao fecha: se o navio tinha 100 t e amanhece com 600, a
+    diferenca so faz sentido sabendo quanto foi abastecido no meio.
+
+    Um registro por escala — reabastecer a mesma escala substitui o valor, que e
+    o comportamento util quando o comandante corrige um numero.
+    """
+    erros: list[str] = []
+    escala = conn.execute(
+        "SELECT id, status FROM escala WHERE id = ?", (escala_id,)).fetchone()
+    if escala is None:
+        return False, ["Escala {} não existe.".format(escala_id)]
+    if escala["status"] == "cancelada":
+        return False, ["Escala cancelada não aceita abastecimento."]
+
+    t_vlsfo = _numero_positivo(vlsfo, "VLSFO", erros)
+    t_mgo = _numero_positivo(mgo, "MGO", erros)
+    if not (nome_responsavel or "").strip():
+        erros.append("Informe quem preencheu.")
+    if t_vlsfo is None and t_mgo is None and not erros:
+        erros.append("Informe a quantidade de VLSFO ou de MGO.")
+    if erros:
+        return False, erros
+
+    conn.execute(
+        "INSERT INTO abastecimento (escala_id, vlsfo, mgo, registrado_por, "
+        "                           registrado_em, nome_responsavel, observacao) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(escala_id) DO UPDATE SET "
+        "  vlsfo = excluded.vlsfo, mgo = excluded.mgo, "
+        "  registrado_por = excluded.registrado_por, "
+        "  registrado_em = excluded.registrado_em, "
+        "  nome_responsavel = excluded.nome_responsavel, "
+        "  observacao = excluded.observacao",
+        (escala_id, t_vlsfo, t_mgo, registrado_por, agora(),
+         nome_responsavel.strip(), observacao),
+    )
+    conn.commit()
+    return True, []
 
 
 # ---------------------------------------------------------------------------

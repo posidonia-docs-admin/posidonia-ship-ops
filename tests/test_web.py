@@ -381,3 +381,91 @@ def test_recusa_subir_em_hospedagem_efemera_sem_turso(monkeypatch):
 
 def test_fora_do_render_o_sqlite_local_e_aceito(cliente):
     assert cliente.get("/api/health").json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Condicao, combustivel e portos colapsaveis
+# ---------------------------------------------------------------------------
+
+def test_portos_sao_colapsaveis_e_mostram_a_condicao(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert html.count('<details class="escala') >= 5      # cada porto fecha
+    for condicao in ("ballast", "loading", "laden", "discharging"):
+        assert '>{}</span>'.format(condicao) in html
+
+
+def test_formulario_pede_combustivel_a_bordo(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert 'name="rob_vlsfo"' in html
+    assert 'name="rob_mgo"' in html
+
+
+def test_rob_chega_pela_api_e_aparece_na_tela(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    escala_id = escala_de(cliente, ordem=20)
+    resposta = cliente.post("/api/marco", json={
+        "escala_id": escala_id, "tipo": "arrival", "hora_local": "2026-03-01T07:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "rob-1",
+        "rob_vlsfo": "512.25", "rob_mgo": "40"})
+    assert resposta.status_code == 200
+    html = cliente.get("/navio").text
+    assert "512.25" in html and "VLSFO" in html
+
+
+def test_rob_invalido_devolve_422(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    escala_id = escala_de(cliente, ordem=20)
+    resposta = cliente.post("/api/marco", json={
+        "escala_id": escala_id, "tipo": "arrival", "hora_local": "2026-03-01T07:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "rob-2",
+        "rob_vlsfo": "meio tanque"})
+    assert resposta.status_code == 422
+
+
+def test_abastecimento_pela_api(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    with closing(db.conectar()) as conn:
+        viagem_id = conn.execute(
+            "SELECT id FROM viagem WHERE status = 'aberta' LIMIT 1").fetchone()[0]
+    cliente.post("/navio/escala-extra", data={
+        "codigo_porto": "ICOARACI", "motivo": "bunker",
+        "apos_ordem": 0, "tipo_escala": "fundeio"})
+    with closing(db.conectar()) as conn:
+        bunker = conn.execute(
+            "SELECT id FROM escala WHERE viagem_id = ? AND codigo_porto = 'ICOARACI'",
+            (viagem_id,)).fetchone()[0]
+
+    resposta = cliente.post("/api/abastecimento", json={
+        "escala_id": bunker, "vlsfo": "220", "mgo": "15", "nome_responsavel": "Cmt."})
+    assert resposta.status_code == 200
+    with closing(db.conectar()) as conn:
+        linha = conn.execute(
+            "SELECT vlsfo, mgo FROM abastecimento WHERE escala_id = ?", (bunker,)).fetchone()
+    assert linha["vlsfo"] == 220.0 and linha["mgo"] == 15.0
+    assert 'class="abastecer"' in cliente.get("/navio").text
+
+
+def test_abastecimento_de_outro_navio_e_bloqueado(cliente):
+    entrar(cliente, "navio.pioneer")
+    cliente.get("/navio")
+    cliente.get("/logout")
+    entrar(cliente, "navio.pathfinder")
+    cliente.get("/navio")
+    with closing(db.conectar()) as conn:
+        alheia = conn.execute(
+            "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE vg.navio_id = 2 LIMIT 1").fetchone()[0]
+    resposta = cliente.post("/api/abastecimento", json={
+        "escala_id": alheia, "vlsfo": "100", "nome_responsavel": "X"})
+    assert resposta.status_code == 403
+
+
+def test_so_escala_de_bunker_pede_quantidade(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert 'class="abastecer"' not in html      # a rota padrao nao tem bunker

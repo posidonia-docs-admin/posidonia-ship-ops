@@ -4,8 +4,8 @@
 {% block conteudo %}
 <h1>Viagens</h1>
 <p class="legenda">
-  Registre a hora <strong>real</strong> de cada marco. O que você salva fica
-  guardado na hora — pode fechar e voltar depois.
+  Registre a hora <strong>real</strong> de cada marco e o combustível a bordo
+  naquele momento. O que você salva fica guardado na hora — pode fechar e voltar.
 </p>
 
 {% if request.query_params.get("erro") %}
@@ -33,36 +33,46 @@
     {% endif %}
 
     {% for b in v.blocos %}
-    <section class="escala{% if b.completa %} pronta{% endif %}">
-      <div class="escala-cab">
+    <details class="escala{% if b.completa %} pronta{% endif %}"{% if v.aberta and not b.completa %} open{% endif %}>
+      <summary class="escala-cab">
         <div>
           <div class="porto">{{ b.escala.porto_nome }}</div>
           <div class="detalhe">
             {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}{% if b.escala.sentido != "na" %} · {{ b.escala.sentido }}{% endif %}
           </div>
         </div>
+        {% if b.escala.condicao %}
+          <span class="condicao" title="{{ ROTULO_CONDICAO.get(b.escala.condicao, "") }}">{{ b.escala.condicao }}</span>
+        {% endif %}
         {% if b.escala.origem == "extra" %}<span class="selo">fora do padrão</span>{% endif %}
-      </div>
+      </summary>
 
+      <div class="marcos">
       {% for m in b.marcos %}
       <div class="marco" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
         {% if m.lancado %}
           <div class="gravado">
             <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
             <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+            {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
+              <span class="rob">
+                VLSFO {{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "—" }} ·
+                MGO {{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "—" }}
+              </span>
+            {% endif %}
             <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
             <span class="estado" data-estado></span>
             {% if v.aberta %}
             <details>
               <summary class="corrigir">corrigir</summary>
-              <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"
-                    data-correcao="1"{% if m.encerra %} data-encerra="1"{% endif %}>
-                <input type="date" name="data" required
-                       value="{{ m.lancado.hora_local[:10] }}">
-                <input type="time" name="hora" required
-                       value="{{ m.lancado.hora_local[11:16] }}">
-                <input type="text" name="motivo_correcao" required
-                       placeholder="motivo da correção">
+              <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
+                <input type="date" name="data" required value="{{ m.lancado.hora_local[:10] }}">
+                <input type="time" name="hora" required value="{{ m.lancado.hora_local[11:16] }}">
+                <input type="number" step="0.001" min="0" name="rob_vlsfo"
+                       placeholder="VLSFO t" value="{{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "" }}">
+                <input type="number" step="0.001" min="0" name="rob_mgo"
+                       placeholder="MGO t" value="{{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "" }}">
+                <input type="text" name="motivo_correcao" required placeholder="motivo da correção">
                 <button type="submit">salvar</button>
               </form>
             </details>
@@ -73,6 +83,8 @@
             <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
             <input type="date" name="data" required>
             <input type="time" name="hora" required>
+            <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t">
+            <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t">
             <button type="submit">salvar</button>
             <span class="estado" data-estado></span>
           </form>
@@ -84,7 +96,29 @@
         {% endif %}
       </div>
       {% endfor %}
-    </section>
+
+      {% if b.e_bunker %}
+      <div class="marco bunker" data-escala="{{ b.escala.id }}" data-tipo="abastecimento">
+        {% if v.aberta %}
+        <form class="abastecer">
+          <span class="marco-nome">Abastecido</span>
+          <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t"
+                 value="{{ b.bunker.vlsfo if b.bunker and b.bunker.vlsfo is not none else "" }}">
+          <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t"
+                 value="{{ b.bunker.mgo if b.bunker and b.bunker.mgo is not none else "" }}">
+          <button type="submit">salvar</button>
+          <span class="estado" data-estado></span>
+        </form>
+        {% elif b.bunker %}
+        <div class="gravado">
+          <span class="marco-nome">Abastecido</span>
+          <span class="valor">VLSFO {{ b.bunker.vlsfo or "—" }} · MGO {{ b.bunker.mgo or "—" }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      </div>
+    </details>
     {% endfor %}
 
     {% if v.aberta %}
@@ -98,7 +132,7 @@
         </label>
         <label>Motivo
           <select name="motivo">
-            <option value="bunker">Bunker</option>
+            <option value="bunker">Bunker — abastecimento</option>
             <option value="docagem">Docagem</option>
             <option value="espera_mare">Espera de maré</option>
             <option value="outro">Outro</option>
