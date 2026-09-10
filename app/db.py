@@ -213,6 +213,37 @@ def _rodar_script(conn, sql: str) -> None:
         conn.execute(comando)
 
 
+# Colunas acrescentadas DEPOIS que o banco de producao ja existia. O
+# `CREATE TABLE IF NOT EXISTS` nao as adiciona a uma tabela que ja esta la.
+_COLUNAS_NOVAS = (
+    ("navio", "prefixo", "TEXT"),
+)
+
+
+# Indices que dependem de coluna acrescentada acima. Ficam FORA do schema.sql
+# porque aquele script roda antes da migracao — num banco antigo a coluna ainda
+# nao existe e o CREATE INDEX derruba o arranque.
+_INDICES_POSTERIORES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_navio_prefixo "
+    "  ON navio (prefixo) WHERE prefixo IS NOT NULL",
+)
+
+
+def _migrar(conn) -> None:
+    """Acrescenta colunas faltantes e seus indices. Idempotente, numa conexao.
+
+    Uma conexao por coluna derrubava o Turso no boot no Sistema Emissor — a
+    licao ja foi paga uma vez.
+    """
+    for tabela, coluna, tipo in _COLUNAS_NOVAS:
+        existentes = {linha[1] for linha in
+                      conn.execute("PRAGMA table_info({})".format(tabela))}
+        if coluna not in existentes:
+            conn.execute("ALTER TABLE {} ADD COLUMN {} {}".format(tabela, coluna, tipo))
+    for comando in _INDICES_POSTERIORES:
+        conn.execute(comando)
+
+
 def _versao_schema(conn) -> int:
     """PRAGMA nem sempre existe fora do SQLite local. Ausencia = banco novo."""
     try:
@@ -238,6 +269,7 @@ def inicializar(conn=None) -> None:
                 "Migre antes de continuar.".format(versao, VERSAO_SCHEMA)
             )
         _rodar_script(conn, _ARQ_SCHEMA.read_text(encoding="utf-8"))
+        _migrar(conn)   # antes do seed: o seed preenche colunas novas
         _rodar_script(conn, _ARQ_SEED.read_text(encoding="utf-8"))
         conn.commit()
     finally:

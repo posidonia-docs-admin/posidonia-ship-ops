@@ -58,13 +58,40 @@ def _sailing_de_abertura(conn, navio_id: int):
     ).fetchone()
 
 
+def _base_numero(conn, navio_id: int) -> str:
+    """PREFIXO + ano com 2 digitos. Ex.: APN26."""
+    linha = conn.execute(
+        "SELECT prefixo FROM navio WHERE id = ?", (navio_id,)).fetchone()
+    prefixo = ((linha["prefixo"] if linha else "") or "").strip().upper()
+    if not prefixo:
+        # Navio novo ainda sem prefixo cadastrado: nao inventa sigla, usa o id.
+        prefixo = "N{}".format(navio_id)
+    return "{}{}".format(prefixo, agora()[2:4])
+
+
+def _no_padrao(numero: str, base: str) -> bool:
+    resto = (numero or "")[len(base):]
+    return (numero or "").startswith(base) and len(resto) == 3 and resto.isdigit()
+
+
 def _proximo_numero(conn, navio_id: int) -> str:
-    ano = agora()[:4]
-    (quantas,) = conn.execute(
-        "SELECT COUNT(*) FROM viagem WHERE navio_id = ? AND numero LIKE ?",
-        (navio_id, ano + "-%"),
+    """Codigo da viagem: PREFIXO + ano com 2 digitos + sequencia de 3.
+
+        APN26001, APN26002 ...   Pioneer, 2026
+        ACM26001                 Commander
+        APT26001                 Pathfinder
+        ACR26001                 Courage
+
+    A sequencia reinicia a cada ano e e por navio. Usa MAX e nao COUNT: se uma
+    viagem for cancelada, contar daria um numero ja usado.
+    """
+    base = _base_numero(conn, navio_id)
+    (maior,) = conn.execute(
+        "SELECT MAX(CAST(substr(numero, ?) AS INTEGER)) FROM viagem "
+        " WHERE navio_id = ? AND numero LIKE ?",
+        (len(base) + 1, navio_id, base + "%"),
     ).fetchone()
-    return "{}-{:03d}".format(ano, quantas + 1)
+    return "{}{:03d}".format(base, (maior or 0) + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +176,37 @@ def abrir_viagem(
 
     conn.commit()
     return viagem_id, []
+
+
+def renumerar_viagens_vazias(conn) -> int:
+    """Da o codigo novo as viagens abertas que ainda nao tem marco nenhum.
+
+    A viagem que o sistema abriu sozinha antes de o padrao APT26001 existir
+    ficaria para sempre fora do padrao — e e justamente a primeira que o
+    comandante vai preencher. Sem nenhum evento apontando para ela, trocar o
+    numero nao quebra nada; depois do primeiro lancamento, nunca mais se mexe.
+    """
+    alvos = conn.execute(
+        "SELECT vg.id, vg.numero, vg.navio_id FROM viagem vg "
+        " WHERE vg.status = 'aberta' "
+        "   AND NOT EXISTS (SELECT 1 FROM evento ev "
+        "                     JOIN escala e ON e.id = ev.escala_id "
+        "                    WHERE e.viagem_id = vg.id)").fetchall()
+    trocadas = 0
+    for viagem in alvos:
+        base = _base_numero(conn, viagem["navio_id"])
+        # Ja esta no padrao: nao mexer. Renumerar um codigo valido so o
+        # empurraria para a frente a cada arranque.
+        if _no_padrao(viagem["numero"], base):
+            continue
+        novo = _proximo_numero(conn, viagem["navio_id"])
+        if novo != viagem["numero"]:
+            conn.execute("UPDATE viagem SET numero = ? WHERE id = ?",
+                         (novo, viagem["id"]))
+            trocadas += 1
+    if trocadas:
+        conn.commit()
+    return trocadas
 
 
 # ---------------------------------------------------------------------------

@@ -84,13 +84,21 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(item.payload)
     }).then(function (r) {
-      if (r.ok) return remover(item.id_cliente);
+      if (r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (corpo) {
+          return remover(item.id_cliente).then(function () {
+            return { ok: true, viagemMudou: !!(corpo && corpo.viagem_mudou) };
+          });
+        });
+      }
       if (r.status === 422 || r.status === 403 || r.status === 404) {
         // O dado esta errado. Reenviar nao conserta — para de tentar e mostra.
         return r.json().catch(function () { return {}; }).then(function (corpo) {
           item.estado = "erro";
           item.erros = (corpo && corpo.erros) || ["Lancamento recusado."];
-          return gravar(item);
+          return gravar(item).then(function () {
+            return { ok: false, erros: item.erros };
+          });
         });
       }
       // 5xx ou servidor dormindo: continua pendente, tenta de novo depois.
@@ -117,10 +125,10 @@
         if (!item) { marca.textContent = ""; marca.className = ""; return; }
         if (item.estado === "erro") {
           marca.textContent = "recusado: " + (item.erros || []).join(" ");
-          marca.className = "selo selo-erro";
+          marca.className = "estado erro";
         } else {
           marca.textContent = "enviando...";
-          marca.className = "selo selo-pendente";
+          marca.className = "estado pendente";
         }
       });
     });
@@ -131,12 +139,16 @@
   window.Fila = {
     enfileirar: function (payload) {
       payload.id_cliente = payload.id_cliente || uuid();
-      return gravar({
+      var item = {
         id_cliente: payload.id_cliente,
         payload: payload,
         estado: "pendente",
         criado_em: new Date().toISOString()
-      }).then(function () { sincronizar(); });
+      };
+      // Grava primeiro, envia depois: se o envio falhar, o lancamento ja esta
+      // salvo no aparelho e sai sozinho mais tarde. O retorno diz o que o
+      // servidor respondeu, para a linha se atualizar sem recarregar a pagina.
+      return gravar(item).then(function () { return enviarUm(item); });
     },
     sincronizar: sincronizar,
     pintar: pintar,

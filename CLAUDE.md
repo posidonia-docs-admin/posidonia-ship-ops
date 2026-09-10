@@ -42,6 +42,26 @@ A viagem é um ciclo que **abre saindo de Alumar** e **fecha descarregando em Al
 Eventuais, que entram como `origem = 'extra'`: **Icoaraci** (entrando por Mosqueiro) para bunker,
 e **Itaqui** para bunker fundeado.
 
+### O código da viagem
+
+**PREFIXO + ano com 2 dígitos + sequência de 3.** A sequência reinicia a cada ano e é por navio.
+
+| Navio | Prefixo | 1ª viagem de 2026 |
+|---|---|---|
+| Amazon **Pat**hfinder | `APT` | `APT26001` |
+| Amazon **P**io**n**eer | `APN` | `APN26001` |
+| Amazon **C**o**m**mander | `ACM` | `ACM26001` |
+| Amazon **C**ou**r**age | `ACR` | `ACR26001` |
+
+O prefixo vive na coluna `navio.prefixo` — não é heurística sobre o nome. A sequência usa
+**`MAX`, não `COUNT`**: se uma viagem for cancelada, contar daria um código já usado.
+
+`renumerar_viagens_vazias()` corrige, no arranque, viagens **sem nenhum marco** cujo código esteja
+fora do padrão — e **só** essas. Depois do primeiro lançamento o código é definitivo, e um código
+já válido nunca é mexido (renumerar um válido o empurraria para a frente a cada boot).
+
+---
+
 ### As quatro regras que sustentam o modelo
 
 **1. A escala de Alumar serve a duas viagens, mas é gravada uma vez só.**
@@ -97,6 +117,10 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 - **Não inventar identificador.** `navio.imo` e `porto.un_locode` ficam **NULOS** até a operação
   confirmar. Número inventado parece certo, e por isso é pior que número ausente.
 - **Mudou `schema.sql`?** Incremente `VERSAO_SCHEMA` em `db.py` **e** o `PRAGMA user_version`.
+- **Coluna nova vai em `_COLUNAS_NOVAS`, e o índice dela em `_INDICES_POSTERIORES`** (ambos em
+  `db.py`). O `schema.sql` roda **antes** da migração: num banco que já existe — como o do Turso
+  — a coluna ainda não está lá, e um `CREATE INDEX` sobre ela derruba o arranque inteiro. Os
+  testes normais partem de banco vazio e **não pegam isso**; `tests/test_migracao.py` pega.
 - **Rode a suite nos DOIS drivers antes de publicar.** `SHIPOPS_BACKEND=libsql-local` usa o
   driver do Turso. O `libsql` devolve **tuplas puras** e o cursor **nao e iteravel**; o
   `sqlite3` devolve `Row` e o cursor itera. Rodar so num dos dois nao prova nada — foi
@@ -118,15 +142,32 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 | `app/auth.py` | Hash de senha (scrypt) e sessão em cookie HMAC. Sem tabela de sessão |
 | `app/contas.py` | Contas, perfis e log de acesso |
 | `app/main.py` | FastAPI: middlewares, login, telas do comandante, `/api/marco`, painel |
-| `templates/` | Jinja2. `base` · `login` · `navio_inicio` · `navio_marco` · `painel` |
+| `templates/` | Jinja2. `base` (menu lateral) · `login` · `navio_inicio` · `painel` · `admin_contas` |
 | `app/static/fila.js` | **A fila local (IndexedDB)** — a peça que decide a adoção |
-| `app/static/marco.js` | Formulário de marco: enfileira e volta na hora |
+| `app/static/escalas.js` | Lançamento **no lugar**: a linha vira "gravado" sem trocar de tela |
 | `scripts/criar_conta.py` | Cria conta; a senha é pedida no terminal, nunca fica no código |
 | `scripts/demo_viagem.py` | Duas viagens completas em memória |
 
 **Convenção de retorno:** todo serviço devolve `(resultado, erros)`, com a lista vazia em caso de
 sucesso — e devolve **todos** os erros de uma vez, não o primeiro. Exceção aqui é falha de
 programação, nunca lançamento inválido do comandante.
+
+---
+
+## A tela do comandante
+
+Menu lateral **curto de propósito** (`MENU` em `main.py`, declarativo como o `NAV_TREE` do
+Posidonia Docs): o acesso dele é só lançar escala. Mesma paleta do Posidonia Docs — navy
+`#0a2540` e teal `#12a7c9` — para os dois sistemas parecerem família.
+
+As viagens aparecem em acordeão (`<details>` nativo, sem JS): **código + embarcação + selo**,
+com a viagem em andamento já aberta. Dentro dela, as 5 escalas do circuito na ordem, e cada marco
+é um **formulário na própria linha** — preenche, salva, a linha vira "gravado". **Nunca troca de
+tela.** A página só recarrega quando o `Sailing` de Alumar fecha a viagem e abre a seguinte, e a
+API avisa isso em `viagem_mudou`.
+
+**"Quem preenche" é um campo só, no topo da viagem**, lembrado em `localStorage`. Pedi-lo em cada
+linha faria o comandante desistir na terceira.
 
 ---
 
@@ -177,7 +218,8 @@ que devolve o rastro individual.
 ## Como rodar
 
 ```bash
-.venv/Scripts/python -m pytest -q            # 60 testes
+.venv/Scripts/python -m pytest -q            # 87 testes (SQLite)
+SHIPOPS_BACKEND=libsql-local .venv/Scripts/python -m pytest -q   # e no driver do Turso
 .venv/Scripts/python scripts/demo_viagem.py  # duas viagens, em memória
 
 export SHIPOPS_SECRET_KEY="uma-chave-longa-e-aleatoria"

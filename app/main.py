@@ -17,6 +17,17 @@ templates = Jinja2Templates(directory=str(RAIZ / "templates"))
 templates.env.globals["ROTULO_MOTIVO"] = dominio.ROTULO_MOTIVO
 templates.env.globals["ROTULO_MARCO"] = dominio.ROTULO_MARCO
 
+# Menu por perfil. Declarativo, como o NAV_TREE do Sistema Emissor: menu novo
+# nasce de dado, nao de HTML espalhado. O do comandante e curto de proposito —
+# o acesso dele e so lancar escala.
+MENU = {
+    "navio": ((("/navio"), "Viagens"),),
+    "supervisor": ((("/painel"), "Frota"),),
+    "analytics": ((("/painel"), "Frota"),),
+    "admin": ((("/painel"), "Frota"), (("/admin/contas"), "Contas")),
+}
+templates.env.globals["MENU"] = MENU
+
 
 def _garantir_admin() -> None:
     """Cria (ou realinha) a conta de administrador a partir do ambiente.
@@ -44,6 +55,8 @@ async def ciclo_de_vida(_app: FastAPI):
     config.checar_persistencia()
     db.inicializar()
     _garantir_admin()
+    with closing(db.conectar()) as conn:
+        viagens.renumerar_viagens_vazias(conn)
     yield
 
 
@@ -199,8 +212,17 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
         saida.append({
             "escala": escala,
-            "marcos": [{"tipo": t, "rotulo": dominio.ROTULO_MARCO[t],
-                        "lancado": lancados.get(t)} for t in exigidos],
+            "marcos": [{
+                "tipo": t,
+                "rotulo": dominio.ROTULO_MARCO[t],
+                "curto": dominio.ROTULO_CURTO[t],
+                "lancado": lancados.get(t),
+                # O sailing da escala de Alumar do modelo fecha a viagem e abre
+                # a proxima: quando ele e salvo, a pagina inteira mudou.
+                "encerra": (t == "sailing"
+                            and escala["codigo_porto"] == viagens.PORTO_CICLO
+                            and escala["origem"] == "modelo"),
+            } for t in exigidos],
             "completa": all(t in lancados for t in exigidos),
         })
     return saida
@@ -213,49 +235,32 @@ def navio_inicio(request: Request):
         return RedirectResponse("/painel", 303)
 
     with closing(db.conectar()) as conn:
-        viagem = _viagem_do_navio(conn, conta["navio_id"])
-        if viagem is None:
-            viagem_id, erros = viagens.abrir_viagem(
-                conn, conta["navio_id"], por=conta["login"])
-            viagem = _viagem_do_navio(conn, conta["navio_id"])
-        blocos = _escalas_com_marcos(conn, viagem["id"]) if viagem else []
+        # Sem viagem aberta o comandante ficaria sem onde lancar.
+        if _viagem_do_navio(conn, conta["navio_id"]) is None:
+            viagens.abrir_viagem(conn, conta["navio_id"], por=conta["login"])
+
+        linhas = conn.execute(
+            "SELECT id, numero, status FROM viagem WHERE navio_id = ? "
+            " ORDER BY (status = 'aberta') DESC, id DESC LIMIT 6",
+            (conta["navio_id"],)).fetchall()
+
+        lista = []
+        for viagem in linhas:
+            faltantes = conn.execute(
+                "SELECT COUNT(*) FROM escalas_incompletas WHERE viagem_id = ?",
+                (viagem["id"],)).fetchone()[0]
+            lista.append({
+                "viagem": viagem,
+                "aberta": viagem["status"] == "aberta",
+                "faltantes": faltantes,
+                "blocos": _escalas_com_marcos(conn, viagem["id"]),
+            })
+
         portos = conn.execute(
             "SELECT codigo, nome FROM porto WHERE ativo = 1 ORDER BY nome").fetchall()
 
     return templates.TemplateResponse(request, "navio_inicio.html", {
-        "conta": conta, "viagem": viagem,
-        "blocos": blocos, "portos": portos,
-    })
-
-
-@app.get("/navio/marco/{escala_id}/{tipo}", response_class=HTMLResponse)
-def navio_form_marco(request: Request, escala_id: int, tipo: str):
-    conta = request.state.conta
-    with closing(db.conectar()) as conn:
-        escala = conn.execute(
-            "SELECT e.id, e.tipo_escala, e.codigo_porto, e.sentido, vg.navio_id, "
-            "       vg.numero, p.nome AS porto_nome, p.offset_padrao "
-            "  FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
-            "  JOIN porto p ON p.codigo = e.codigo_porto WHERE e.id = ?",
-            (escala_id,)).fetchone()
-        if escala is None or (conta["perfil"] == "navio"
-                              and escala["navio_id"] != conta["navio_id"]):
-            return HTMLResponse("<h3>Escala não encontrada.</h3>", status_code=404)
-        atual = conn.execute(
-            "SELECT hora_local, offset_utc, nome_responsavel, observacao, versao "
-            "  FROM evento_vigente WHERE escala_id = ? AND tipo = ?",
-            (escala_id, tipo)).fetchone()
-
-    if tipo not in dominio.MARCOS_POR_TIPO.get(escala["tipo_escala"], ()):
-        return HTMLResponse(
-            "<h3>Esta escala não tem {}.</h3>".format(
-                dominio.ROTULO_MARCO.get(tipo, tipo)), status_code=400)
-
-    return templates.TemplateResponse(request, "navio_marco.html", {
-        "conta": conta, "escala": escala, "tipo": tipo,
-        "rotulo": dominio.ROTULO_MARCO[tipo], "atual": atual,
-        "offset_padrao": escala["offset_padrao"],
-    })
+        "conta": conta, "lista": lista, "portos": portos})
 
 
 @app.post("/api/marco")
@@ -294,7 +299,14 @@ async def api_marco(request: Request):
         # 422: o dado esta errado e reenviar nao vai adiantar. A fila precisa
         # distinguir isto de "servidor fora do ar", ou fica repetindo para sempre.
         return JSONResponse({"ok": False, "erros": erros}, status_code=422)
-    return {"ok": True, "evento_id": evento_id}
+
+    # O sailing de Alumar encerra a viagem e abre a seguinte. A tela precisa
+    # saber disso para recarregar — o conteudo inteiro mudou.
+    with closing(db.conectar()) as conn:
+        ainda_aberta = conn.execute(
+            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
+    return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
 
 
 @app.post("/navio/escala-extra")

@@ -32,6 +32,15 @@ MARCOS_POR_TIPO = {
     "abertura": ("sailing",),
 }
 
+# Rotulo curto, para a linha compacta da tela. O termo em ingles e o que a
+# operacao usa no dia a dia; o nome completo fica no `title` do elemento.
+ROTULO_CURTO = {
+    "arrival": "Arrival",
+    "berth": "Berth",
+    "unberth": "Unberth",
+    "sailing": "Sailing",
+}
+
 ROTULO_MOTIVO = {
     "carregamento": "Carregamento",
     "descarga": "Descarga",

@@ -15,9 +15,14 @@ CREATE TABLE IF NOT EXISTS navio (
     id           INTEGER PRIMARY KEY,
     imo          INTEGER UNIQUE,
     nome_oficial TEXT NOT NULL UNIQUE,          -- MAIUSCULAS, sem acento
+    prefixo      TEXT,                          -- APT, APN, ACM, ACR
     ativo        INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     observacao   TEXT
 );
+
+-- O indice unico de `prefixo` vive em _INDICES_POSTERIORES (db.py), nao aqui:
+-- este script roda ANTES da migracao, e num banco antigo a coluna ainda nao
+-- existe. Indexar coluna inexistente derruba o arranque inteiro.
 
 CREATE TABLE IF NOT EXISTS navio_alias (
     alias    TEXT PRIMARY KEY,                  -- MAIUSCULAS, sem acento

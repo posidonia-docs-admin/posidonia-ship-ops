@@ -222,12 +222,54 @@ def test_correcao_pela_api_exige_motivo(cliente):
 # Telas
 # ---------------------------------------------------------------------------
 
-def test_form_recusa_marco_que_a_escala_nao_tem(cliente):
+def test_tela_nao_oferece_marco_que_a_escala_nao_tem(cliente):
+    """Barra Norte e passagem: a tela nao pode nem mostrar Berth para preencher."""
+    import re
+
+    entrar(cliente)
+    html = cliente.get("/navio").text       # abre a viagem, se nao houver
+    barra = escala_de(cliente, ordem=40)
+    bloco = re.findall(
+        r'data-escala="{}" data-tipo="([a-z]+)"'.format(barra), html)
+    assert set(bloco) == {"arrival", "sailing"}
+
+
+def test_tela_mostra_o_codigo_da_viagem_e_abre_a_viagem_corrente(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    from app.db import agora
+    assert "APT{}001".format(agora()[2:4]) in html
+    assert "<details class=\"viagem\" open>" in html
+
+
+def test_lancamento_acontece_na_propria_tela(cliente):
+    """Sem trocar de pagina: o formulario de cada marco vive na lista."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert "form class=\"lancar\"" in html
+    assert "/static/escalas.js" in html
+    assert "/navio/marco" not in html
+
+
+def test_api_avisa_quando_a_viagem_troca(cliente):
+    """O sailing de Alumar fecha a viagem e abre outra — a tela tem de recarregar."""
     entrar(cliente)
     cliente.get("/navio")
-    barra = escala_de(cliente, ordem=40)
-    assert cliente.get("/navio/marco/{}/berth".format(barra)).status_code == 400
-    assert cliente.get("/navio/marco/{}/arrival".format(barra)).status_code == 200
+    alumar = escala_de(cliente, ordem=50)
+    base = {"escala_id": alumar, "offset": "-03:00", "nome_responsavel": "Cmt."}
+
+    for i, (tipo, hora) in enumerate((("arrival", "2026-03-01T08:00"),
+                                      ("berth", "2026-03-02T08:00"),
+                                      ("unberth", "2026-03-03T08:00"))):
+        r = cliente.post("/api/marco", json=dict(base, tipo=tipo, hora_local=hora,
+                                                 id_cliente="a{}".format(i)))
+        assert r.status_code == 200, r.text
+        assert r.json()["viagem_mudou"] is False
+
+    fim = cliente.post("/api/marco", json=dict(
+        base, tipo="sailing", hora_local="2026-03-03T12:00", id_cliente="a9"))
+    assert fim.status_code == 200
+    assert fim.json()["viagem_mudou"] is True
 
 
 def test_escala_extra_pela_tela(cliente):
@@ -242,7 +284,7 @@ def test_escala_extra_pela_tela(cliente):
 
 
 def test_estatico_e_publico(cliente):
-    for arquivo in ("/static/estilo.css", "/static/fila.js", "/static/marco.js"):
+    for arquivo in ("/static/estilo.css", "/static/fila.js", "/static/escalas.js"):
         assert cliente.get(arquivo).status_code == 200
 
 

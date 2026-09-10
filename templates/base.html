@@ -3,15 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0a2540">
   <title>{% block titulo %}Ship Ops{% endblock %} · Posidonia</title>
   <link rel="stylesheet" href="/static/estilo.css">
 </head>
 <body>
-  {% block topo %}{% endblock %}
-  <main>
+{% if conta %}
+<div class="app">
+  <nav class="lateral">
+    <div class="marca">
+      Posidonia
+      <small>{{ conta.navio_nome or conta.nome_exibicao }}</small>
+    </div>
+    <div class="menu">
+      {% for caminho, rotulo in MENU.get(conta.perfil, []) %}
+        <a href="{{ caminho }}"
+           class="{{ 'ativo' if request.url.path == caminho else '' }}">{{ rotulo }}</a>
+      {% endfor %}
+      <a href="/logout">Sair</a>
+    </div>
+  </nav>
+  <main class="conteudo">
     {% block conteudo %}{% endblock %}
   </main>
-  {% block scripts %}{% endblock %}
+</div>
+{% else %}
+  {% block avulso %}{% endblock %}
+{% endif %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

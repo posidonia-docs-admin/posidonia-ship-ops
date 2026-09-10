@@ -51,10 +51,66 @@ def test_um_navio_so_tem_uma_viagem_aberta(conn, pathfinder):
     assert any("já tem a viagem" in e for e in erros)
 
 
-def test_numero_da_viagem_e_sequencial_por_navio(conn, pathfinder):
-    v1, _ = viagens.abrir_viagem(conn, pathfinder)
-    numero = conn.execute("SELECT numero FROM viagem WHERE id = ?", (v1,)).fetchone()[0]
-    assert numero.endswith("-001")
+def test_codigo_da_viagem_segue_o_padrao_da_operacao(conn):
+    """PREFIXO + ano com 2 digitos + sequencia de 3: APN26001."""
+    import re
+    from app.db import agora
+
+    ano = agora()[2:4]
+    for navio_id, prefixo in ((1, "APT"), (2, "APN"), (3, "ACM"), (4, "ACR")):
+        viagem_id, erros = viagens.abrir_viagem(conn, navio_id)
+        assert erros == []
+        numero = conn.execute(
+            "SELECT numero FROM viagem WHERE id = ?", (viagem_id,)).fetchone()[0]
+        assert numero == "{}{}001".format(prefixo, ano), (navio_id, numero)
+        assert re.fullmatch(r"[A-Z]{3}\d{2}\d{3}", numero)
+
+
+def test_sequencia_avanca_e_e_por_navio(conn):
+    from app.db import agora
+
+    ano = agora()[2:4]
+
+    def numero(vid):
+        return conn.execute(
+            "SELECT numero FROM viagem WHERE id = ?", (vid,)).fetchone()[0]
+
+    v1, _ = viagens.abrir_viagem(conn, 2)          # Pioneer
+    assert numero(v1) == "APN{}001".format(ano)
+
+    outro, _ = viagens.abrir_viagem(conn, 3)       # Commander nao herda a contagem
+    assert numero(outro) == "ACM{}001".format(ano)
+
+    viagens.encerrar_viagem(conn, v1)              # sem unberth: nao fecha
+    conn.execute("UPDATE viagem SET status = 'encerrada' WHERE id = ?", (v1,))
+    conn.commit()
+    v2, _ = viagens.abrir_viagem(conn, 2)
+    assert numero(v2) == "APN{}002".format(ano)
+
+
+def test_sequencia_usa_max_e_nao_contagem(conn):
+    """Viagem cancelada nao pode fazer a proxima repetir um codigo ja usado."""
+    from app.db import agora
+
+    ano = agora()[2:4]
+    v1, _ = viagens.abrir_viagem(conn, 2)
+    conn.execute("UPDATE viagem SET status = 'cancelada' WHERE id = ?", (v1,))
+    conn.commit()
+    v2, _ = viagens.abrir_viagem(conn, 2)
+    numero = conn.execute(
+        "SELECT numero FROM viagem WHERE id = ?", (v2,)).fetchone()[0]
+    assert numero == "APN{}002".format(ano)
+
+
+def test_prefixos_cadastrados(conn):
+    prefixos = {linha["nome_oficial"]: linha["prefixo"] for linha in conn.execute(
+        "SELECT nome_oficial, prefixo FROM navio ORDER BY id")}
+    assert prefixos == {
+        "AMAZON PATHFINDER": "APT",
+        "AMAZON PIONEER": "APN",
+        "AMAZON COMMANDER": "ACM",
+        "AMAZON COURAGE": "ACR",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -235,3 +291,39 @@ def test_macapa_resolve_para_fazendinha(conn):
         assert achado is not None and achado[0] == "FAZENDINHA", alias
     assert conn.execute(
         "SELECT COUNT(*) FROM porto WHERE codigo = 'MACAPA'").fetchone()[0] == 0
+
+
+def test_viagem_vazia_recebe_o_codigo_novo(conn, pathfinder):
+    """A viagem aberta antes do padrao existir ainda pode ser renumerada."""
+    from app.db import agora
+
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    conn.execute("UPDATE viagem SET numero = '2026-001' WHERE id = ?", (viagem_id,))
+    conn.commit()
+
+    assert viagens.renumerar_viagens_vazias(conn) == 1
+    numero = conn.execute(
+        "SELECT numero FROM viagem WHERE id = ?", (viagem_id,)).fetchone()[0]
+    assert numero == "APT{}001".format(agora()[2:4])
+
+
+def test_viagem_com_marco_lancado_nao_e_renumerada(conn, pathfinder):
+    """Depois do primeiro lancamento o codigo e definitivo."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    escala = conn.execute(
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 20", (viagem_id,)
+    ).fetchone()[0]
+    _lancar(conn, escala, "arrival", "2026-03-01T08:00")
+
+    conn.execute("UPDATE viagem SET numero = 'CODIGO-ANTIGO' WHERE id = ?", (viagem_id,))
+    conn.commit()
+    assert viagens.renumerar_viagens_vazias(conn) == 0
+    assert conn.execute(
+        "SELECT numero FROM viagem WHERE id = ?", (viagem_id,)
+    ).fetchone()[0] == "CODIGO-ANTIGO"
+
+
+def test_renumerar_e_idempotente(conn, pathfinder):
+    viagens.abrir_viagem(conn, pathfinder)
+    viagens.renumerar_viagens_vazias(conn)
+    assert viagens.renumerar_viagens_vazias(conn) == 0

@@ -12,6 +12,14 @@ INSERT OR IGNORE INTO navio (id, imo, nome_oficial, ativo, observacao) VALUES
     (3, NULL, 'AMAZON COMMANDER',  1, 'Alcoa — Ship Management'),
     (4, NULL, 'AMAZON COURAGE',    1, 'Alcoa — Ship Management');
 
+-- Prefixo do codigo de viagem. UPDATE e nao INSERT porque o INSERT OR IGNORE
+-- acima nao toca em linha que ja existe — bancos criados antes desta coluna
+-- ficariam com prefixo nulo para sempre.
+UPDATE navio SET prefixo = 'APT' WHERE id = 1 AND COALESCE(prefixo, '') = '';
+UPDATE navio SET prefixo = 'APN' WHERE id = 2 AND COALESCE(prefixo, '') = '';
+UPDATE navio SET prefixo = 'ACM' WHERE id = 3 AND COALESCE(prefixo, '') = '';
+UPDATE navio SET prefixo = 'ACR' WHERE id = 4 AND COALESCE(prefixo, '') = '';
+
 INSERT OR IGNORE INTO navio_alias (alias, navio_id) VALUES
     ('AMAZON PATHFINDER', 1), ('PATHFINDER', 1),
     ('AMAZON PIONEER',    2), ('PIONEER',    2),

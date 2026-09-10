@@ -1,95 +1,133 @@
 {% extends "base.html" %}
-{% block titulo %}{{ conta.navio_nome }}{% endblock %}
-
-{% block topo %}
-<div class="topo">
-  <div>
-    <div class="navio">{{ conta.navio_nome }}</div>
-    <div class="viagem">Viagem {{ viagem.numero if viagem else "—" }}</div>
-  </div>
-  <a href="/logout">sair</a>
-</div>
-{% endblock %}
+{% block titulo %}Viagens{% endblock %}
 
 {% block conteudo %}
+<h1>Viagens</h1>
+<p class="legenda">
+  Registre a hora <strong>real</strong> de cada marco. O que você salva fica
+  guardado na hora — pode fechar e voltar depois.
+</p>
+
 {% if request.query_params.get("erro") %}
   <p class="aviso aviso-erro">{{ request.query_params.get("erro") }}</p>
 {% endif %}
 
-<h1>Marcos da viagem</h1>
-<p class="legenda">
-  Toque no marco para lançar a hora. O lançamento é salvo no aparelho na hora e
-  enviado sozinho — pode fechar o app.
-</p>
+{% for v in lista %}
+<details class="viagem"{% if v.aberta %} open{% endif %}>
+  <summary>
+    <span class="codigo">{{ v.viagem.numero }}</span>
+    <span class="embarcacao">{{ conta.navio_nome }}</span>
+    {% if v.aberta %}
+      {% if v.faltantes %}<span class="selo selo-falta">{{ v.faltantes }} a lançar</span>
+      {% else %}<span class="selo">completa</span>{% endif %}
+    {% else %}<span class="selo selo-fechada">encerrada</span>{% endif %}
+  </summary>
 
-{% for bloco in blocos %}
-  {% set e = bloco.escala %}
-  <section class="escala{% if bloco.completa %} completa{% endif %}">
-    <div class="escala-cab">
-      <div>
-        <div class="porto">{{ e.porto_nome }}</div>
-        <div class="detalhe">
-          {{ ROTULO_MOTIVO.get(e.motivo, e.motivo) }}{% if e.sentido != "na" %} · {{ e.sentido }}{% endif %}
-        </div>
-      </div>
-      {% if e.origem == "extra" %}<span class="etiqueta">fora do padrão</span>
-      {% elif e.origem == "abertura" %}<span class="etiqueta">saída</span>
-      {% elif not bloco.completa %}<span class="etiqueta">a lançar</span>{% endif %}
+  <div class="corpo">
+    {% if v.aberta %}
+    <div class="responsavel">
+      <label for="responsavel">Quem preenche</label>
+      <input id="responsavel" type="text" autocomplete="name"
+             placeholder="Seu nome — fica registrado em cada lançamento">
     </div>
+    {% endif %}
 
-    {% for m in bloco.marcos %}
-      <a class="marco" href="/navio/marco/{{ e.id }}/{{ m.tipo }}"
-         data-escala="{{ e.id }}" data-tipo="{{ m.tipo }}">
-        <span class="nome">{{ m.rotulo }}</span>
+    {% for b in v.blocos %}
+    <section class="escala{% if b.completa %} pronta{% endif %}">
+      <div class="escala-cab">
+        <div>
+          <div class="porto">{{ b.escala.porto_nome }}</div>
+          <div class="detalhe">
+            {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}{% if b.escala.sentido != "na" %} · {{ b.escala.sentido }}{% endif %}
+          </div>
+        </div>
+        {% if b.escala.origem == "extra" %}<span class="selo">fora do padrão</span>{% endif %}
+      </div>
+
+      {% for m in b.marcos %}
+      <div class="marco" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
         {% if m.lancado %}
-          <span class="valor">
-            {{ m.lancado.hora_local|replace("T", " ") }}
-            <span class="sub">
-              {{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}
-            </span>
-          </span>
+          <div class="gravado">
+            <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+            <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+            <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
+            <span class="estado" data-estado></span>
+            {% if v.aberta %}
+            <details>
+              <summary class="corrigir">corrigir</summary>
+              <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"
+                    data-correcao="1"{% if m.encerra %} data-encerra="1"{% endif %}>
+                <input type="date" name="data" required
+                       value="{{ m.lancado.hora_local[:10] }}">
+                <input type="time" name="hora" required
+                       value="{{ m.lancado.hora_local[11:16] }}">
+                <input type="text" name="motivo_correcao" required
+                       placeholder="motivo da correção">
+                <button type="submit">salvar</button>
+              </form>
+            </details>
+            {% endif %}
+          </div>
+        {% elif v.aberta %}
+          <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"{% if m.encerra %} data-encerra="1"{% endif %}>
+            <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+            <input type="date" name="data" required>
+            <input type="time" name="hora" required>
+            <button type="submit">salvar</button>
+            <span class="estado" data-estado></span>
+          </form>
         {% else %}
-          <span class="vazio">lançar</span>
+          <div class="gravado">
+            <span class="marco-nome">{{ m.curto }}</span>
+            <span class="por">não lançado</span>
+          </div>
         {% endif %}
-        <span data-estado></span>
-      </a>
+      </div>
+      {% endfor %}
+    </section>
     {% endfor %}
-  </section>
-{% endfor %}
 
-<details>
-  <summary>Parada fora do padrão (bunker, docagem…)</summary>
-  <form method="post" action="/navio/escala-extra">
-    <label>Porto
-      <select name="codigo_porto" required>
-        {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
-      </select>
-    </label>
-    <label>Motivo
-      <select name="motivo">
-        <option value="bunker">Bunker</option>
-        <option value="docagem">Docagem</option>
-        <option value="espera_mare">Espera de maré</option>
-        <option value="outro">Outro</option>
-      </select>
-    </label>
-    <label>Atraca?
-      <select name="tipo_escala">
-        <option value="fundeio">Não — fica fundeado</option>
-        <option value="operacional">Sim — atraca</option>
-        <option value="passagem">Só passagem</option>
-      </select>
-    </label>
-    <label>Depois de qual parada?
-      <select name="apos_ordem">
-        {% for bloco in blocos %}
-          <option value="{{ bloco.escala.ordem }}">{{ bloco.escala.porto_nome }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <button type="submit">Acrescentar parada</button>
-  </form>
+    {% if v.aberta %}
+    <details class="extra">
+      <summary>Acrescentar parada fora do padrão</summary>
+      <form method="post" action="/navio/escala-extra">
+        <label>Porto
+          <select name="codigo_porto" required>
+            {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Motivo
+          <select name="motivo">
+            <option value="bunker">Bunker</option>
+            <option value="docagem">Docagem</option>
+            <option value="espera_mare">Espera de maré</option>
+            <option value="outro">Outro</option>
+          </select>
+        </label>
+        <label>Atraca?
+          <select name="tipo_escala">
+            <option value="fundeio">Não — fica fundeado</option>
+            <option value="operacional">Sim — atraca</option>
+            <option value="passagem">Só passagem</option>
+          </select>
+        </label>
+        <label>Depois de qual parada?
+          <select name="apos_ordem">
+            {% for b in v.blocos %}
+              <option value="{{ b.escala.ordem }}">{{ b.escala.porto_nome }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="botao-largo">Acrescentar</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
 </details>
+{% endfor %}
 {% endblock %}
 
-{% block scripts %}<script src="/static/fila.js"></script>{% endblock %}
+{% block scripts %}
+<script src="/static/fila.js"></script>
+<script src="/static/escalas.js"></script>
+{% endblock %}
