@@ -30,6 +30,39 @@ templates.env.globals["MENU"] = MENU
 templates.env.globals["ROTULO_CONDICAO"] = dominio.ROTULO_CONDICAO
 
 
+def formato_br(iso):
+    """'2026-08-21T04:20' -> '21/08/2026 04:20'.
+
+    So EXIBICAO. O banco continua em ISO 8601, que e o que ordena certo e o que
+    as contas de duracao usam — trocar o armazenamento por causa da leitura
+    quebraria as duas coisas.
+    """
+    if not iso:
+        return ""
+    partes = str(iso)[:10].split("-")
+    if len(partes) != 3:
+        return str(iso)
+    data = "{}/{}/{}".format(partes[2], partes[1], partes[0])
+    hora = str(iso)[11:16]
+    return (data + " " + hora).strip()
+
+
+def formato_mt(valor, casas=3):
+    """1234.5 -> '1.234,500'. Tres casas, no padrao brasileiro."""
+    if valor is None or valor == "":
+        return "\u2014"
+    try:
+        texto = "{:,.{}f}".format(float(valor), casas)
+    except (TypeError, ValueError):
+        return str(valor)
+    # de 1,234.500 para 1.234,500
+    return texto.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+templates.env.filters["br"] = formato_br
+templates.env.filters["mt"] = formato_mt
+
+
 def _garantir_admin() -> None:
     """Cria (ou realinha) a conta de administrador a partir do ambiente.
 
@@ -215,6 +248,9 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
         bunker = conn.execute(
             "SELECT vlsfo, mgo, nome_responsavel FROM abastecimento WHERE escala_id = ?",
             (escala["id"],)).fetchone()
+        carga = conn.execute(
+            "SELECT carregado, descarregado, nome_responsavel "
+            "  FROM movimento_carga WHERE escala_id = ?", (escala["id"],)).fetchone()
         saida.append({
             "escala": escala,
             "marcos": [{
@@ -231,6 +267,11 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             # So escala de bunker pede quantidade abastecida.
             "e_bunker": escala["motivo"] == "bunker",
             "bunker": bunker,
+            # So quem carrega ou descarrega movimenta carga. A direcao vem da
+            # condicao, nunca de uma escolha do comandante.
+            "movimenta_carga": escala["condicao"] in ("loading", "discharging"),
+            "carrega": escala["condicao"] == "loading",
+            "carga": carga,
         })
     return saida
 
@@ -244,9 +285,15 @@ def _proximo_lancamento(blocos):
     for bloco in blocos:
         for marco in bloco["marcos"]:
             if not marco["lancado"]:
-                return {"escala": bloco["escala"], "marco": marco, "bunker": False}
+                return {"escala": bloco["escala"], "marco": marco,
+                        "bunker": False, "carga": False}
         if bloco["e_bunker"] and bloco["bunker"] is None:
-            return {"escala": bloco["escala"], "marco": None, "bunker": True}
+            return {"escala": bloco["escala"], "marco": None,
+                    "bunker": True, "carga": False}
+        if bloco["movimenta_carga"] and bloco["carga"] is None:
+            return {"escala": bloco["escala"], "marco": None,
+                    "bunker": False, "carga": True,
+                    "carrega": bloco["carrega"]}
     return None
 
 
@@ -373,6 +420,39 @@ async def api_abastecimento(request: Request):
             conn, escala["id"],
             vlsfo=corpo.get("vlsfo"),
             mgo=corpo.get("mgo"),
+            nome_responsavel=corpo.get("nome_responsavel", ""),
+            registrado_por=conta["login"],
+            observacao=(corpo.get("observacao") or "").strip() or None)
+
+    if erros:
+        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    return {"ok": True}
+
+
+@app.post("/api/carga")
+async def api_carga(request: Request):
+    """Quanto de carga entrou ou saiu nesta escala, em MT.
+
+    Mesmo contrato do marco: sempre JSON, 422 no dado invalido para a fila nao
+    ficar repetindo. A direcao (carrega ou descarrega) vem da condicao da
+    escala, nao do corpo da requisicao.
+    """
+    corpo = await request.json()
+    conta = request.state.conta
+
+    with closing(db.conectar()) as conn:
+        escala = conn.execute(
+            "SELECT e.id, vg.navio_id FROM escala e "
+            "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
+            (corpo.get("escala_id"),)).fetchone()
+        if escala is None:
+            return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
+        if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
+            return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+
+        gravou, erros = viagens.registrar_movimento_carga(
+            conn, escala["id"],
+            quantidade=corpo.get("quantidade"),
             nome_responsavel=corpo.get("nome_responsavel", ""),
             registrado_por=conta["login"],
             observacao=(corpo.get("observacao") or "").strip() or None)

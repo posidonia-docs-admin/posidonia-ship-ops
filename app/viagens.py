@@ -477,6 +477,63 @@ def registrar_abastecimento(
     return True, []
 
 
+def registrar_movimento_carga(
+    conn,
+    escala_id: int,
+    *,
+    quantidade,
+    nome_responsavel: str,
+    registrado_por: str,
+    observacao: str | None = None,
+) -> tuple[bool, list[str]]:
+    """Quanto de carga entrou ou saiu nesta escala, em MT.
+
+    A DIRECAO vem da condicao da escala, nao de um campo que o comandante
+    escolhe: `loading` carrega, `discharging` descarrega. Deixar ele escolher
+    abriria a porta para um carregamento lancado como descarga — e o saldo a
+    bordo derreteria sem ninguem entender por que.
+
+    Um movimento por escala; relancar substitui, que e o util quando ele corrige.
+    """
+    erros: list[str] = []
+    escala = conn.execute(
+        "SELECT id, status, condicao FROM escala WHERE id = ?", (escala_id,)).fetchone()
+    if escala is None:
+        return False, ["Escala {} não existe.".format(escala_id)]
+    if escala["status"] == "cancelada":
+        return False, ["Escala cancelada não aceita movimento de carga."]
+    if escala["condicao"] not in ("loading", "discharging"):
+        return False, ["Esta escala não movimenta carga."]
+
+    valor = _numero_positivo(quantidade, "Quantidade", erros)
+    if not (nome_responsavel or "").strip():
+        erros.append("Informe quem preencheu.")
+    if valor is None and not erros:
+        erros.append("Informe a quantidade em MT.")
+    if erros:
+        return False, erros
+
+    carregado = valor if escala["condicao"] == "loading" else None
+    descarregado = valor if escala["condicao"] == "discharging" else None
+
+    conn.execute(
+        "INSERT INTO movimento_carga (escala_id, carregado, descarregado, "
+        "                             registrado_por, registrado_em, "
+        "                             nome_responsavel, observacao) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(escala_id) DO UPDATE SET "
+        "  carregado = excluded.carregado, descarregado = excluded.descarregado, "
+        "  registrado_por = excluded.registrado_por, "
+        "  registrado_em = excluded.registrado_em, "
+        "  nome_responsavel = excluded.nome_responsavel, "
+        "  observacao = excluded.observacao",
+        (escala_id, carregado, descarregado, registrado_por, agora(),
+         nome_responsavel.strip(), observacao),
+    )
+    conn.commit()
+    return True, []
+
+
 # ---------------------------------------------------------------------------
 # Encerramento
 # ---------------------------------------------------------------------------

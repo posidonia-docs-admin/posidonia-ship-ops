@@ -145,10 +145,55 @@
     });
   }
 
+  function movimentarCarga(form, evento) {
+    evento.preventDefault();
+    var bloco = form.closest("[data-escala][data-tipo]");
+    if (!bloco) return;
+
+    var nome = campoNome ? campoNome.value.trim() : "";
+    if (!nome) {
+      estado(bloco, "erro", "informe quem preenche");
+      if (campoNome) { campoNome.focus(); campoNome.scrollIntoView({ block: "center" }); }
+      return;
+    }
+
+    var quantidade = (new FormData(form).get("quantidade") || "").trim();
+    if (!quantidade) {
+      estado(bloco, "erro", "informe a quantidade em MT");
+      return;
+    }
+
+    var botao = form.querySelector("button[type=submit]");
+    if (botao) botao.disabled = true;
+    estado(bloco, "pendente", "salvando...");
+
+    // A direcao (carrega ou descarrega) vem da condicao da escala, no servidor.
+    window.Fila.enfileirar({
+      escala_id: Number(bloco.dataset.escala),
+      tipo: bloco.dataset.tipo,
+      quantidade: quantidade,
+      nome_responsavel: nome
+    }, "/api/carga").then(function (r) {
+      if (r && r.erros && r.erros.length) {
+        estado(bloco, "erro", r.erros.join(" "));
+      } else if (form.dataset.avanca === "1") {
+        window.location.reload();
+        return;
+      } else {
+        estado(bloco, "salvo", "salvo");
+      }
+      if (botao) botao.disabled = false;
+    }).catch(function () {
+      estado(bloco, "pendente", "sem conexão — será enviado");
+      if (botao) botao.disabled = false;
+    });
+  }
+
   document.addEventListener("submit", function (evento) {
     var form = evento.target;
     if (!form.classList) return;
     if (form.classList.contains("lancar")) enviar(form, evento);
     else if (form.classList.contains("abastecer")) abastecer(form, evento);
+    else if (form.classList.contains("carregar")) movimentarCarga(form, evento);
   });
 })();

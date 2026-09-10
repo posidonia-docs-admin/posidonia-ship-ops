@@ -194,6 +194,11 @@ form.destaque input { min-height: 50px; font-size: 16px; }
 .marco { border-top: 1px solid var(--line); padding: 9px 14px; }
 .marco:first-of-type { border-top: 0; }
 .marco.bunker { background: #fffdf6; }
+.marco.carga { background: #f6fbf8; }
+form.carregar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+                background: transparent; border: 0; padding: 0; }
+form.carregar input[type=number] { flex: 0 1 140px; }
+form.carregar.destaque input { width: 100%; min-height: 50px; font-size: 16px; }
 .marco-nome { font-size: 13px; color: var(--muted); min-width: 74px; }
 
 form.lancar, form.abastecer {

@@ -253,6 +253,10 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
 - **Coluna nova precisa de preenchimento retroativo no `seed.sql`.** `INSERT OR IGNORE` não toca
   linha que já existe: sem um `UPDATE ... WHERE col IS NULL`, a viagem que estava aberta em
   produção fica sem o campo para sempre — e é justamente a que o comandante vai preencher.
+- **Os testes nunca podem tocar um banco de verdade.** O `conftest.py` **sobrescreve**
+  `SHIPOPS_BANCO` e apaga `TURSO_*` — sem `setdefault`, de propósito: a fixture `cliente`
+  APAGA o arquivo apontado pela variável, e herdar o ambiente já custou o banco de
+  desenvolvimento uma vez. Um dia apontaria para produção.
 - **Rode a suite nos DOIS drivers antes de publicar.** `SHIPOPS_BACKEND=libsql-local` usa o
   driver do Turso. O `libsql` devolve **tuplas puras** e o cursor **nao e iteravel**; o
   `sqlite3` devolve `Row` e o cursor itera. Rodar so num dos dois nao prova nada — foi
@@ -299,6 +303,43 @@ programação, nunca lançamento inválido do comandante.
 A segregação é o ponto: o comandante **nunca** vê painel, frota ou contas. A guarda é um
 middleware global — rota nova nasce protegida — e o bloqueio de escrita do `analytics` é por
 **método HTTP**, não rota a rota.
+
+---
+
+## Carga — movimento e saldo a bordo
+
+Escala de `loading` **carrega**, escala de `discharging` **descarrega**, em **MT**. A tabela
+`movimento_carga` guarda um movimento por escala.
+
+**A direção vem da `condicao` da escala, nunca de um campo que o comandante escolhe.** Deixar
+ele escolher abriria a porta para um carregamento lançado como descarga — e o saldo derreteria
+sem ninguém entender por quê.
+
+**O saldo a bordo é DERIVADO, nunca guardado** (view `carga_bordo`). Um saldo gravado poderia
+discordar dos movimentos que o geraram, e não haveria como saber qual dos dois está certo.
+
+Ele **acumula por navio e atravessa viagens**:
+
+| viagem | carregado | descarregado | a bordo |
+|---|--:|--:|--:|
+| 2026-001 | 58.000 | — | 58.000 |
+| 2026-001 | — | 57.500 | **500** |
+| 2026-002 | 58.000 | — | 58.500 |
+| 2026-002 | — | 58.000 | **500** |
+
+Até que um dia ele descarregue acima do que carregou e zere a sobra. **O comandante não vê esse
+saldo** — ele só informa quanto entrou e quanto saiu.
+
+---
+
+## Exibição — formato brasileiro
+
+Filtros `|br` e `|mt` em `main.py`. Data vira `21/08/2026 04:20`; número vira `58.000,000`, com
+**três casas**.
+
+**Só exibição.** O banco continua em ISO 8601, que é o que ordena certo e o que as contas de
+duração usam. A única exceção é o `value` de um `<input type="date">`, onde a especificação HTML
+**exige** `yyyy-mm-dd` — e o navegador exibe no formato do aparelho.
 
 ---
 

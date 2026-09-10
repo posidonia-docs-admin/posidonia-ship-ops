@@ -169,3 +169,50 @@ SELECT l.*,
        ROUND((julianday(l.hora_utc) - julianday(l.hora_anterior)) * 24, 2)
            AS horas_desde_a_leitura_anterior
 FROM _leituras_combustivel l;
+
+-- ---------------------------------------------------------------------------
+-- CARGA A BORDO
+--
+-- O saldo e ACUMULADO por navio e ATRAVESSA viagens: carrega 58.000, descarrega
+-- 57.500, ficam 500 a bordo; na viagem seguinte carrega 58.000 (saldo 58.500) e
+-- descarrega 58.000 (volta a 500). Uma hora ele descarrega acima do carregado e
+-- zera a sobra.
+--
+-- Derivado, nunca guardado: um saldo gravado poderia discordar dos movimentos
+-- que o geraram, e nao haveria como saber qual dos dois esta certo.
+--
+-- A ordem e o instante do ULTIMO marco da escala — quando a operacao terminou.
+-- Escala sem marco ainda entra com `momento` nulo e ordena pelo id, para o
+-- movimento nao sumir da conta so por falta de horario.
+-- ---------------------------------------------------------------------------
+
+DROP VIEW IF EXISTS carga_bordo;
+CREATE VIEW carga_bordo AS
+WITH movimentos AS (
+    SELECT
+        vg.navio_id,
+        n.nome_oficial AS navio,
+        vg.numero      AS viagem,
+        e.id           AS escala_id,
+        e.ordem,
+        e.codigo_porto,
+        p.nome         AS porto,
+        e.condicao,
+        COALESCE(mc.carregado, 0)    AS carregado,
+        COALESCE(mc.descarregado, 0) AS descarregado,
+        mc.nome_responsavel,
+        (SELECT MAX(x.hora_utc) FROM evento_vigente x WHERE x.escala_id = e.id)
+            AS momento
+    FROM movimento_carga mc
+    JOIN escala e  ON e.id = mc.escala_id
+    JOIN viagem vg ON vg.id = e.viagem_id
+    JOIN navio n   ON n.id = vg.navio_id
+    JOIN porto p   ON p.codigo = e.codigo_porto
+)
+SELECT m.*,
+       ROUND(SUM(m.carregado - m.descarregado) OVER (
+                 PARTITION BY m.navio_id
+                 ORDER BY m.momento, m.escala_id
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 3)
+           AS carga_bordo
+FROM movimentos m;

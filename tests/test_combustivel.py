@@ -219,3 +219,113 @@ def test_horas_entre_leituras(conn, viagem):
         "SELECT horas_desde_a_leitura_anterior FROM consumo_combustivel ORDER BY hora_utc")]
     assert horas[0] is None
     assert horas[1] == 12.5
+
+
+# ---------------------------------------------------------------------------
+# Carga: movimento e saldo a bordo
+# ---------------------------------------------------------------------------
+
+def _mover(conn, escala_id, quantidade):
+    return viagens.registrar_movimento_carga(
+        conn, escala_id, quantidade=quantidade,
+        nome_responsavel="Cmt.", registrado_por="navio.pathfinder")
+
+
+def test_direcao_vem_da_condicao_da_escala(conn, viagem):
+    """Nao ha campo 'carrega ou descarrega': deixar o comandante escolher abriria
+    a porta para um carregamento lancado como descarga."""
+    _, ordens = viagem
+    ok, erros = _mover(conn, ordens[30], 58000)          # Juruti: loading
+    assert ok and erros == []
+    linha = conn.execute(
+        "SELECT carregado, descarregado FROM movimento_carga WHERE escala_id = ?",
+        (ordens[30],)).fetchone()
+    assert linha["carregado"] == 58000.0 and linha["descarregado"] is None
+
+    ok, _ = _mover(conn, ordens[60], 57500)              # Alumar: discharging
+    assert ok
+    linha = conn.execute(
+        "SELECT carregado, descarregado FROM movimento_carga WHERE escala_id = ?",
+        (ordens[60],)).fetchone()
+    assert linha["carregado"] is None and linha["descarregado"] == 57500.0
+
+
+def test_escala_que_nao_movimenta_carga_e_recusada(conn, viagem):
+    _, ordens = viagem
+    ok, erros = _mover(conn, ordens[50], 100)            # Barra Norte: laden
+    assert ok is False
+    assert any("não movimenta carga" in e for e in erros)
+
+
+def test_relancar_substitui_a_quantidade(conn, viagem):
+    _, ordens = viagem
+    _mover(conn, ordens[30], 58000)
+    _mover(conn, ordens[30], 58120.5)
+    linhas = conn.execute(
+        "SELECT carregado FROM movimento_carga WHERE escala_id = ?",
+        (ordens[30],)).fetchall()
+    assert len(linhas) == 1 and linhas[0]["carregado"] == 58120.5
+
+
+def test_carga_a_bordo_acumula_e_atravessa_viagens(conn, pathfinder):
+    """O caso descrito pelo Vinicius, numero por numero.
+
+    Carrega 58.000 e descarrega 57.500: ficam 500 a bordo. Na viagem seguinte
+    carrega 58.000 (saldo 58.500) e descarrega 58.000 — o saldo volta a 500 e
+    atravessa a viagem.
+    """
+    ROTEIRO = ((10, ["sailing"]), (20, ["arrival", "sailing"]),
+               (30, ["arrival", "berth", "unberth", "sailing"]),
+               (40, ["arrival", "sailing"]), (50, ["arrival", "sailing"]),
+               (60, ["arrival", "berth", "unberth"]))
+
+    def preencher(viagem_id, carregado, descarregado, mes):
+        ordens = {l["ordem"]: l["id"] for l in conn.execute(
+            "SELECT id, ordem FROM escala WHERE viagem_id = ?", (viagem_id,))}
+        dia = 1
+        for ordem, tipos in ROTEIRO:
+            for tipo in tipos:
+                lancar(conn, ordens[ordem], tipo,
+                       "2026-{:02d}-{:02d}T08:00".format(mes, dia))
+                dia += 1
+            if ordem == 30:
+                _mover(conn, ordens[ordem], carregado)
+            if ordem == 60:
+                _mover(conn, ordens[ordem], descarregado)
+
+    v1, _ = viagens.abrir_viagem(conn, pathfinder)
+    preencher(v1, 58000, 57500, mes=3)          # sobra 500
+
+    # a viagem seguinte nasceu sozinha do unberth de Alumar
+    v2 = conn.execute(
+        "SELECT id FROM viagem WHERE navio_id = ? AND status = 'aberta'",
+        (pathfinder,)).fetchone()[0]
+    assert v2 != v1
+    preencher(v2, 58000, 58000, mes=5)          # permanece 500
+
+    saldos = [(l["porto"], l["carregado"], l["descarregado"], l["carga_bordo"])
+              for l in conn.execute(
+                  "SELECT porto, carregado, descarregado, carga_bordo "
+                  "  FROM carga_bordo ORDER BY momento, escala_id")]
+    assert saldos == [
+        ("Juruti", 58000.0,     0.0, 58000.0),
+        ("Alumar",     0.0, 57500.0,   500.0),   # sobraram 500 a bordo
+        ("Juruti", 58000.0,     0.0, 58500.0),   # o saldo entrou na viagem nova
+        ("Alumar",     0.0, 58000.0,   500.0),   # e continua a bordo
+    ]
+
+
+def test_descarregar_acima_do_carregado_zera_a_sobra(conn, pathfinder):
+    """Uma hora ele descarrega a sobra acumulada."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    ordens = {l["ordem"]: l["id"] for l in conn.execute(
+        "SELECT id, ordem FROM escala WHERE viagem_id = ?", (viagem_id,))}
+    lancar(conn, ordens[30], "arrival", "2026-03-01T08:00")
+    lancar(conn, ordens[60], "arrival", "2026-03-05T08:00")
+    _mover(conn, ordens[30], 57500)
+    _mover(conn, ordens[60], 58000)
+
+    ultimo = conn.execute(
+        "SELECT carga_bordo FROM carga_bordo ORDER BY momento DESC, escala_id DESC "
+        "LIMIT 1").fetchone()[0]
+    assert ultimo == -500.0     # descarregou 500 alem do que carregou nesta viagem

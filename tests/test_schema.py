@@ -77,3 +77,19 @@ def test_inicializar_e_idempotente(conn):
     db.inicializar(conn)
     assert conn.execute("SELECT COUNT(*) FROM navio").fetchone()[0] == 4
     assert conn.execute("SELECT COUNT(*) FROM rota_etapa").fetchone()[0] == 6
+
+
+def test_os_testes_nunca_tocam_um_banco_de_verdade():
+    """A fixture `cliente` apaga o arquivo apontado por SHIPOPS_BANCO.
+
+    Herdar essa variavel do ambiente ja custou o banco de desenvolvimento uma
+    vez. Este teste existe para que nunca custe o de producao.
+    """
+    import os
+    import tempfile
+
+    from app import config
+
+    assert tempfile.gettempdir().lower() in config.CAMINHO_BANCO.lower()
+    assert "shipops-testes-" in config.CAMINHO_BANCO
+    assert not os.environ.get("TURSO_DATABASE_URL")

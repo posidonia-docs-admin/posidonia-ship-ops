@@ -44,7 +44,7 @@
       </div>
       <div class="situacao-ultimo">
         Último lançamento: {{ v.situacao.marco.curto }}
-        {{ v.situacao.marco.lancado.hora_local|replace("T", " ") }}
+        {{ v.situacao.marco.lancado.hora_local|br }}
       </div>
     {% else %}
       <div class="situacao-agora"><span class="porto-agora">Viagem nova</span></div>
@@ -63,12 +63,16 @@
   <section class="proximo">
     <div class="proximo-rot">Próximo lançamento</div>
     <h2 class="proximo-titulo">
-      {% if v.proximo.bunker %}Combustível abastecido{% else %}{{ v.proximo.marco.curto }}{% endif %}
+      {% if v.proximo.bunker %}Combustível abastecido
+      {%- elif v.proximo.carga %}{{ "Quantidade carregada" if v.proximo.carrega else "Quantidade descarregada" }}
+      {%- else %}{{ v.proximo.marco.curto }}{% endif %}
       <span class="em">em {{ v.proximo.escala.porto_nome }}</span>
     </h2>
     <p class="proximo-dica">
       {% if v.proximo.bunker %}
         Quantas toneladas entraram nesta parada.
+      {% elif v.proximo.carga %}
+        A quantidade oficial, em MT.
       {% else %}
         {{ ROTULO_MARCO[v.proximo.marco.tipo] }} · hora real, não estimada.
         O combustível a bordo é opcional.
@@ -76,8 +80,15 @@
     </p>
 
     <div class="marco" data-escala="{{ v.proximo.escala.id }}"
-         data-tipo="{{ "abastecimento" if v.proximo.bunker else v.proximo.marco.tipo }}">
-      {% if v.proximo.bunker %}
+         data-tipo="{% if v.proximo.bunker %}abastecimento{% elif v.proximo.carga %}carga{% else %}{{ v.proximo.marco.tipo }}{% endif %}">
+      {% if v.proximo.carga %}
+        <form class="carregar destaque" data-avanca="1">
+          <input type="number" step="0.001" min="0" name="quantidade"
+                 placeholder="MT" required>
+          <button type="submit" class="botao-largo">Salvar</button>
+          <span class="estado" data-estado></span>
+        </form>
+      {% elif v.proximo.bunker %}
         <form class="abastecer destaque" data-avanca="1">
           <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t">
           <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t">
@@ -133,10 +144,9 @@
             {% if m.lancado %}
               <div class="gravado">
                 <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
-                <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+                <span class="valor">{{ m.lancado.hora_local|br }}</span>
                 {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
-                  <span class="rob">VLSFO {{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else "—" }}
-                    · MGO {{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else "—" }}</span>
+                  <span class="rob">VLSFO {{ m.lancado.rob_vlsfo|mt }} · MGO {{ m.lancado.rob_mgo|mt }}</span>
                 {% endif %}
                 <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
                 <span class="estado" data-estado></span>
@@ -159,7 +169,19 @@
           </div>
           {% endfor %}
 
-          {% if b.e_bunker %}
+          {% if b.movimenta_carga %}
+      <div class="marco carga" data-escala="{{ b.escala.id }}" data-tipo="carga">
+        <form class="carregar">
+          <span class="marco-nome">{{ "Carregado" if b.carrega else "Descarregado" }}</span>
+          <input type="number" step="0.001" min="0" name="quantidade" placeholder="MT"
+                 value="{{ (b.carga.carregado if b.carrega else b.carga.descarregado) if b.carga else "" }}">
+          <button type="submit">salvar</button>
+          <span class="estado" data-estado></span>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if b.e_bunker %}
           <div class="marco bunker" data-escala="{{ b.escala.id }}" data-tipo="abastecimento">
             <form class="abastecer">
               <span class="marco-nome">Abastecido</span>
@@ -241,7 +263,7 @@
               <div class="gravado">
                 <span class="marco-nome">{{ m.curto }}</span>
                 {% if m.lancado %}
-                  <span class="valor">{{ m.lancado.hora_local|replace("T", " ") }}</span>
+                  <span class="valor">{{ m.lancado.hora_local|br }}</span>
                   <span class="por">{{ m.lancado.nome_responsavel }}</span>
                 {% else %}
                   <span class="por">não lançado</span>

@@ -516,3 +516,81 @@ def test_so_escala_de_bunker_pede_quantidade(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
     assert 'class="abastecer"' not in html      # a rota padrao nao tem bunker
+
+
+# ---------------------------------------------------------------------------
+# Carga, datas brasileiras e tres casas
+# ---------------------------------------------------------------------------
+
+def test_datas_aparecem_no_formato_brasileiro(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    escala_id = escala_de(cliente, ordem=30)
+    cliente.post("/api/marco", json={
+        "escala_id": escala_id, "tipo": "arrival", "hora_local": "2026-08-21T04:20",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "br-1",
+        "rob_vlsfo": "486.2", "rob_mgo": "37.5"})
+
+    import re
+
+    html = cliente.get("/navio").text
+    assert "21/08/2026 04:20" in html
+    assert "486,200" in html                 # tres casas, padrao brasileiro
+    assert "37,500" in html
+
+    # O ISO so pode aparecer no value de <input type="date"> — a especificacao
+    # HTML exige yyyy-mm-dd ali, e o navegador exibe no formato do aparelho.
+    # Em texto visivel, nunca.
+    visivel = re.sub(r"<input[^>]*>", "", html)
+    assert "2026-08-21" not in visivel
+
+
+def test_so_quem_carrega_ou_descarrega_pede_quantidade(cliente):
+    import re
+
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    caixas = re.findall(r'data-escala="(\d+)" data-tipo="carga"', html)
+    assert len(caixas) == 2                  # Juruti e Alumar, so eles
+    assert "Carregado" in html and "Descarregado" in html
+
+
+def test_quantidade_de_carga_pela_api(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    juruti = escala_de(cliente, ordem=30)
+
+    resposta = cliente.post("/api/carga", json={
+        "escala_id": juruti, "quantidade": "58000", "nome_responsavel": "Cmt."})
+    assert resposta.status_code == 200
+    with closing(db.conectar()) as conn:
+        linha = conn.execute(
+            "SELECT carregado, descarregado FROM movimento_carga WHERE escala_id = ?",
+            (juruti,)).fetchone()
+    assert linha["carregado"] == 58000.0 and linha["descarregado"] is None
+    assert "58000" in cliente.get("/navio").text
+
+
+def test_carga_em_escala_que_nao_movimenta_devolve_422(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    barra = escala_de(cliente, ordem=50)
+    resposta = cliente.post("/api/carga", json={
+        "escala_id": barra, "quantidade": "100", "nome_responsavel": "Cmt."})
+    assert resposta.status_code == 422
+    assert any("não movimenta carga" in e for e in resposta.json()["erros"])
+
+
+def test_carga_de_outro_navio_e_bloqueada(cliente):
+    entrar(cliente, "navio.pioneer")
+    cliente.get("/navio")
+    cliente.get("/logout")
+    entrar(cliente, "navio.pathfinder")
+    cliente.get("/navio")
+    with closing(db.conectar()) as conn:
+        alheia = conn.execute(
+            "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE vg.navio_id = 2 AND e.ordem = 30").fetchone()[0]
+    resposta = cliente.post("/api/carga", json={
+        "escala_id": alheia, "quantidade": "100", "nome_responsavel": "X"})
+    assert resposta.status_code == 403

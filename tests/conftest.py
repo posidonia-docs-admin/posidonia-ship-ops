@@ -5,8 +5,15 @@ import tempfile
 import uuid
 
 # Precisa vir ANTES de importar app.config: as constantes sao lidas no import.
+#
+# SEM setdefault, de proposito: a fixture `cliente` APAGA o arquivo apontado por
+# SHIPOPS_BANCO. Herdar a variavel do ambiente ja custou o banco de
+# desenvolvimento uma vez, e um dia apontaria para producao. Os testes escrevem
+# no proprio diretorio temporario e em lugar nenhum mais.
 _TMP = pathlib.Path(tempfile.mkdtemp(prefix="shipops-testes-"))
-os.environ.setdefault("SHIPOPS_BANCO", str(_TMP / "teste.db"))
+os.environ["SHIPOPS_BANCO"] = str(_TMP / "teste.db")
+os.environ.pop("TURSO_DATABASE_URL", None)   # nunca tocar num banco remoto
+os.environ.pop("TURSO_AUTH_TOKEN", None)
 os.environ.setdefault("SHIPOPS_SECRET_KEY", "chave-longa-apenas-para-os-testes-xyz")
 
 import pytest  # noqa: E402

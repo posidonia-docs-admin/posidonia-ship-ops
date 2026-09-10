@@ -232,6 +232,27 @@ CREATE TABLE IF NOT EXISTS abastecimento (
 );
 
 -- ---------------------------------------------------------------------------
+-- movimento_carga: quanto de bauxita entrou ou saiu nesta escala, em MT.
+--
+-- Um movimento por escala. A escala de `loading` so carrega; a de `discharging`
+-- so descarrega — a validacao vive no servico, olhando a condicao da escala.
+--
+-- O SALDO a bordo NAO fica aqui: e derivado, na view `carga_bordo`. Guardar o
+-- saldo permitiria que ele discordasse dos movimentos que o geraram, e nao
+-- haveria como saber qual dos dois esta certo.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS movimento_carga (
+    escala_id        INTEGER PRIMARY KEY REFERENCES escala(id),
+    carregado        REAL,                   -- MT embarcadas
+    descarregado     REAL,                   -- MT desembarcadas
+    registrado_por   TEXT NOT NULL,
+    registrado_em    TEXT NOT NULL,
+    nome_responsavel TEXT NOT NULL,
+    observacao       TEXT,
+    CHECK (carregado IS NOT NULL OR descarregado IS NOT NULL)
+);
+
+-- ---------------------------------------------------------------------------
 -- conta / conferencia / log_acesso
 --
 -- A conta e POR NAVIO, nao por pessoa — decisao operacional, por causa da troca
