@@ -110,6 +110,86 @@ Views: **`combustivel_bordo`** (porto · data · condição · ROB · abastecido
 
 ### As quatro regras que sustentam o modelo
 
+**1. A viagem vai do Sailing ao Unberth de Alumar, e e AUTOCONTIDA.**
+O `Sailing` de Alumar e o **primeiro** lancamento da viagem; o `Unberth` de Alumar e o
+**ultimo**. Nada e herdado da viagem anterior e nada fica pendurado na seguinte.
+
+> Isto foi corrigido em 10/set/2026. O modelo anterior gravava a escala de Alumar uma vez so e
+> deixava o `Sailing` dela abrindo a proxima viagem — o que fazia o **primeiro lancamento de uma
+> viagem morar na viagem anterior**, invisivel para quem a estava preenchendo. Cada marco continua
+> gravado uma vez so; o que mudou foi a qual viagem ele pertence, e agora isso segue o modo como a
+> operacao pensa a viagem.
+
+Dai os dois tipos de escala do ciclo: `abertura` (so `sailing`) e `encerramento`
+(`arrival`, `berth`, `unberth` — **sem** sailing, porque o proximo sailing abre a viagem
+seguinte). A rota-modelo tem **seis** etapas.
+
+**2. A chave da escala e `(viagem, ordem)` — nunca `(viagem, porto)`.**
+Fazendinha aparece **duas vezes na mesma viagem**, e Alumar tambem (saida e descarga). O campo
+`sentido` e o que permite a analise separa-las.
+
+**3. O tipo da escala decide quais marcos existem.**
+Cobrar `berth` de uma escala de passagem e pedir dado que nao existe. A tabela `marco_exigido`
+e a fonte disso e alimenta a fila `escalas_incompletas`.
+
+**4. O ciclo se encadeia sozinho.**
+Ao lancar o `unberth` da escala de encerramento, `encadear_ciclo()` fecha a viagem e abre a
+seguinte, que ja nasce esperando o proprio `Sailing` de Alumar. **O comandante nunca pensa em
+"viagem"** — ele so ve a proxima parada esperando horario.
+
+O encadeamento e **silencioso**: o marco foi gravado, e devolver o tropeco do encadeamento como
+erro faria o comandante achar que perdeu o lancamento.
+
+---
+
+### O que o navio está fazendo — `condicao`
+
+Vocabulário da aba **`T_ESCALAS` do `MOTOR_FRETE`**, não um inventado aqui: o dado do comandante
+fala a mesma língua do motor de viagem quando os dois se encontrarem.
+
+| Escala | `condicao` | `motivo` |
+|---|---|---|
+| Alumar (saída) | `ballast` | abertura |
+| Fazendinha ↑ | `ballast` | passagem |
+| Juruti | `loading` | carregamento |
+| Fazendinha ↓ | `laden` | passagem |
+| Barra Norte | `laden` | espera_mare |
+| Alumar | `discharging` | descarga |
+| Icoaraci / Itaqui | `bunkering` | bunker |
+
+> **`condicao` e `motivo` são perguntas diferentes** e por isso duas colunas. Em Barra Norte o
+> navio está **laden** (condição) **esperando maré** (motivo). Fundi-las pareceria economia e
+> viraria ambiguidade na primeira análise.
+
+---
+
+### Combustível — a regra que decide se a conta fecha
+
+Cada marco carrega o **ROB** (combustível a bordo naquele instante): `evento.rob_vlsfo` e
+`evento.rob_mgo`, em toneladas. Escala de bunker carrega também quanto **entrou**, na tabela
+`abastecimento`.
+
+```
+consumo(anterior → atual) = ROB_anterior + abastecido_atual − ROB_atual
+```
+
+**A premissa que sustenta isso:** o ROB é sempre o que está a bordo **naquele instante, já
+contando o que acabou de receber**. Por isso o abastecimento de uma escala entra no **último
+marco** dela (a saída) — quando o navio deixa o porto o combustível já está dentro.
+
+> ⚠️ Se um dia o comandante passar a reportar o ROB **antes** de abastecer, essa conta passa a
+> contar o bunker **duas vezes**. É a premissa a vigiar.
+
+O ROB é **opcional**: campo vazio não segura o marco. Perder a hora do Arrival por causa de um
+número de combustível seria trocar o certo pelo útil. Vazio não é erro; número inválido é.
+
+Views: **`combustivel_bordo`** (porto · data · condição · ROB · abastecido) e
+**`consumo_combustivel`**, que acrescenta o delta e as horas entre leituras.
+
+---
+
+### As quatro regras que sustentam o modelo
+
 **1. A escala de Alumar serve a duas viagens, mas é gravada uma vez só.**
 Seus `arrival`/`berth`/`unberth` **fecham** a viagem; seu `sailing` **abre** a seguinte. Por isso
 a viagem é definida por **dois eventos-âncora** (`evento_abertura_id`, `evento_encerramento_id`)
@@ -169,6 +249,7 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
   aparece na migração, e um `CREATE VIEW`/`CREATE INDEX` sobre ela antes disso derruba o
   arranque inteiro. Os testes normais partem de banco vazio e **não pegam isso**;
   `tests/test_migracao.py` pega.
+- **Enum que cresce e caro.** O SQLite grava o `CHECK` na DEFINICAO da tabela: `CREATE TABLE IF NOT EXISTS` nao o atualiza e nao ha `ALTER` para ele, entao um valor novo **derruba o arranque de qualquer banco que ja exista**. A saida esta em `_TABELAS_RECRIAR` (`db.py`), que reconstroi a tabela preservando as linhas. Se essa lista comecar a crescer, troque o `CHECK` por chave estrangeira para uma tabela de referencia — ai acrescentar valor vira um `INSERT`.
 - **Coluna nova precisa de preenchimento retroativo no `seed.sql`.** `INSERT OR IGNORE` não toca
   linha que já existe: sem um `UPDATE ... WHERE col IS NULL`, a viagem que estava aberta em
   produção fica sem o campo para sempre — e é justamente a que o comandante vai preencher.

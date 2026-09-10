@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import config
 
-TIPOS_ESCALA = ("operacional", "fundeio", "passagem", "abertura")
+TIPOS_ESCALA = ("operacional", "fundeio", "passagem", "abertura", "encerramento")
 TIPOS_EVENTO = ("arrival", "berth", "unberth", "sailing")
 PRECISOES = ("exata", "periodo_am", "periodo_pm", "apenas_data", "tbc")
 SENTIDOS = ("subida", "descida", "na")
@@ -29,7 +29,12 @@ MARCOS_POR_TIPO = {
     "operacional": ("arrival", "berth", "unberth", "sailing"),
     "fundeio": ("arrival", "sailing"),
     "passagem": ("arrival", "sailing"),
+    # A viagem COMECA no Sailing de Alumar e TERMINA no Unberth de Alumar.
+    # A escala de saida so tem o sailing; a de descarga nao tem sailing —
+    # o sailing seguinte pertence a proxima viagem, e la ele e o primeiro
+    # lancamento, nao um resto da anterior.
     "abertura": ("sailing",),
+    "encerramento": ("arrival", "berth", "unberth"),
 }
 
 # O que o navio esta FAZENDO. Vocabulario da aba T_ESCALAS do MOTOR_FRETE, para

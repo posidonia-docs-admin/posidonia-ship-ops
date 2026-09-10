@@ -71,7 +71,12 @@ INSERT OR IGNORE INTO marco_exigido (tipo_escala, tipo_evento, ordem) VALUES
     ('passagem',    'sailing', 4),
     -- escala de abertura: existe so para registrar a saida da primeira
     -- viagem de um navio, quando nao ha viagem anterior de onde herdar o sailing
-    ('abertura',    'sailing', 4);
+    ('abertura',    'sailing', 4),
+    -- escala que FECHA a viagem: nao tem sailing. O sailing seguinte e o
+    -- PRIMEIRO lancamento da proxima viagem, nao um resto desta.
+    ('encerramento','arrival', 1),
+    ('encerramento','berth',   2),
+    ('encerramento','unberth', 3);
 
 -- ---------------------------------------------------------------------------
 -- A rota padrao: Alumar -> Juruti -> Alumar.
@@ -85,29 +90,37 @@ INSERT OR IGNORE INTO rota_modelo (id, nome, descricao, ativo) VALUES
      'Circuito padrao dos 4 Amazon. Abre no sailing de Alumar da viagem '
      || 'anterior e fecha no unberth de Alumar desta viagem.', 1);
 
--- `condicao` = o que o navio esta FAZENDO (vocabulario do MOTOR_FRETE).
--- `motivo`   = por que parou aqui. Em Barra Norte: condicao `laden`, motivo
--- `espera_mare` — perguntas diferentes, colunas diferentes.
-INSERT OR IGNORE INTO rota_etapa
+-- A rota padrao: SEIS etapas.
+--
+-- A viagem COMECA no Sailing de Alumar e TERMINA no Unberth de Alumar. O
+-- Sailing e o PRIMEIRO lancamento da viagem — nunca fica preso na anterior.
+-- Cada marco continua gravado uma vez so; o que muda e a qual viagem ele
+-- pertence, e isso segue o modo como a operacao pensa a viagem.
+--
+-- `condicao` = o que o navio esta FAZENDO. `motivo` = por que parou aqui.
+-- Em Barra Norte: condicao `laden`, motivo `espera_mare`.
+--
+-- DELETE + INSERT, e nao INSERT OR IGNORE: a rota e configuracao derivada do
+-- codigo, nao dado do usuario. Reescrever a cada arranque garante que um banco
+-- antigo receba a estrutura nova — nenhuma escala ja criada e tocada, porque
+-- escala e copia, nao referencia.
+DELETE FROM rota_etapa WHERE rota_modelo_id = 1;
+
+INSERT INTO rota_etapa
     (rota_modelo_id, ordem, codigo_porto, tipo_escala, sentido, motivo, condicao,
      observacao) VALUES
-    (1, 1, 'FAZENDINHA',  'passagem',    'subida',  'passagem',     'ballast',
+    (1, 1, 'ALUMAR',      'abertura',     'na',      'abertura',     'ballast',
+     'Saida de Alumar. E o PRIMEIRO lancamento da viagem. So o Sailing.'),
+    (1, 2, 'FAZENDINHA',  'passagem',     'subida',  'passagem',     'ballast',
      'Passagem no trecho fluvial. Nao atraca. Segue vazio para Juruti.'),
-    (1, 2, 'JURUTI',      'operacional', 'subida',  'carregamento', 'loading',
+    (1, 3, 'JURUTI',      'operacional',  'subida',  'carregamento', 'loading',
      'Carrega bauxita.'),
-    (1, 3, 'FAZENDINHA',  'passagem',    'descida', 'passagem',     'laden',
-     'Mesma Fazendinha da etapa 1, agora na descida e carregado.'),
-    (1, 4, 'BARRA_NORTE', 'passagem',    'descida', 'espera_mare',  'laden',
+    (1, 4, 'FAZENDINHA',  'passagem',     'descida', 'passagem',     'laden',
+     'Mesma Fazendinha da etapa 2, agora na descida e carregado.'),
+    (1, 5, 'BARRA_NORTE', 'passagem',     'descida', 'espera_mare',  'laden',
      'Parada por conta da mare. Nao atraca. Continua carregado.'),
-    (1, 5, 'ALUMAR',      'operacional', 'descida', 'descarga',     'discharging',
-     'Descarrega. Seu unberth FECHA esta viagem; seu sailing ABRE a proxima.');
-
--- Bancos criados antes da coluna `condicao` existir.
-UPDATE rota_etapa SET condicao = 'ballast'     WHERE rota_modelo_id = 1 AND ordem = 1 AND condicao IS NULL;
-UPDATE rota_etapa SET condicao = 'loading'     WHERE rota_modelo_id = 1 AND ordem = 2 AND condicao IS NULL;
-UPDATE rota_etapa SET condicao = 'laden'       WHERE rota_modelo_id = 1 AND ordem = 3 AND condicao IS NULL;
-UPDATE rota_etapa SET condicao = 'laden'       WHERE rota_modelo_id = 1 AND ordem = 4 AND condicao IS NULL;
-UPDATE rota_etapa SET condicao = 'discharging' WHERE rota_modelo_id = 1 AND ordem = 5 AND condicao IS NULL;
+    (1, 6, 'ALUMAR',      'encerramento', 'descida', 'descarga',     'discharging',
+     'Descarrega. O Unberth e o ULTIMO lancamento da viagem.');
 
 -- Escalas ja criadas antes da coluna existir: herdam a condicao da etapa que as
 -- gerou. escala.ordem = rota_etapa.ordem * 10 (ver PASSO_ORDEM em viagens.py).

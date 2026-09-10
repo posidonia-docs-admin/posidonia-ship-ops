@@ -39,7 +39,7 @@ def entrar(cliente, login="navio.pathfinder"):
     return resposta
 
 
-def escala_de(cliente, ordem=20):
+def escala_de(cliente, ordem=30):
     with closing(db.conectar()) as conn:
         return conn.execute(
             "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
@@ -135,7 +135,7 @@ def test_supervisor_cai_no_painel(cliente):
 def test_lancamento_grava_e_aparece_na_tela(cliente):
     entrar(cliente)
     cliente.get("/navio")
-    escala_id = escala_de(cliente, ordem=20)
+    escala_id = escala_de(cliente, ordem=30)
 
     resposta = cliente.post("/api/marco", json={
         "escala_id": escala_id, "tipo": "arrival",
@@ -151,7 +151,7 @@ def test_reenvio_do_mesmo_id_nao_duplica(cliente):
     """A fila do celular repete o envio quando o servidor demora a acordar."""
     entrar(cliente)
     cliente.get("/navio")
-    escala_id = escala_de(cliente, ordem=20)
+    escala_id = escala_de(cliente, ordem=30)
     corpo = {"escala_id": escala_id, "tipo": "arrival",
              "hora_local": "2026-03-01T07:00", "offset": "-03:00",
              "nome_responsavel": "Cmt. Almeida", "id_cliente": "cli-repetido"}
@@ -170,7 +170,7 @@ def test_dado_invalido_devolve_422_para_a_fila_parar_de_tentar(cliente):
     """422 e o sinal de 'nao adianta reenviar'. Sem ele a fila repete para sempre."""
     entrar(cliente)
     cliente.get("/navio")
-    barra = escala_de(cliente, ordem=40)      # escala de passagem: nao tem berth
+    barra = escala_de(cliente, ordem=50)      # escala de passagem: nao tem berth
 
     resposta = cliente.post("/api/marco", json={
         "escala_id": barra, "tipo": "berth",
@@ -201,7 +201,7 @@ def test_navio_nao_lanca_em_escala_de_outro_navio(cliente):
 def test_correcao_pela_api_exige_motivo(cliente):
     entrar(cliente)
     cliente.get("/navio")
-    escala_id = escala_de(cliente, ordem=20)
+    escala_id = escala_de(cliente, ordem=30)
     base = {"escala_id": escala_id, "tipo": "arrival", "offset": "-03:00",
             "nome_responsavel": "Cmt. Almeida"}
 
@@ -228,7 +228,7 @@ def test_tela_nao_oferece_marco_que_a_escala_nao_tem(cliente):
 
     entrar(cliente)
     html = cliente.get("/navio").text       # abre a viagem, se nao houver
-    barra = escala_de(cliente, ordem=40)
+    barra = escala_de(cliente, ordem=50)
     bloco = re.findall(
         r'data-escala="{}" data-tipo="([a-z]+)"'.format(barra), html)
     assert set(bloco) == {"arrival", "sailing"}
@@ -267,7 +267,7 @@ def test_o_proximo_lancamento_avanca_conforme_a_viagem(cliente):
 
     assert proximo() == ("Sailing", "Alumar")     # a saida que abre a viagem
 
-    abertura = escala_de(cliente, ordem=0)
+    abertura = escala_de(cliente, ordem=10)
     cliente.post("/api/marco", json={
         "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "av-1"})
@@ -278,7 +278,7 @@ def test_o_proximo_lancamento_avanca_conforme_a_viagem(cliente):
 def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
     entrar(cliente)
     cliente.get("/navio")
-    juruti = escala_de(cliente, ordem=20)
+    juruti = escala_de(cliente, ordem=30)
     cliente.post("/api/marco", json={
         "escala_id": juruti, "tipo": "arrival", "hora_local": "2026-03-02T08:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "tr-1"})
@@ -299,22 +299,22 @@ def test_lancamento_acontece_na_propria_tela(cliente):
 
 
 def test_api_avisa_quando_a_viagem_troca(cliente):
-    """O sailing de Alumar fecha a viagem e abre outra — a tela tem de recarregar."""
+    """O unberth de Alumar fecha a viagem e abre outra — a tela recarrega."""
     entrar(cliente)
     cliente.get("/navio")
-    alumar = escala_de(cliente, ordem=50)
+    alumar = escala_de(cliente, ordem=60)
     base = {"escala_id": alumar, "offset": "-03:00", "nome_responsavel": "Cmt."}
 
     for i, (tipo, hora) in enumerate((("arrival", "2026-03-01T08:00"),
-                                      ("berth", "2026-03-02T08:00"),
-                                      ("unberth", "2026-03-03T08:00"))):
+                                      ("berth", "2026-03-02T08:00"))):
         r = cliente.post("/api/marco", json=dict(base, tipo=tipo, hora_local=hora,
                                                  id_cliente="a{}".format(i)))
         assert r.status_code == 200, r.text
         assert r.json()["viagem_mudou"] is False
 
+    # o UNBERTH e o ultimo lancamento: fecha esta viagem e abre a seguinte
     fim = cliente.post("/api/marco", json=dict(
-        base, tipo="sailing", hora_local="2026-03-03T12:00", id_cliente="a9"))
+        base, tipo="unberth", hora_local="2026-03-03T08:00", id_cliente="a9"))
     assert fim.status_code == 200
     assert fim.json()["viagem_mudou"] is True
 
@@ -452,7 +452,7 @@ def test_formulario_pede_combustivel_a_bordo(cliente):
 def test_rob_chega_pela_api_e_aparece_na_tela(cliente):
     entrar(cliente)
     cliente.get("/navio")
-    escala_id = escala_de(cliente, ordem=20)
+    escala_id = escala_de(cliente, ordem=30)
     resposta = cliente.post("/api/marco", json={
         "escala_id": escala_id, "tipo": "arrival", "hora_local": "2026-03-01T07:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "rob-1",
@@ -465,7 +465,7 @@ def test_rob_chega_pela_api_e_aparece_na_tela(cliente):
 def test_rob_invalido_devolve_422(cliente):
     entrar(cliente)
     cliente.get("/navio")
-    escala_id = escala_de(cliente, ordem=20)
+    escala_id = escala_de(cliente, ordem=30)
     resposta = cliente.post("/api/marco", json={
         "escala_id": escala_id, "tipo": "arrival", "hora_local": "2026-03-01T07:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "rob-2",
@@ -481,7 +481,7 @@ def test_abastecimento_pela_api(cliente):
             "SELECT id FROM viagem WHERE status = 'aberta' LIMIT 1").fetchone()[0]
     cliente.post("/navio/escala-extra", data={
         "codigo_porto": "ICOARACI", "motivo": "bunker",
-        "apos_ordem": 0, "tipo_escala": "fundeio"})
+        "apos_ordem": 10, "tipo_escala": "fundeio"})
     with closing(db.conectar()) as conn:
         bunker = conn.execute(
             "SELECT id FROM escala WHERE viagem_id = ? AND codigo_porto = 'ICOARACI'",

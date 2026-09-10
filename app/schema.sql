@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS porto_alias (
 -- pedir dado que nao existe: o comandante inventa ou desiste.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marco_exigido (
-    tipo_escala TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura')),
+    tipo_escala TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura', 'encerramento')),
     tipo_evento TEXT NOT NULL CHECK (tipo_evento IN ('arrival', 'berth', 'unberth', 'sailing')),
     ordem       INTEGER NOT NULL,               -- ordem cronologica obrigatoria
     PRIMARY KEY (tipo_escala, tipo_evento)
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS rota_etapa (
     rota_modelo_id INTEGER NOT NULL REFERENCES rota_modelo(id),
     ordem          INTEGER NOT NULL,
     codigo_porto   TEXT NOT NULL REFERENCES porto(codigo),
-    tipo_escala    TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura')),
+    tipo_escala    TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura', 'encerramento')),
     sentido        TEXT NOT NULL DEFAULT 'na' CHECK (sentido IN ('subida', 'descida', 'na')),
     motivo         TEXT NOT NULL,
     condicao       TEXT,                 -- ballast | loading | laden | discharging | ...
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS escala (
     viagem_id    INTEGER NOT NULL REFERENCES viagem(id),
     ordem        INTEGER NOT NULL,
     codigo_porto TEXT NOT NULL REFERENCES porto(codigo),
-    tipo_escala  TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura')),
+    tipo_escala  TEXT NOT NULL CHECK (tipo_escala IN ('operacional', 'fundeio', 'passagem', 'abertura', 'encerramento')),
     sentido      TEXT NOT NULL DEFAULT 'na' CHECK (sentido IN ('subida', 'descida', 'na')),
     motivo       TEXT NOT NULL CHECK (motivo IN ('carregamento', 'descarga', 'espera_mare',
                                                  'bunker', 'docagem', 'passagem',

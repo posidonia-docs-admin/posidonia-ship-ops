@@ -81,3 +81,68 @@ def test_escalas_antigas_herdam_a_condicao(tmp_path):
     assert [l["condicao"] for l in linhas] == [
         "ballast", "ballast", "loading", "laden", "laden", "discharging"]
     conn.close()
+
+
+def _banco_com_check_antigo(caminho):
+    """Recria o schema com a lista de tipo_escala anterior a 'encerramento'."""
+    import sqlite3
+
+    sql = db._ARQ_SCHEMA.read_text(encoding="utf-8").replace(
+        "'operacional', 'fundeio', 'passagem', 'abertura', 'encerramento'",
+        "'operacional', 'fundeio', 'passagem', 'abertura'")
+    conn = sqlite3.connect(caminho)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(sql)
+    conn.commit()
+    return conn
+
+
+def test_check_antigo_e_reconstruido(tmp_path):
+    """SQLite grava o CHECK na definicao da tabela e nao ha ALTER para ele:
+    sem reconstruir, um valor novo no enum derruba o arranque em producao."""
+    conn = _banco_com_check_antigo(str(tmp_path / "check-antigo.db"))
+    guardado = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'escala'").fetchone()[0]
+    assert "encerramento" not in guardado          # o ponto de partida
+
+    db.inicializar(conn)                            # o arranque do app
+
+    guardado = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'escala'").fetchone()[0]
+    assert "encerramento" in guardado
+    assert conn.execute(
+        "SELECT COUNT(*) FROM rota_etapa").fetchone()[0] == 6
+    conn.close()
+
+
+def test_reconstrucao_preserva_as_linhas_e_a_referencia(tmp_path):
+    """Reconstruir a escala nao pode perder evento nem soltar a chave estrangeira."""
+    from app import viagens
+
+    conn = _banco_com_check_antigo(str(tmp_path / "com-dados.db"))
+    # popula com a estrutura antiga: sem 'encerramento', a rota tem 5 etapas
+    conn.executescript(db._ARQ_SEED.read_text(encoding="utf-8").replace(
+        "'encerramento'", "'operacional'"))
+    conn.commit()
+    viagem_id, _ = viagens.abrir_viagem(conn, 1)
+    escala_id = conn.execute(
+        "SELECT id FROM escala WHERE viagem_id = ? ORDER BY ordem LIMIT 1",
+        (viagem_id,)).fetchone()[0]
+    # a primeira escala e a saida de Alumar: so aceita sailing
+    _, erros = viagens.lancar_marco(conn, escala_id, tipo="sailing",
+                                    hora_local="2026-03-01T08:00",
+                                    nome_responsavel="Cmt.", registrado_por="teste")
+    assert erros == [], erros
+
+    db.inicializar(conn)
+
+    assert conn.execute("SELECT COUNT(*) FROM evento").fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT COUNT(*) FROM escala WHERE id = ?", (escala_id,)).fetchone()[0] == 1
+    # a chave estrangeira de evento continua apontando para 'escala'
+    evento_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'evento'").fetchone()[0]
+    assert "REFERENCES escala(id)" in evento_sql
+    assert "escala_antiga" not in evento_sql
+    conn.close()

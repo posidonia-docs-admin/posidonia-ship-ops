@@ -18,18 +18,19 @@ def _lancar(conn, escala_id, tipo, hora, **kw):
 
 # ---------------------------------------------------------------------------
 
-def test_abrir_primeira_viagem_cria_escalas_do_modelo_mais_a_de_abertura(conn, pathfinder):
+def test_toda_viagem_nasce_com_as_seis_paradas(conn, pathfinder):
+    """Sem caso especial de "primeira viagem": toda viagem comeca saindo de Alumar."""
     viagem_id, erros = viagens.abrir_viagem(conn, pathfinder, por="admin")
     assert erros == []
 
     linhas = [tuple(e) for e in escalas(conn, viagem_id)]
     assert linhas == [
-        (0,  "ALUMAR",      "abertura",    "na",      "abertura",     "abertura"),
-        (10, "FAZENDINHA",  "passagem",    "subida",  "passagem",     "modelo"),
-        (20, "JURUTI",      "operacional", "subida",  "carregamento", "modelo"),
-        (30, "FAZENDINHA",  "passagem",    "descida", "passagem",     "modelo"),
-        (40, "BARRA_NORTE", "passagem",    "descida", "espera_mare",  "modelo"),
-        (50, "ALUMAR",      "operacional", "descida", "descarga",     "modelo"),
+        (10, "ALUMAR",      "abertura",     "na",      "abertura",     "modelo"),
+        (20, "FAZENDINHA",  "passagem",     "subida",  "passagem",     "modelo"),
+        (30, "JURUTI",      "operacional",  "subida",  "carregamento", "modelo"),
+        (40, "FAZENDINHA",  "passagem",     "descida", "passagem",     "modelo"),
+        (50, "BARRA_NORTE", "passagem",     "descida", "espera_mare",  "modelo"),
+        (60, "ALUMAR",      "encerramento", "descida", "descarga",     "modelo"),
     ]
 
 
@@ -128,7 +129,8 @@ def _viagem_completa(conn, pathfinder, base_dia):
     for escala_id, _ordem, tipo_escala in todas:
         marcos = {"abertura": ["sailing"],
                   "passagem": ["arrival", "sailing"],
-                  "operacional": ["arrival", "berth", "unberth", "sailing"]}[tipo_escala]
+                  "operacional": ["arrival", "berth", "unberth", "sailing"],
+                  "encerramento": ["arrival", "berth", "unberth"]}[tipo_escala]
         for marco in marcos:
             dia = base_dia + hora // 24
             _lancar(conn, escala_id, marco,
@@ -139,7 +141,7 @@ def _viagem_completa(conn, pathfinder, base_dia):
     return viagem_id, alumar
 
 
-def test_sailing_de_alumar_fecha_a_viagem_e_abre_a_seguinte_sozinho(conn, pathfinder):
+def test_unberth_de_alumar_fecha_a_viagem_e_abre_a_seguinte_sozinho(conn, pathfinder):
     """O comandante nunca pensa em 'viagem' — so ve a proxima parada."""
     v1, _ = _viagem_completa(conn, pathfinder, base_dia=1)
 
@@ -152,15 +154,31 @@ def test_sailing_de_alumar_fecha_a_viagem_e_abre_a_seguinte_sozinho(conn, pathfi
     assert len(abertas) == 1 and abertas[0][0] != v1
 
 
+def test_escala_que_fecha_a_viagem_nao_aceita_sailing(conn, pathfinder):
+    """O sailing seguinte e o PRIMEIRO lancamento da proxima viagem, nunca um
+    resto desta. Por isso a escala de encerramento nem oferece o campo."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    alumar = conn.execute(
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 60", (viagem_id,)
+    ).fetchone()[0]
+
+    evento_id, erros = _lancar(conn, alumar, "sailing", "2026-03-15T10:00")
+    assert evento_id is None
+    assert erros
+
+    faltantes = {r[0] for r in conn.execute(
+        "SELECT marco_faltante FROM escalas_incompletas WHERE escala_id = ?", (alumar,))}
+    assert faltantes == {"arrival", "berth", "unberth"}
+
+
 def test_encadeamento_nao_dispara_sem_o_unberth(conn, pathfinder):
     """Sem unberth a viagem nao fecha, e a pendencia aparece na fila — nao some."""
     viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
     alumar = conn.execute(
-        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 50", (viagem_id,)
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 60", (viagem_id,)
     ).fetchone()[0]
 
-    evento_id, erros = _lancar(conn, alumar, "sailing", "2026-03-15T10:00")
-    assert erros == [] and evento_id is not None      # o marco foi gravado
+    _lancar(conn, alumar, "arrival", "2026-03-15T10:00")
     assert conn.execute(
         "SELECT status FROM viagem WHERE id = ?", (viagem_id,)).fetchone()[0] == "aberta"
     assert conn.execute(
@@ -168,31 +186,32 @@ def test_encadeamento_nao_dispara_sem_o_unberth(conn, pathfinder):
         "  AND marco_faltante = 'unberth'", (alumar,)).fetchone()[0] == 1
 
 
-def test_segunda_viagem_herda_o_sailing_de_alumar_e_nao_cria_escala_de_abertura(
-        conn, pathfinder):
-    v1, alumar1 = _viagem_completa(conn, pathfinder, base_dia=1)
+def test_a_viagem_seguinte_e_autocontida(conn, pathfinder):
+    """Nada e herdado da anterior: ela nasce esperando o proprio Sailing."""
+    v1, _ = _viagem_completa(conn, pathfinder, base_dia=1)
     v2 = conn.execute(
         "SELECT id FROM viagem WHERE navio_id = ? AND status = 'aberta'",
         (pathfinder,)).fetchone()[0]
 
-    # a segunda viagem nao repete a escala de Alumar: ela a herda por evento-ancora
-    origens = [r[0] for r in conn.execute(
-        "SELECT origem FROM escala WHERE viagem_id = ? ORDER BY ordem", (v2,))]
-    assert "abertura" not in origens
-    assert len(origens) == 5
+    linhas = conn.execute(
+        "SELECT ordem, codigo_porto, tipo_escala FROM escala "
+        " WHERE viagem_id = ? ORDER BY ordem", (v2,)).fetchall()
+    assert len(linhas) == 6
+    assert linhas[0]["codigo_porto"] == "ALUMAR"
+    assert linhas[0]["tipo_escala"] == "abertura"
 
-    abertura_id = conn.execute(
-        "SELECT evento_abertura_id FROM viagem WHERE id = ?", (v2,)).fetchone()[0]
-    assert abertura_id is not None
+    # ainda sem ancora: ela so existe quando o comandante lancar o Sailing
+    assert conn.execute(
+        "SELECT evento_abertura_id FROM viagem WHERE id = ?", (v2,)).fetchone()[0] is None
 
-    # e o evento-ancora e exatamente o sailing da escala de Alumar da viagem 1
-    dono = conn.execute(
-        "SELECT escala_id, tipo FROM evento WHERE id = ?", (abertura_id,)).fetchone()
-    assert dono[0] == alumar1
-    assert dono[1] == "sailing"
+    # e o primeiro marco que falta e justamente esse Sailing
+    primeiro = conn.execute(
+        "SELECT marco_faltante FROM escalas_incompletas WHERE viagem_id = ? "
+        " ORDER BY ordem, marco_ordem LIMIT 1", (v2,)).fetchone()[0]
+    assert primeiro == "sailing"
 
 
-def test_viagem_fecha_no_unberth_de_alumar_nao_no_sailing(conn, pathfinder):
+def test_viagem_fecha_no_unberth_de_alumar(conn, pathfinder):
     v1, alumar1 = _viagem_completa(conn, pathfinder, base_dia=1)
 
     encerramento = conn.execute(
@@ -225,13 +244,13 @@ def test_escala_extra_de_bunker_entra_na_posicao_certa(conn, pathfinder):
 
     ordem = [(r[0], r[1], r[5]) for r in escalas(conn, viagem_id)]
     assert ordem == [
-        (0,  "ALUMAR",      "abertura"),
-        (10, "FAZENDINHA",  "modelo"),
+        (10, "ALUMAR",      "modelo"),
         (15, "ICOARACI",    "extra"),     # encaixou entre 10 e 20
-        (20, "JURUTI",      "modelo"),
-        (30, "FAZENDINHA",  "modelo"),
-        (40, "BARRA_NORTE", "modelo"),
-        (50, "ALUMAR",      "modelo"),
+        (20, "FAZENDINHA",  "modelo"),
+        (30, "JURUTI",      "modelo"),
+        (40, "FAZENDINHA",  "modelo"),
+        (50, "BARRA_NORTE", "modelo"),
+        (60, "ALUMAR",      "modelo"),
     ]
 
 
@@ -239,7 +258,7 @@ def test_extras_sao_contaveis_para_medir_o_custo_em_tempo_das_paradas(conn, path
     viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
     viagens.adicionar_escala_extra(
         conn, viagem_id, codigo_porto="ITAQUI", tipo_escala="fundeio",
-        motivo="bunker", apos_ordem=40)
+        motivo="bunker", apos_ordem=10)
 
     extras = conn.execute(
         "SELECT escalas_extras FROM viagem_completa WHERE viagem_id = ?",
@@ -256,12 +275,11 @@ def test_escala_extra_recusa_porto_desconhecido(conn, pathfinder):
     assert any("não cadastrado" in e for e in erros)
 
 
-def test_sailing_da_escala_de_abertura_vira_ancora_da_primeira_viagem(conn, pathfinder):
-    """Sem amarrar isso, a primeira viagem de um navio fica para sempre sem hora
-    de inicio — e a duracao da viagem nunca sai."""
+def test_sailing_da_saida_vira_a_ancora_de_inicio(conn, pathfinder):
+    """Sem amarrar isso, a viagem fica sem hora de comeco e a duracao nunca sai."""
     viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
     abertura_escala = conn.execute(
-        "SELECT id FROM escala WHERE viagem_id = ? AND origem = 'abertura'",
+        "SELECT id FROM escala WHERE viagem_id = ? AND tipo_escala = 'abertura'",
         (viagem_id,)).fetchone()[0]
 
     assert conn.execute(
@@ -301,7 +319,7 @@ def test_viagem_vazia_recebe_o_codigo_novo(conn, pathfinder):
     conn.execute("UPDATE viagem SET numero = '2026-001' WHERE id = ?", (viagem_id,))
     conn.commit()
 
-    assert viagens.renumerar_viagens_vazias(conn) == 1
+    assert viagens.normalizar_viagens_vazias(conn) == 1
     numero = conn.execute(
         "SELECT numero FROM viagem WHERE id = ?", (viagem_id,)).fetchone()[0]
     assert numero == "APT{}001".format(agora()[2:4])
@@ -311,19 +329,59 @@ def test_viagem_com_marco_lancado_nao_e_renumerada(conn, pathfinder):
     """Depois do primeiro lancamento o codigo e definitivo."""
     viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
     escala = conn.execute(
-        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 20", (viagem_id,)
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 30", (viagem_id,)
     ).fetchone()[0]
     _lancar(conn, escala, "arrival", "2026-03-01T08:00")
 
     conn.execute("UPDATE viagem SET numero = 'CODIGO-ANTIGO' WHERE id = ?", (viagem_id,))
     conn.commit()
-    assert viagens.renumerar_viagens_vazias(conn) == 0
+    assert viagens.normalizar_viagens_vazias(conn) == 0
     assert conn.execute(
         "SELECT numero FROM viagem WHERE id = ?", (viagem_id,)
     ).fetchone()[0] == "CODIGO-ANTIGO"
 
 
-def test_renumerar_e_idempotente(conn, pathfinder):
+def test_normalizar_e_idempotente(conn, pathfinder):
     viagens.abrir_viagem(conn, pathfinder)
-    viagens.renumerar_viagens_vazias(conn)
-    assert viagens.renumerar_viagens_vazias(conn) == 0
+    viagens.normalizar_viagens_vazias(conn)
+    assert viagens.normalizar_viagens_vazias(conn) == 0
+
+
+def test_viagem_vazia_com_rota_antiga_e_refeita(conn, pathfinder):
+    """O caso de producao: a viagem aberta nasceu com a rota de 5 etapas."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    # simula a estrutura antiga: sem a saida de Alumar, com Alumar operacional no fim
+    conn.execute("DELETE FROM escala WHERE viagem_id = ? AND ordem = 10", (viagem_id,))
+    conn.execute("UPDATE escala SET tipo_escala = 'operacional' "
+                 " WHERE viagem_id = ? AND ordem = 60", (viagem_id,))
+    conn.commit()
+
+    assert viagens.normalizar_viagens_vazias(conn) == 1
+
+    linhas = conn.execute(
+        "SELECT ordem, codigo_porto, tipo_escala FROM escala "
+        " WHERE viagem_id = ? ORDER BY ordem", (viagem_id,)).fetchall()
+    assert [tuple(l) for l in linhas] == [
+        (10, "ALUMAR",      "abertura"),
+        (20, "FAZENDINHA",  "passagem"),
+        (30, "JURUTI",      "operacional"),
+        (40, "FAZENDINHA",  "passagem"),
+        (50, "BARRA_NORTE", "passagem"),
+        (60, "ALUMAR",      "encerramento"),
+    ]
+
+
+def test_viagem_com_marco_nao_e_refeita(conn, pathfinder):
+    """Depois do primeiro lancamento a estrutura e definitiva."""
+    viagem_id, _ = viagens.abrir_viagem(conn, pathfinder)
+    juruti = conn.execute(
+        "SELECT id FROM escala WHERE viagem_id = ? AND ordem = 30", (viagem_id,)
+    ).fetchone()[0]
+    _lancar(conn, juruti, "arrival", "2026-03-01T08:00")
+
+    conn.execute("DELETE FROM escala WHERE viagem_id = ? AND ordem = 10", (viagem_id,))
+    conn.commit()
+    assert viagens.normalizar_viagens_vazias(conn) == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM escala WHERE viagem_id = ?", (viagem_id,)
+    ).fetchone()[0] == 5

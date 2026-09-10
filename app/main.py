@@ -57,7 +57,7 @@ async def ciclo_de_vida(_app: FastAPI):
     db.inicializar()
     _garantir_admin()
     with closing(db.conectar()) as conn:
-        viagens.renumerar_viagens_vazias(conn)
+        viagens.normalizar_viagens_vazias(conn)
     yield
 
 
@@ -222,11 +222,10 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
                 "rotulo": dominio.ROTULO_MARCO[t],
                 "curto": dominio.ROTULO_CURTO[t],
                 "lancado": lancados.get(t),
-                # O sailing da escala de Alumar do modelo fecha a viagem e abre
-                # a proxima: quando ele e salvo, a pagina inteira mudou.
-                "encerra": (t == "sailing"
-                            and escala["codigo_porto"] == viagens.PORTO_CICLO
-                            and escala["origem"] == "modelo"),
+                # O Unberth de Alumar e o ultimo lancamento da viagem: quando
+                # ele e salvo, a viagem fecha, outra abre e a pagina mudou toda.
+                "encerra": (t == "unberth"
+                            and escala["tipo_escala"] == "encerramento"),
             } for t in exigidos],
             "completa": all(t in lancados for t in exigidos),
             # So escala de bunker pede quantidade abastecida.

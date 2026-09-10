@@ -31,19 +31,22 @@ def test_alias_de_porto_resolve_grafia_divergente(conn):
         assert achado is not None and achado[0] == esperado
 
 
-def test_rota_padrao_tem_cinco_etapas_na_ordem_certa(conn):
-    """Cinco, nao seis: o sailing que abre a viagem pertence a escala de Alumar
-    da viagem ANTERIOR — repeti-lo aqui criaria a mesma escala fisica duas vezes."""
+def test_rota_padrao_tem_seis_etapas_na_ordem_certa(conn):
+    """A viagem COMECA no Sailing de Alumar e TERMINA no Unberth de Alumar.
+
+    O Sailing e o PRIMEIRO lancamento da viagem — nunca fica preso na anterior.
+    """
     etapas = conn.execute(
         "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo "
         "  FROM rota_etapa WHERE rota_modelo_id = 1 ORDER BY ordem"
     ).fetchall()
     assert [tuple(e) for e in etapas] == [
-        (1, "FAZENDINHA",  "passagem",    "subida",  "passagem"),
-        (2, "JURUTI",      "operacional", "subida",  "carregamento"),
-        (3, "FAZENDINHA",  "passagem",    "descida", "passagem"),
-        (4, "BARRA_NORTE", "passagem",    "descida", "espera_mare"),
-        (5, "ALUMAR",      "operacional", "descida", "descarga"),
+        (1, "ALUMAR",      "abertura",     "na",      "abertura"),
+        (2, "FAZENDINHA",  "passagem",     "subida",  "passagem"),
+        (3, "JURUTI",      "operacional",  "subida",  "carregamento"),
+        (4, "FAZENDINHA",  "passagem",     "descida", "passagem"),
+        (5, "BARRA_NORTE", "passagem",     "descida", "espera_mare"),
+        (6, "ALUMAR",      "encerramento", "descida", "descarga"),
     ]
 
 
@@ -57,6 +60,8 @@ def test_marcos_exigidos_por_tipo_de_escala(conn):
     assert marcos("passagem") == {"arrival", "sailing"}
     assert marcos("fundeio") == {"arrival", "sailing"}
     assert marcos("abertura") == {"sailing"}
+    # quem fecha a viagem nao tem sailing: o proximo abre a viagem seguinte
+    assert marcos("encerramento") == {"arrival", "berth", "unberth"}
 
 
 def test_views_existem_e_aguentam_banco_vazio(conn):
@@ -71,4 +76,4 @@ def test_inicializar_e_idempotente(conn):
     db.inicializar(conn)
     db.inicializar(conn)
     assert conn.execute("SELECT COUNT(*) FROM navio").fetchone()[0] == 4
-    assert conn.execute("SELECT COUNT(*) FROM rota_etapa").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM rota_etapa").fetchone()[0] == 6

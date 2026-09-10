@@ -16,7 +16,6 @@ from .db import agora
 # caiba no meio sem renumerar as outras — renumerar sob UNIQUE (viagem_id,
 # ordem) e uma fonte de bug que nao vale a pena criar.
 PASSO_ORDEM = 10
-ORDEM_ABERTURA = 0
 
 PORTO_CICLO = "ALUMAR"  # o porto que abre e fecha a viagem
 
@@ -32,30 +31,6 @@ def marcos_vigentes(conn, escala_id: int) -> dict[str, str]:
         (escala_id,),
     ).fetchall()
     return {linha[0]: linha[1] for linha in linhas if linha[1]}
-
-
-def _sailing_de_abertura(conn, navio_id: int):
-    """O `sailing` da ultima escala de Alumar deste navio.
-
-    E o evento-ancora que abre a proxima viagem. Nao existe na primeira viagem
-    de um navio — nesse caso o chamador cria uma escala de abertura.
-    """
-    return conn.execute(
-        """
-        SELECT ev.id
-          FROM evento ev
-          JOIN escala e  ON e.id = ev.escala_id
-          JOIN viagem vg ON vg.id = e.viagem_id
-         WHERE vg.navio_id = ?
-           AND e.codigo_porto = ?
-           AND ev.tipo = 'sailing'
-           AND ev.vigente = 1
-           AND vg.status <> 'cancelada'
-         ORDER BY ev.hora_utc DESC
-         LIMIT 1
-        """,
-        (navio_id, PORTO_CICLO),
-    ).fetchone()
 
 
 def _base_numero(conn, navio_id: int) -> str:
@@ -143,31 +118,18 @@ def abrir_viagem(
 
     numero = numero or _proximo_numero(conn, navio_id)
     quando = agora()
-    abertura = _sailing_de_abertura(conn, navio_id)
 
     cur = conn.execute(
         "INSERT INTO viagem (navio_id, numero, rota_modelo_id, status, "
-        "                    evento_abertura_id, aberta_por, aberta_em) "
-        "VALUES (?, ?, ?, 'aberta', ?, ?, ?)",
-        (navio_id, numero, rota_modelo_id,
-         abertura[0] if abertura else None, por, quando),
+        "                    aberta_por, aberta_em) "
+        "VALUES (?, ?, ?, 'aberta', ?, ?)",
+        (navio_id, numero, rota_modelo_id, por, quando),
     )
     viagem_id = cur.lastrowid
 
-    # Primeira viagem do navio: nao ha sailing anterior de onde herdar. Cria-se
-    # uma escala de abertura, que so pede o sailing.
-    if abertura is None:
-        conn.execute(
-            "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
-            "                    sentido, motivo, origem, criada_por, criada_em, "
-            "                    observacao, condicao) "
-            "VALUES (?, ?, ?, 'abertura', 'na', 'abertura', 'abertura', ?, ?, ?, "
-            "        'ballast')",
-            (viagem_id, ORDEM_ABERTURA, PORTO_CICLO, por, quando,
-             "Saida que abre a primeira viagem deste navio. So o Sailing. "
-             "Sai vazio: acabou de descarregar."),
-        )
-
+    # Toda viagem nasce igual: a primeira etapa e a saida de Alumar. Nao ha
+    # caso especial de "primeira viagem do navio" — o Sailing de Alumar e
+    # sempre o primeiro lancamento DESTA viagem, nunca resto da anterior.
     for etapa in etapas:
         conn.execute(
             "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
@@ -183,35 +145,70 @@ def abrir_viagem(
     return viagem_id, []
 
 
-def renumerar_viagens_vazias(conn) -> int:
-    """Da o codigo novo as viagens abertas que ainda nao tem marco nenhum.
+def normalizar_viagens_vazias(conn) -> int:
+    """Poe no padrao atual as viagens abertas que ainda nao tem marco nenhum.
 
-    A viagem que o sistema abriu sozinha antes de o padrao APT26001 existir
-    ficaria para sempre fora do padrao — e e justamente a primeira que o
-    comandante vai preencher. Sem nenhum evento apontando para ela, trocar o
-    numero nao quebra nada; depois do primeiro lancamento, nunca mais se mexe.
+    Duas coisas podem estar fora do padrao numa viagem aberta antes de uma
+    mudanca: o CODIGO (se nasceu antes de APT26001 existir) e as ESCALAS (se a
+    rota-modelo mudou). Sem nenhum evento apontando para elas, refazer as duas
+    e seguro. Depois do primeiro lancamento, nunca mais se mexe.
     """
     alvos = conn.execute(
-        "SELECT vg.id, vg.numero, vg.navio_id FROM viagem vg "
+        "SELECT vg.id, vg.numero, vg.navio_id, vg.rota_modelo_id, vg.aberta_por "
+        "  FROM viagem vg "
         " WHERE vg.status = 'aberta' "
         "   AND NOT EXISTS (SELECT 1 FROM evento ev "
         "                     JOIN escala e ON e.id = ev.escala_id "
         "                    WHERE e.viagem_id = vg.id)").fetchall()
-    trocadas = 0
+    tocadas = 0
+
     for viagem in alvos:
+        mudou = False
+
         base = _base_numero(conn, viagem["navio_id"])
-        # Ja esta no padrao: nao mexer. Renumerar um codigo valido so o
-        # empurraria para a frente a cada arranque.
-        if _no_padrao(viagem["numero"], base):
-            continue
-        novo = _proximo_numero(conn, viagem["navio_id"])
-        if novo != viagem["numero"]:
-            conn.execute("UPDATE viagem SET numero = ? WHERE id = ?",
-                         (novo, viagem["id"]))
-            trocadas += 1
-    if trocadas:
+        # Codigo ja no padrao nao se mexe: renumerar um valido o empurraria
+        # para a frente a cada arranque.
+        if not _no_padrao(viagem["numero"], base):
+            novo = _proximo_numero(conn, viagem["navio_id"])
+            if novo != viagem["numero"]:
+                conn.execute("UPDATE viagem SET numero = ? WHERE id = ?",
+                             (novo, viagem["id"]))
+                mudou = True
+
+        etapas = conn.execute(
+            "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, condicao, "
+            "       observacao FROM rota_etapa WHERE rota_modelo_id = ? ORDER BY ordem",
+            (viagem["rota_modelo_id"] or 1,)).fetchall()
+        atuais = conn.execute(
+            "SELECT ordem, codigo_porto, tipo_escala FROM escala "
+            " WHERE viagem_id = ? AND origem = 'modelo' ORDER BY ordem",
+            (viagem["id"],)).fetchall()
+
+        esperadas = [(e["ordem"] * PASSO_ORDEM, e["codigo_porto"], e["tipo_escala"])
+                     for e in etapas]
+        if [tuple(a) for a in atuais] != esperadas:
+            conn.execute("DELETE FROM escala WHERE viagem_id = ?", (viagem["id"],))
+            quando = agora()
+            for etapa in etapas:
+                conn.execute(
+                    "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
+                    "                    sentido, motivo, origem, criada_por, "
+                    "                    criada_em, observacao, condicao) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'modelo', ?, ?, ?, ?)",
+                    (viagem["id"], etapa["ordem"] * PASSO_ORDEM, etapa["codigo_porto"],
+                     etapa["tipo_escala"], etapa["sentido"], etapa["motivo"],
+                     viagem["aberta_por"], quando, etapa["observacao"],
+                     etapa["condicao"]))
+            conn.execute("UPDATE viagem SET evento_abertura_id = NULL, "
+                         "evento_encerramento_id = NULL WHERE id = ?", (viagem["id"],))
+            mudou = True
+
+        if mudou:
+            tocadas += 1
+
+    if tocadas:
         conn.commit()
-    return trocadas
+    return tocadas
 
 
 # ---------------------------------------------------------------------------
@@ -394,9 +391,9 @@ def lancar_marco(
         conn.rollback()
         return None, ["Conflito ao gravar o marco: {}".format(exc)]
 
-    # O sailing da escala de abertura E o evento-ancora da viagem. Sem amarrar
-    # aqui, a primeira viagem de um navio fica para sempre sem hora de inicio.
-    if escala[3] == "abertura" and tipo == "sailing":
+    # O sailing da escala de saida E o INICIO da viagem. Sem amarrar aqui, a
+    # viagem fica para sempre sem hora de comeco e a duracao nunca sai.
+    if escala[0] == "abertura" and tipo == "sailing":
         conn.execute(
             "UPDATE viagem SET evento_abertura_id = ? WHERE id = ?",
             (cur.lastrowid, escala[4]),
@@ -404,10 +401,10 @@ def lancar_marco(
 
     conn.commit()
 
-    # O sailing de Alumar da escala de descarga fecha esta viagem e abre a
-    # seguinte. Feito aqui, o comandante nunca precisa pensar em "viagem": ele
-    # so ve a proxima parada esperando horario.
-    if escala[5] == PORTO_CICLO and escala[3] == "modelo" and tipo == "sailing":
+    # O UNBERTH de Alumar e o ULTIMO lancamento da viagem: fecha esta e abre a
+    # seguinte, que ja nasce esperando o Sailing como PRIMEIRO lancamento.
+    # Feito aqui, o comandante nunca precisa pensar em "viagem".
+    if escala[0] == "encerramento" and tipo == "unberth":
         encadear_ciclo(conn, escala[4])
 
     return cur.lastrowid, []
@@ -523,11 +520,10 @@ def encerrar_viagem(conn, viagem_id: int) -> tuple[bool, list[str]]:
     ancora = conn.execute(
         "SELECT ev.id "
         "  FROM evento ev JOIN escala e ON e.id = ev.escala_id "
-        " WHERE e.viagem_id = ? AND e.codigo_porto = ? "
-        "   AND e.origem <> 'abertura' "
+        " WHERE e.viagem_id = ? AND e.tipo_escala = 'encerramento' "
         "   AND ev.tipo = 'unberth' AND ev.vigente = 1 "
         " ORDER BY e.ordem DESC LIMIT 1",
-        (viagem_id, PORTO_CICLO),
+        (viagem_id,),
     ).fetchone()
     if ancora is None:
         return False, [

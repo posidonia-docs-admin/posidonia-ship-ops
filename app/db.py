@@ -234,12 +234,83 @@ _INDICES_POSTERIORES = (
 )
 
 
+# Tabelas cujo CHECK precisa acompanhar uma lista que cresceu.
+#
+# O SQLite grava o CHECK na DEFINICAO da tabela: `CREATE TABLE IF NOT EXISTS`
+# nao o atualiza e nao existe ALTER para ele. Um valor novo num enum derruba o
+# arranque de qualquer banco que ja exista — foi o que aconteceu quando
+# `encerramento` entrou em tipo_escala.
+#
+# A entrada e (tabela, marca): se a marca NAO aparece no CREATE guardado, a
+# tabela e reconstruida. Rodar isso de novo com a marca presente nao faz nada.
+#
+# Licao: enum que cresce e caro em CHECK. Se essa lista comecar a crescer,
+# troque o CHECK por chave estrangeira para uma tabela de referencia — ai
+# acrescentar valor e um INSERT, nao uma reconstrucao.
+_TABELAS_RECRIAR = (
+    ("rota_etapa", "encerramento"),
+    ("escala", "encerramento"),
+)
+
+
+def _comando_de_criacao(tabela: str) -> str:
+    """O CREATE TABLE desta tabela, como esta hoje em schema.sql."""
+    alvo = "CREATE TABLE IF NOT EXISTS {} (".format(tabela)
+    for comando in _dividir_script(_ARQ_SCHEMA.read_text(encoding="utf-8")):
+        if alvo in comando:
+            return comando
+    raise RuntimeError("schema.sql nao tem o CREATE de {}".format(tabela))
+
+
+def _indices_de(tabela: str) -> list[str]:
+    marca = " ON {} (".format(tabela)
+    return [c for c in _dividir_script(_ARQ_SCHEMA.read_text(encoding="utf-8"))
+            if c.upper().startswith("CREATE") and "INDEX" in c.upper() and marca in c]
+
+
+def _recriar_com_check_novo(conn) -> None:
+    """Reconstroi a tabela preservando as linhas. Idempotente.
+
+    `legacy_alter_table` fica LIGADO durante a operacao: sem ele, renomear uma
+    tabela referenciada por outra faz o SQLite reescrever a chave estrangeira
+    da outra para o nome temporario — e a referencia fica apontando para o
+    lugar errado depois que o temporario e apagado.
+    """
+    for tabela, marca in _TABELAS_RECRIAR:
+        linha = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (tabela,)).fetchone()
+        if linha is None or marca in (linha[0] or ""):
+            continue
+
+        colunas = [c[1] for c in conn.execute("PRAGMA table_info({})".format(tabela))]
+        lista = ", ".join(colunas)
+        antiga = "{}_antiga".format(tabela)
+
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("PRAGMA legacy_alter_table = ON")
+        try:
+            conn.execute("DROP TABLE IF EXISTS {}".format(antiga))
+            conn.execute("ALTER TABLE {} RENAME TO {}".format(tabela, antiga))
+            conn.execute(_comando_de_criacao(tabela))
+            conn.execute("INSERT INTO {} ({}) SELECT {} FROM {}".format(
+                tabela, lista, lista, antiga))
+            conn.execute("DROP TABLE {}".format(antiga))
+            for indice in _indices_de(tabela):
+                conn.execute(indice)
+            conn.commit()
+        finally:
+            conn.execute("PRAGMA legacy_alter_table = OFF")
+            conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _migrar(conn) -> None:
     """Acrescenta colunas faltantes e seus indices. Idempotente, numa conexao.
 
     Uma conexao por coluna derrubava o Turso no boot no Sistema Emissor — a
     licao ja foi paga uma vez.
     """
+    _recriar_com_check_novo(conn)
     for tabela, coluna, tipo in _COLUNAS_NOVAS:
         existentes = {linha[1] for linha in
                       conn.execute("PRAGMA table_info({})".format(tabela))}
