@@ -326,19 +326,35 @@ def _proximo_lancamento(blocos):
     return None
 
 
-def _resumo_marcos(marcos) -> str:
-    """'Arrival 06/08 04:20 · Berth 06/08 14:00' — o que ja foi lancado.
+def _lista_pt(nomes) -> str:
+    """['Unberth', 'Sailing'] -> 'Unberth e Sailing'."""
+    nomes = list(nomes)
+    if len(nomes) <= 1:
+        return "".join(nomes)
+    return "{} e {}".format(", ".join(nomes[:-1]), nomes[-1])
 
-    So aparece no computador, onde ha largura: e o ganho de ver a viagem
-    inteira sem abrir parada nenhuma.
+
+def _resumo_marcos(marcos) -> str:
+    """'Arrival 02/03/2026 22:30 · Berth 03/03/2026 06:10' — o que ja foi lancado.
+
+    Pelo nome inteiro do marco e com a data inteira. Ja houve uma versao com
+    inicial e data curta (A · B · U · S, 02/03) e o Vinicius recusou: vira
+    codigo a decifrar num sistema que tem as palavras certas.
     """
-    feitos = []
-    for marco in marcos:
-        if marco["lancado"]:
-            hora = marco["lancado"]["hora_local"] or ""
-            feitos.append("{} {}/{} {}".format(
-                marco["curto"], hora[8:10], hora[5:7], hora[11:16]).strip())
+    feitos = [
+        "{} {}".format(marco["curto"], formato_br(marco["lancado"]["hora_local"])).strip()
+        for marco in marcos if marco["lancado"]
+    ]
     return " · ".join(feitos)
+
+
+def _falta_marcos(marcos) -> str:
+    """'Unberth e Sailing' — o que a parada ainda espera.
+
+    E o que a contagem '2 de 4' nao diz: QUAL marco falta. Sem isso o
+    comandante precisa abrir a parada para descobrir.
+    """
+    return _lista_pt(marco["curto"] for marco in marcos if not marco["lancado"])
 
 
 def _situacao(blocos):
@@ -383,6 +399,7 @@ def navio_inicio(request: Request):
                 bloco["estado"] = ("pronta" if bloco["completa"]
                                    else "parcial" if lancados else "vazia")
                 bloco["resumo"] = _resumo_marcos(bloco["marcos"])
+                bloco["falta"] = _falta_marcos(bloco["marcos"])
             lista.append({
                 "viagem": viagem,
                 "aberta": viagem["status"] == "aberta",

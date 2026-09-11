@@ -628,7 +628,9 @@ def test_marcos_ja_lancados_aparecem_na_linha_da_parada(cliente):
 
     html = cliente.get("/navio").text
     assert 'class="marcos-resumo"' in html
-    assert "Arrival 21/08 04:20 · Berth 21/08 14:00" in html
+    assert "Arrival 21/08/2026 04:20 · Berth 21/08/2026 14:00" in html
+    # e o que AINDA falta, por extenso — o que o "2 de 4" nao diz
+    assert "falta Unberth e Sailing" in html
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
@@ -640,10 +642,34 @@ def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
 
 
 def test_a_tela_usa_a_grade_do_computador(cliente):
+    """Os quatro blocos sao IRMAOS: e o que deixa o celular ler na ordem do
+    HTML e o computador reposicionar pela grade. Aninhar em colunas quebraria
+    uma das duas leituras."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="tela"', 'class="coluna-lado"', 'class="bloco-viagem"'):
+    for marca in ('class="tela"', 'class="proximo"', 'class="situacao"',
+                  'class="bloco-viagem"'):
         assert marca in html, marca
+    assert 'class="coluna-lado"' not in html
+
+
+def test_o_topo_mostra_o_quanto_da_viagem_ja_foi_lancado(cliente):
+    """<progress> e nao <div>: a CSP proibe `style=`, entao nao ha como
+    escrever a largura da barra no HTML."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert '<progress class="barra"' in html
+    assert 'max="14"' in html
+
+
+def test_nenhum_template_usa_style_inline(cliente):
+    """A CSP bloqueia `style=` EM SILENCIO — o atributo e ignorado e o espaco
+    simplesmente nao aparece. Sem este teste a regressao passa despercebida."""
+    import pathlib as _p
+    raiz = _p.Path(__file__).resolve().parent.parent / "templates"
+    culpados = [str(a.name) for a in raiz.glob("*.html")
+                if 'style="' in a.read_text(encoding="utf-8")]
+    assert not culpados, culpados
 
 
 # ---------------------------------------------------------------------------

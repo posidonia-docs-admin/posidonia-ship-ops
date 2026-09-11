@@ -94,6 +94,11 @@ a:hover { color: var(--teal-fundo); }
   flex: 1;
 }
 
+/* Teto de largura. Sem isto, num monitor de 1.900px o formulario estica ate a
+   borda e a tela vira uma folha branca com coisas soltas — foi a primeira
+   reclamacao do Vinicius sobre o front. */
+.limite { max-width: 1400px; margin: 0 auto; }
+
 @media (min-width: 1100px) {
   .app {
     flex-direction: row;
@@ -137,9 +142,21 @@ a:hover { color: var(--teal-fundo); }
 /* ---- topo do conteudo -------------------------------------------------- */
 
 .topo-conteudo {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 20px;
+  display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+  padding-bottom: 16px; border-bottom: 1px solid var(--linha);
+  margin-bottom: 22px;
 }
+
+/* Quanto da viagem ja foi lancado. Elemento nativo de proposito: a CSP proibe
+   `style=` inline, entao nao ha como escrever a largura da barra no HTML. */
+progress.barra {
+  appearance: none; -webkit-appearance: none;
+  width: 132px; height: 6px; border: 0; border-radius: var(--r-chip);
+  background: var(--linha); overflow: hidden;
+}
+progress.barra::-webkit-progress-bar { background: var(--linha); }
+progress.barra::-webkit-progress-value { background: var(--teal); border-radius: var(--r-chip); }
+progress.barra::-moz-progress-bar { background: var(--teal); }
 .codigo {
   font-family: var(--mono); font-weight: 700; font-size: 19px;
   color: var(--navy); letter-spacing: .04em;
@@ -158,22 +175,24 @@ a:hover { color: var(--teal-fundo); }
 
 /* ---- a grade da tela do comandante ------------------------------------- */
 
+/* No celular a ordem do HTML ja e a ordem de leitura: onde estou, o que lanço,
+   a viagem, o combustivel. No computador a ACAO vem primeiro, a esquerda — e o
+   que o comandante faz quase toda vez; posicao e combustivel viram apoio. */
 .tela { display: flex; flex-direction: column; gap: 16px; }
 
 @media (min-width: 1100px) {
   .tela {
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-    grid-template-areas: "situacao lado" "viagem lado";
-    gap: 18px 24px;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    grid-template-areas: "acao posicao" "viagem bordo";
+    gap: 22px 28px;
     align-items: start;
   }
-  .situacao { grid-area: situacao; }
-  .coluna-lado { grid-area: lado; }
+  .proximo { grid-area: acao; }
+  .situacao { grid-area: posicao; }
   .bloco-viagem { grid-area: viagem; }
+  .bordo { grid-area: bordo; }
 }
-
-.coluna-lado { display: flex; flex-direction: column; gap: 16px; }
 
 /* ---- onde o navio esta ------------------------------------------------- */
 
@@ -197,8 +216,13 @@ a:hover { color: var(--teal-fundo); }
 .situacao .condicao { background: rgba(255,255,255,.14); color: #cfe9f5; }
 
 .ancoras {
-  display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px;
-  padding-top: 16px; border-top: 1px solid rgba(255,255,255,.12);
+  display: grid; gap: 15px; margin-top: 20px;
+  padding-top: 17px; border-top: 1px solid rgba(255,255,255,.12);
+}
+@media (min-width: 1100px) {
+  .situacao { padding: 24px 26px 26px; }
+  .bordo { padding: 22px 24px; }
+  .bordo-numero b { font-size: 26px; }
 }
 .ancora { display: flex; flex-direction: column; gap: 3px; }
 .ancora .rot { color: #6c9cbe; }
@@ -207,12 +231,24 @@ a:hover { color: var(--teal-fundo); }
 /* ---- o proximo lancamento ---------------------------------------------- */
 
 .proximo {
-  background: var(--painel); border: 1px solid var(--linha);
-  border-radius: var(--r-cartao); padding: 20px 22px 22px;
+  background: var(--painel); border: 1px solid var(--campo-borda);
+  border-radius: var(--r-cartao); padding: 22px 22px 24px;
   box-shadow: var(--sombra);
   display: flex; flex-direction: column; gap: 13px;
+  position: relative; overflow: hidden;
 }
+/* o fio de teal: marca qual cartao e o da acao, sem precisar de palavra */
+.proximo::before {
+  content: ""; position: absolute; inset: 0 0 auto 0;
+  height: 3px; background: var(--teal);
+}
+.proximo.completa::before { background: var(--ok); }
 .proximo.completa { border-color: rgba(18,128,92,.3); }
+@media (min-width: 1100px) {
+  .proximo { padding: 26px 26px 28px; }
+  .proximo-titulo { font-size: 25px; }
+  .proximo-titulo .em { font-size: 19px; }
+}
 .proximo-rot { display: flex; align-items: center; gap: 9px;
                font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
                text-transform: uppercase; color: var(--teal); }
@@ -230,25 +266,39 @@ a:hover { color: var(--teal-fundo); }
 
 /* ---- a viagem ---------------------------------------------------------- */
 
-.titulo-trilha { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.bloco-viagem {
+  background: var(--painel); border: 1px solid var(--campo-borda);
+  border-radius: var(--r-cartao); padding: 17px 20px 4px;
+}
+.titulo-trilha { display: flex; align-items: center; gap: 12px; margin: 0 0 4px; }
 .titulo-trilha .risco { flex: 1; height: 1px; background: var(--linha); }
 .titulo-trilha .contagem-geral { font-family: var(--mono); font-size: 12px;
                                  color: var(--suave); }
 
-.trilha { list-style: none; margin: 0; padding: 0;
-          display: flex; flex-direction: column; gap: 7px; }
+/* Linhas separadas por fio, nao cartoes empilhados: a viagem tem que se ler
+   como uma lista, de cima a baixo. So a parada da vez ganha fundo. */
+.trilha { list-style: none; margin: 0; padding: 0; }
 
-.parada {
-  background: #fbfcfe; border: 1px solid var(--linha);
-  border-radius: 16px; overflow: hidden;
-}
-.parada.atual { background: var(--painel); border-color: var(--teal);
-                box-shadow: var(--foco); }
+.parada { border-top: 1px solid var(--linha); overflow: hidden; }
+.trilha > li:first-child > .parada { border-top: 0; }
+.parada.atual { background: rgba(18,167,201,.05); border-radius: 14px; }
+.parada[open] { background: #fbfcfe; border-radius: 14px; }
 .parada > summary {
-  display: flex; align-items: center; gap: 13px;
-  padding: 13px 16px; min-height: 54px; cursor: pointer; list-style: none;
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center; gap: 14px;
+  padding: 12px 10px; min-height: 54px; cursor: pointer; list-style: none;
 }
 .parada > summary::-webkit-details-marker { display: none; }
+
+/* condicao e contagem andam juntas: lado a lado no computador, empilhadas no
+   celular — e o que impede a linha de espremer o nome do porto. */
+.parada-fim { display: flex; align-items: center; gap: 12px; }
+.parada-fim .progresso { min-width: 78px; }
+@media (max-width: 1099px) {
+  .parada > summary { gap: 11px; padding: 12px 8px; }
+  .parada-fim { flex-direction: column; align-items: flex-end; gap: 5px; }
+  .parada-fim .progresso { min-width: 0; }
+}
 
 .marcador { flex: 0 0 10px; width: 10px; height: 10px; border-radius: var(--r-chip);
             background: var(--campo-borda); }
@@ -256,9 +306,11 @@ a:hover { color: var(--teal-fundo); }
 .parada.pronta .marcador { background: var(--ok); }
 .parada.atual .marcador { background: var(--teal); }
 
-.parada-nome { font-weight: 600; font-size: 14.5px; }
-.parada-nome small { display: block; font-weight: 400; font-size: 11px;
-                     color: var(--tenue); }
+.parada-quem { min-width: 0; }
+.parada-nome { display: block; font-weight: 600; font-size: 14.5px; }
+.parada-nome small { font-weight: 400; font-size: 10.5px; letter-spacing: .1em;
+                     text-transform: uppercase; color: var(--tenue);
+                     margin-left: 8px; }
 
 .condicao {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
@@ -267,21 +319,26 @@ a:hover { color: var(--teal-fundo); }
   background: var(--fundo); color: #47586b; white-space: nowrap;
 }
 
-/* os marcos ja lancados, na propria linha — so no computador */
-.marcos-resumo { display: none; }
+/* O que a parada ja tem e o que ela espera, por extenso, embaixo do nome do
+   porto. Ja houve uma versao com caixinhas A · B · U · S e o Vinicius recusou,
+   com razao: virava sigla a decifrar num sistema que tem as palavras certas. */
+.marcos-resumo {
+  display: block; margin-top: 3px; min-width: 0;
+  font-family: var(--mono); font-size: 11.5px; color: var(--suave);
+  white-space: normal;
+}
+.marcos-resumo .falta {
+  font-family: var(--sans); font-style: normal; font-size: 12px;
+  color: var(--teal); margin-left: 7px; white-space: nowrap;
+}
+.marcos-resumo.vazio { font-family: var(--sans); font-size: 12.5px; color: var(--tenue); }
 @media (min-width: 1100px) {
-  .parada > summary > .parada-nome { flex: 0 0 132px; }
-  .parada > summary > .condicao { flex: 0 0 96px; text-align: center; }
-  .marcos-resumo {
-    display: block; flex: 1; min-width: 0;
-    font-family: var(--mono); font-size: 12.5px; color: #47586b;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .marcos-resumo.vazio { color: var(--tenue); }
+  /* na largura do computador a linha cabe inteira; cortar e melhor que quebrar */
+  .marcos-resumo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
-.progresso { margin-left: auto; font-family: var(--mono); font-size: 12px;
-             color: var(--suave); white-space: nowrap; }
+.progresso { font-family: var(--mono); font-size: 12px;
+             color: var(--suave); white-space: nowrap; text-align: right; }
 .parada.pronta .progresso { color: var(--ok); }
 .parada-corpo { border-top: 1px solid var(--linha); background: var(--painel); }
 .parada-obs { margin: 0; padding: 11px 16px; font-size: 12.5px;
@@ -305,14 +362,36 @@ form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 1 10
 form.carregar input[type=number] { flex: 0 1 150px; }
 form.lancar input[name=motivo_correcao] { flex: 1 1 100%; }
 
-/* o formulario em destaque do cartao "proximo lancamento" */
-form.destaque { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 10px; }
-form.destaque input[type=date] { grid-column: 1 / -1; }
-form.destaque input[name=mgo], form.destaque input[name=rob_mgo],
-form.destaque input[name=quantidade] { grid-column: 1 / -1; }
-form.destaque .botao-largo, form.destaque .estado { grid-column: 1 / -1; }
-form.destaque input { min-height: 50px; font-size: 16px; font-family: var(--mono); }
+/* O formulario em destaque do cartao "proximo lancamento".
+   CADA CAMPO TEM O TAMANHO DO QUE SE DIGITA. Data nao precisa de 900px, e um
+   botao "Salvar" da largura da tela foi o que mais fez o front parecer amador.
+   O rotulo fica ACIMA do campo, nao dentro: placeholder some quando se comeca a
+   digitar, e sao quatro numeros seguidos — e onde nasce erro de lancamento. */
+form.destaque { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+form.destaque .campo { display: flex; flex-direction: column; gap: 6px;
+                       margin: 0; min-height: 0; }
+form.destaque .campo input {
+  width: 100%; min-height: 48px;
+  font: 500 15px var(--mono); letter-spacing: normal; text-transform: none;
+  color: var(--tinta);
+}
+form.destaque .campo.data { width: 172px; }
+form.destaque .campo.hora { width: 118px; }
+form.destaque .campo.rob { width: 152px; }
+form.destaque .campo.quantidade { width: 190px; }
+form.destaque .campo.motivo { flex: 1 1 100%; }
+form.destaque button { min-height: 48px; padding: 0 32px; font-size: 15px; }
+form.destaque .estado { flex-basis: 100%; }
+
+/* No celular o dedo manda: os campos se acomodam e o botao ocupa a linha. */
+@media (max-width: 1099px) {
+  form.destaque .campo.data { flex: 1 1 150px; width: auto; }
+  form.destaque .campo.hora { flex: 0 1 112px; width: auto; }
+  form.destaque .campo.rob { flex: 1 1 132px; width: auto; }
+  form.destaque .campo.quantidade { flex: 1 1 100%; width: auto; }
+  form.destaque .campo input { min-height: 50px; font-size: 16px; }
+  form.destaque button { flex: 1 1 100%; min-height: 52px; }
+}
 
 .gravado { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
 .gravado .valor { font-family: var(--mono); font-weight: 600; font-size: 14px; }
@@ -399,11 +478,12 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
                border-radius: var(--r-cartao); box-shadow: var(--sombra);
                padding: 22px; }
 
-details.extra { border: 1px dashed var(--campo-borda); border-radius: var(--r-cartao);
-                padding: 14px 16px; margin-top: 18px; background: #fbfcfe; }
-details.extra summary { cursor: pointer; font-size: 13.5px; font-weight: 600;
-                        color: var(--navy); }
-details.extra form { border: 0; padding: 14px 0 0; background: transparent; }
+/* Fecha a lista da viagem: mesma familia das paradas, sem virar cartao a parte. */
+details.extra { border-top: 1px solid var(--linha); padding: 14px 10px 13px; }
+details.extra summary { cursor: pointer; font-size: 13.5px; font-weight: 500;
+                        color: var(--teal); list-style: none; }
+details.extra summary::-webkit-details-marker { display: none; }
+details.extra form { border: 0; padding: 14px 0 4px; background: transparent; }
 
 .aviso { background: var(--painel); border: 1px solid var(--linha);
          border-left: 3px solid var(--teal); padding: 13px 16px;
@@ -430,3 +510,8 @@ h1 { font-size: 22px; margin: 0 0 5px; letter-spacing: -.015em; }
 .login-marca strong { display: block; font-size: 20px; color: var(--navy);
                       letter-spacing: -.01em; }
 .login-marca span { color: var(--suave); font-size: 13.5px; }
+
+/* Afastamentos que antes viviam em `style=` inline — que a CSP bloqueia em
+   silencio: o atributo e ignorado e o espaco simplesmente nao aparece. */
+.titulo-afastado { margin-top: 26px; }
+.legenda-afastada { margin-top: 20px; }

@@ -46,6 +46,9 @@
     <span class="embarcacao">{{ conta.navio_nome }}</span>
     <span class="selo-conta">
       <span class="quando">{{ lancados }} de {{ total }} marcos</span>
+      {# Quanto da viagem ja foi lancado. <progress> e nativo de proposito: a CSP
+         proibe `style=` inline, entao nao ha como escrever a largura no HTML. #}
+      <progress class="barra" value="{{ lancados }}" max="{{ total }}"></progress>
       <span class="iniciais">{{ conta.navio_nome[7:9] if conta.navio_nome else "??" }}</span>
     </span>
   </div>
@@ -82,8 +85,7 @@
       </div>
     </section>
 
-    {# ---------- a única ação, e o combustível ---------- #}
-    <div class="coluna-lado">
+    {# ---------- a única ação ---------- #}
       {% if v.proximo %}
       <section class="proximo">
         <div class="proximo-rot">Próximo lançamento</div>
@@ -101,25 +103,47 @@
 
         <div class="marco" data-escala="{{ v.proximo.escala.id }}"
              data-tipo="{% if v.proximo.bunker %}abastecimento{% elif v.proximo.carga %}carga{% else %}{{ v.proximo.marco.tipo }}{% endif %}">
+          {#
+            Aqui o campo tem RÓTULO ACIMA e largura do que se digita. Nas
+            paradas da trilha os mesmos campos ficam compactos, sem rótulo:
+            lá é correção de algo já gravado, não o lançamento do dia.
+          #}
           {% if v.proximo.carga %}
             <form class="carregar destaque" data-avanca="1">
-              <input type="number" step="0.001" min="0" name="quantidade"
-                     placeholder="MT" required>
-              <button type="submit" class="botao-largo">Salvar</button>
+              <label class="campo quantidade">{{ "Quantidade carregada" if v.proximo.carrega else "Quantidade descarregada" }}
+                <input type="number" step="0.001" min="0" name="quantidade"
+                       placeholder="0,000" required>
+              </label>
+              <button type="submit">Salvar</button>
               <span class="estado" data-estado></span>
             </form>
           {% elif v.proximo.bunker %}
             <form class="abastecer destaque" data-avanca="1">
-              <input type="number" step="0.001" min="0" name="vlsfo" placeholder="VLSFO t">
-              <input type="number" step="0.001" min="0" name="mgo" placeholder="MGO t">
-              <button type="submit" class="botao-largo">Salvar</button>
+              <label class="campo rob">VLSFO abastecido
+                <input type="number" step="0.001" min="0" name="vlsfo" placeholder="0,000">
+              </label>
+              <label class="campo rob">MGO abastecido
+                <input type="number" step="0.001" min="0" name="mgo" placeholder="0,000">
+              </label>
+              <button type="submit">Salvar</button>
               <span class="estado" data-estado></span>
             </form>
           {% else %}
             <form class="lancar destaque" data-offset="{{ v.proximo.escala.offset_padrao }}"
                   data-avanca="1"{% if v.proximo.marco.encerra %} data-encerra="1"{% endif %}>
-              {{ campos_marco(v.proximo.escala, v.proximo.marco, false) }}
-              <button type="submit" class="botao-largo">Salvar</button>
+              <label class="campo data">Data
+                <input type="date" name="data" required>
+              </label>
+              <label class="campo hora">Hora
+                <input type="time" name="hora" required>
+              </label>
+              <label class="campo rob">VLSFO a bordo
+                <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="0,000">
+              </label>
+              <label class="campo rob">MGO a bordo
+                <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="0,000">
+              </label>
+              <button type="submit">Salvar</button>
               <span class="estado" data-estado></span>
             </form>
           {% endif %}
@@ -135,25 +159,6 @@
       </section>
       {% endif %}
 
-      {% if v.situacao and (v.situacao.marco.lancado.rob_vlsfo is not none
-                            or v.situacao.marco.lancado.rob_mgo is not none) %}
-      <section class="bordo">
-        <span class="rot">Combustível a bordo</span>
-        <div class="bordo-numeros">
-          <div class="bordo-numero">
-            <b>{{ v.situacao.marco.lancado.rob_vlsfo|mt }}</b>
-            <span>VLSFO em toneladas</span>
-          </div>
-          <div class="bordo-numero">
-            <b>{{ v.situacao.marco.lancado.rob_mgo|mt }}</b>
-            <span>MGO em toneladas</span>
-          </div>
-        </div>
-        <span class="quando">Último informado em {{ v.situacao.marco.lancado.hora_local|br }}.</span>
-      </section>
-      {% endif %}
-    </div>
-
     {# ---------- a viagem ---------- #}
     <div class="bloco-viagem">
       <div class="titulo-trilha">
@@ -168,14 +173,25 @@
           <details class="parada {{ b.estado }}{{ " atual" if atual else "" }}">
             <summary>
               <span class="marcador"></span>
-              <span class="parada-nome">
-                {{ b.escala.porto_nome }}
-                {% if b.escala.sentido != "na" %}<small>{{ b.escala.sentido }}</small>{% endif %}
+              <span class="parada-quem">
+                <span class="parada-nome">{{ b.escala.porto_nome }}{%
+                  if b.escala.sentido != "na" %}<small>{{ b.escala.sentido }}</small>{% endif %}</span>
+                {#
+                  O que a parada ja tem e o que ela espera, pelo nome inteiro do
+                  marco. E o que a contagem "2 de 4" nao diz: QUAL falta.
+                #}
+                {% if b.resumo %}
+                  <span class="marcos-resumo">{{ b.resumo }}{%
+                    if b.falta %}<em class="falta">falta {{ b.falta }}</em>{% endif %}</span>
+                {% elif b.falta %}
+                  <span class="marcos-resumo vazio">{{ b.falta }} a lançar</span>
+                {% endif %}
               </span>
-              {% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}
-              <span class="marcos-resumo{{ "" if b.resumo else " vazio" }}">{{ b.resumo or "a lançar" }}</span>
-              <span class="progresso">
-                {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
+              <span class="parada-fim">
+                {% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}
+                <span class="progresso">
+                  {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
+                </span>
               </span>
             </summary>
 
@@ -279,13 +295,32 @@
         </form>
       </details>
     </div>
+
+    {# ---------- combustível a bordo ---------- #}
+    {% if v.situacao and (v.situacao.marco.lancado.rob_vlsfo is not none
+                          or v.situacao.marco.lancado.rob_mgo is not none) %}
+    <section class="bordo">
+      <span class="rot">Combustível a bordo</span>
+      <div class="bordo-numeros">
+        <div class="bordo-numero">
+          <b>{{ v.situacao.marco.lancado.rob_vlsfo|mt }}</b>
+          <span>VLSFO em toneladas</span>
+        </div>
+        <div class="bordo-numero">
+          <b>{{ v.situacao.marco.lancado.rob_mgo|mt }}</b>
+          <span>MGO em toneladas</span>
+        </div>
+      </div>
+      <span class="quando">Último informado em {{ v.situacao.marco.lancado.hora_local|br }}.</span>
+    </section>
+    {% endif %}
   </div>
 {% endif %}
 
 {# ---------- viagens encerradas ---------- #}
 {% set fechadas = lista | rejectattr("aberta") | list %}
 {% if fechadas %}
-<div class="titulo-trilha" style="margin-top:26px">
+<div class="titulo-trilha titulo-afastado">
   <span class="rot">Viagens anteriores</span>
   <span class="risco"></span>
 </div>
