@@ -1,6 +1,7 @@
 """Aplicacao web. FastAPI + Jinja2, sem build step, sem node, sem CDN."""
 from __future__ import annotations
 
+import hashlib
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from urllib.parse import quote
@@ -13,9 +14,32 @@ from fastapi.templating import Jinja2Templates
 from . import auth, config, contas, db, dominio, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
+ESTATICOS = Path(__file__).resolve().parent / "static"
 templates = Jinja2Templates(directory=str(RAIZ / "templates"))
 templates.env.globals["ROTULO_MOTIVO"] = dominio.ROTULO_MOTIVO
 templates.env.globals["ROTULO_MARCO"] = dominio.ROTULO_MARCO
+
+
+def versao_estaticos() -> str:
+    """Impressao digital do CSS e do JS, para o endereco deles mudar a cada deploy.
+
+    O navegador guarda `/static/estilo.css` e continua servindo a copia velha
+    depois de um deploy — o Vinicius viu a tela ANTERIOR ao redesenho por causa
+    disso. A bordo e pior: ninguem vai ensinar comandante a limpar cache.
+
+    Com `?v=<digest>` no fim, arquivo novo e ENDERECO novo: o navegador nao tem
+    o que reaproveitar. Calculado uma vez, no import — dentro do container os
+    arquivos nao mudam enquanto o processo vive.
+    """
+    digest = hashlib.blake2b(digest_size=8)
+    for arquivo in sorted(ESTATICOS.glob("*")):
+        if arquivo.is_file():
+            digest.update(arquivo.name.encode("utf-8"))
+            digest.update(arquivo.read_bytes())
+    return digest.hexdigest()
+
+
+templates.env.globals["V"] = versao_estaticos()
 
 # Menu por perfil. Declarativo, como o NAV_TREE do Sistema Emissor: menu novo
 # nasce de dado, nao de HTML espalhado. O do comandante e curto de proposito —
@@ -124,6 +148,11 @@ async def cabecalhos_de_seguranca(request: Request, resposta_seguinte):
         resposta.headers["Strict-Transport-Security"] = "max-age=31536000"
     if "text/html" in resposta.headers.get("content-type", ""):
         resposta.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static"):
+        # O endereco carrega a impressao digital do arquivo (ver versao_estaticos):
+        # conteudo novo e endereco novo. Entao o velho pode ser guardado para
+        # sempre — e a bordo isso vira economia de banda, nao risco de tela velha.
+        resposta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resposta
 
 
@@ -297,19 +326,35 @@ def _proximo_lancamento(blocos):
     return None
 
 
-def _resumo_marcos(marcos) -> str:
-    """'Arrival 06/08 04:20 · Berth 06/08 14:00' — o que ja foi lancado.
+def _lista_pt(nomes) -> str:
+    """['Unberth', 'Sailing'] -> 'Unberth e Sailing'."""
+    nomes = list(nomes)
+    if len(nomes) <= 1:
+        return "".join(nomes)
+    return "{} e {}".format(", ".join(nomes[:-1]), nomes[-1])
 
-    So aparece no computador, onde ha largura: e o ganho de ver a viagem
-    inteira sem abrir parada nenhuma.
+
+def _resumo_marcos(marcos) -> str:
+    """'Arrival 02/03/2026 22:30 · Berth 03/03/2026 06:10' — o que ja foi lancado.
+
+    Pelo nome inteiro do marco e com a data inteira. Ja houve uma versao com
+    inicial e data curta (A · B · U · S, 02/03) e o Vinicius recusou: vira
+    codigo a decifrar num sistema que tem as palavras certas.
     """
-    feitos = []
-    for marco in marcos:
-        if marco["lancado"]:
-            hora = marco["lancado"]["hora_local"] or ""
-            feitos.append("{} {}/{} {}".format(
-                marco["curto"], hora[8:10], hora[5:7], hora[11:16]).strip())
+    feitos = [
+        "{} {}".format(marco["curto"], formato_br(marco["lancado"]["hora_local"])).strip()
+        for marco in marcos if marco["lancado"]
+    ]
     return " · ".join(feitos)
+
+
+def _falta_marcos(marcos) -> str:
+    """'Unberth e Sailing' — o que a parada ainda espera.
+
+    E o que a contagem '2 de 4' nao diz: QUAL marco falta. Sem isso o
+    comandante precisa abrir a parada para descobrir.
+    """
+    return _lista_pt(marco["curto"] for marco in marcos if not marco["lancado"])
 
 
 def _situacao(blocos):
@@ -322,12 +367,14 @@ def _situacao(blocos):
     return ultimo
 
 
-@app.get("/navio", response_class=HTMLResponse)
-def navio_inicio(request: Request):
-    conta = request.state.conta
-    if conta["perfil"] != "navio":
-        return RedirectResponse("/painel", 303)
+def _contexto_navio(conta) -> dict:
+    """Tudo o que a tela do comandante precisa.
 
+    Serve as DUAS rotas: a pagina inteira e o fragmento de `GET /navio/tela`.
+    Uma funcao so porque o fragmento tem que mostrar exatamente o mesmo que a
+    pagina mostraria — se as duas montassem contexto por conta propria, um dia
+    divergiriam e o comandante veria uma tela que nao existe.
+    """
     with closing(db.conectar()) as conn:
         # Sem viagem aberta o comandante ficaria sem onde lancar.
         if _viagem_do_navio(conn, conta["navio_id"]) is None:
@@ -354,6 +401,7 @@ def navio_inicio(request: Request):
                 bloco["estado"] = ("pronta" if bloco["completa"]
                                    else "parcial" if lancados else "vazia")
                 bloco["resumo"] = _resumo_marcos(bloco["marcos"])
+                bloco["falta"] = _falta_marcos(bloco["marcos"])
             lista.append({
                 "viagem": viagem,
                 "aberta": viagem["status"] == "aberta",
@@ -374,9 +422,36 @@ def navio_inicio(request: Request):
                    for b in (corrente["blocos"] if corrente else []))
     total = sum(len(b["marcos"]) for b in (corrente["blocos"] if corrente else []))
 
-    return templates.TemplateResponse(request, "navio_inicio.html", {
-        "conta": conta, "lista": lista, "portos": portos,
-        "corrente": corrente, "lancados": lancados, "total": total})
+    return {"conta": conta, "lista": lista, "portos": portos,
+            "corrente": corrente, "lancados": lancados, "total": total}
+
+
+@app.get("/navio", response_class=HTMLResponse)
+def navio_inicio(request: Request):
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return RedirectResponse("/painel", 303)
+    return templates.TemplateResponse(
+        request, "navio_inicio.html", _contexto_navio(conta))
+
+
+@app.get("/navio/tela", response_class=HTMLResponse)
+def navio_tela(request: Request):
+    """So a tela da viagem, sem a pagina em volta.
+
+    E o que substituiu o `location.reload()` depois de cada lancamento. O
+    reload deixava a tela em branco enquanto o Render acordava — 20 a 50
+    segundos parecendo travamento, logo depois de o comandante clicar Salvar.
+    Aqui so o miolo volta, e a pagina nunca pisca.
+    """
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return HTMLResponse("", status_code=403)
+    contexto = _contexto_navio(conta)
+    if contexto["corrente"] is None:
+        # Sem viagem aberta a tela inteira muda de forma; o JavaScript recarrega.
+        return HTMLResponse("", status_code=409)
+    return templates.TemplateResponse(request, "_tela_viagem.html", contexto)
 
 
 @app.post("/api/marco")
@@ -506,6 +581,28 @@ def navio_escala_extra(
         _, erros = viagens.adicionar_escala_extra(
             conn, viagem["id"], codigo_porto=codigo_porto, tipo_escala=tipo_escala,
             motivo=motivo, apos_ordem=apos_ordem, por=conta["login"])
+    destino = "/navio"
+    if erros:
+        destino += "?erro=" + quote(" | ".join(erros))
+    return RedirectResponse(destino, 303)
+
+
+@app.post("/navio/escala-extra/remover")
+def navio_escala_extra_remover(request: Request, escala_id: int = Form(...)):
+    """Desfaz uma parada acrescentada por engano.
+
+    O `escala_id` vem do formulario, entao o vinculo com o navio da sessao e
+    conferido AQUI: sem isso um comandante removeria parada de outro navio so
+    trocando o numero.
+    """
+    conta = request.state.conta
+    with closing(db.conectar()) as conn:
+        dono = conn.execute(
+            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.id = ? AND vg.navio_id = ?",
+            (escala_id, conta["navio_id"])).fetchone()
+        erros = (["Parada não encontrada nesta embarcação."] if dono is None
+                 else viagens.remover_escala_extra(conn, escala_id)[1])
     destino = "/navio"
     if erros:
         destino += "?erro=" + quote(" | ".join(erros))

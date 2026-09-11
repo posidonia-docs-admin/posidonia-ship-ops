@@ -628,7 +628,9 @@ def test_marcos_ja_lancados_aparecem_na_linha_da_parada(cliente):
 
     html = cliente.get("/navio").text
     assert 'class="marcos-resumo"' in html
-    assert "Arrival 21/08 04:20 · Berth 21/08 14:00" in html
+    assert "Arrival 21/08/2026 04:20 · Berth 21/08/2026 14:00" in html
+    # e o que AINDA falta, por extenso — o que o "2 de 4" nao diz
+    assert "falta Unberth e Sailing" in html
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
@@ -640,7 +642,264 @@ def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
 
 
 def test_a_tela_usa_a_grade_do_computador(cliente):
+    """Os quatro blocos sao IRMAOS: e o que deixa o celular ler na ordem do
+    HTML e o computador reposicionar pela grade. Aninhar em colunas quebraria
+    uma das duas leituras."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="tela"', 'class="coluna-lado"', 'class="bloco-viagem"'):
+    for marca in ('class="tela"', 'class="proximo"', 'class="situacao"',
+                  'class="bloco-viagem"'):
         assert marca in html, marca
+    assert 'class="coluna-lado"' not in html
+
+
+def test_o_topo_mostra_o_quanto_da_viagem_ja_foi_lancado(cliente):
+    """<progress> e nao <div>: a CSP proibe `style=`, entao nao ha como
+    escrever a largura da barra no HTML."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert '<progress class="barra"' in html
+    assert 'max="14"' in html
+
+
+def test_nenhum_template_usa_style_inline(cliente):
+    """A CSP bloqueia `style=` EM SILENCIO — o atributo e ignorado e o espaco
+    simplesmente nao aparece. Sem este teste a regressao passa despercebida."""
+    import pathlib as _p
+    raiz = _p.Path(__file__).resolve().parent.parent / "templates"
+    culpados = [str(a.name) for a in raiz.glob("*.html")
+                if 'style="' in a.read_text(encoding="utf-8")]
+    assert not culpados, culpados
+
+
+# ---------------------------------------------------------------------------
+# Cache do CSS e do JS
+#
+# O Vinicius abriu o sistema depois do deploy e viu a tela ANTERIOR ao
+# redesenho: o navegador dele tinha `/static/estilo.css` guardado e nao foi
+# buscar de novo. A bordo isso e pior — ninguem vai ensinar comandante a
+# limpar cache. Estes testes guardam a correcao.
+# ---------------------------------------------------------------------------
+
+def test_links_estaticos_carregam_impressao_digital(cliente):
+    """Arquivo novo tem que ter endereco novo, senao o navegador nao rebusca."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    for arquivo in ("estilo.css", "fila.js", "escalas.js"):
+        assert "/static/{}?v=".format(arquivo) in html, arquivo
+    # e a impressao digital tem que estar preenchida, nao vazia
+    assert "?v=\"" not in html and "?v='" not in html
+
+
+def test_impressao_digital_muda_quando_o_arquivo_muda(tmp_path, monkeypatch):
+    """Se o digest nao mudar com o conteudo, o endereco congela e o bug volta."""
+    from app import main
+
+    pasta = tmp_path / "static"
+    pasta.mkdir()
+    (pasta / "estilo.css").write_text("body{color:red}", encoding="utf-8")
+    monkeypatch.setattr(main, "ESTATICOS", pasta)
+    antes = main.versao_estaticos()
+
+    (pasta / "estilo.css").write_text("body{color:blue}", encoding="utf-8")
+    assert main.versao_estaticos() != antes
+
+
+def test_estatico_pode_ser_guardado_para_sempre_e_o_html_nunca(cliente):
+    """O par que faz a coisa funcionar: endereco versionado + guardar a vontade.
+
+    O HTML tem que ser `no-store` — e ele que carrega o endereco novo. Se o
+    HTML fosse guardado, o navegador continuaria pedindo a versao velha do CSS.
+    """
+    entrar(cliente)
+    estatico = cliente.get("/static/estilo.css")
+    assert "immutable" in estatico.headers.get("cache-control", "")
+
+    pagina = cliente.get("/navio")
+    assert pagina.headers.get("cache-control") == "no-store"
+
+
+# ---------------------------------------------------------------------------
+# Salvar sem recarregar a pagina
+#
+# Antes, cada lancamento do cartao "proximo lancamento" terminava em
+# `location.reload()`. Numa maquina que dormiu no Render isso e a tela em
+# branco por 20 a 50 segundos logo depois do clique em Salvar — parece
+# travamento, e o formulario reaparece preenchido como se nada tivesse
+# sido gravado. Agora o servidor devolve so o miolo da tela.
+# ---------------------------------------------------------------------------
+
+def test_a_tela_vive_numa_caixa_que_o_javascript_sabe_trocar(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert 'id="tela-viagem"' in html
+
+
+def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
+    """Se voltasse a pagina inteira, a troca aninharia <html> dentro do corpo."""
+    entrar(cliente)
+    fragmento = cliente.get("/navio/tela")
+    assert fragmento.status_code == 200
+    corpo = fragmento.text
+    assert 'class="tela"' in corpo and 'class="trilha"' in corpo
+    for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
+        assert fora not in corpo.lower(), fora
+
+
+def test_o_fragmento_ja_vem_com_o_lancamento_que_acabou_de_entrar(cliente):
+    """E o que substitui o reload: o cartao avanca e a contagem sobe."""
+    entrar(cliente)
+    cliente.get("/navio")
+    alumar = escala_de(cliente, ordem=10)
+
+    antes = cliente.get("/navio/tela").text
+    assert "0 de 14 marcos" in antes
+
+    cliente.post("/api/marco", json={
+        "escala_id": alumar, "tipo": "sailing", "hora_local": "2026-08-20T18:40",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "frag-1"})
+
+    depois = cliente.get("/navio/tela").text
+    assert "1 de 14 marcos" in depois
+    assert "Sailing 20/08/2026 18:40" in depois
+
+
+def test_o_fragmento_e_so_do_comandante(cliente):
+    entrar(cliente, login="vlo")
+    assert cliente.get("/navio/tela").status_code == 403
+
+
+def test_o_javascript_so_recarrega_quando_nao_ha_alternativa(cliente):
+    """Guarda de regressao.
+
+    Um unico `location.reload()` deve restar — o da sessao caida / viagem
+    trocada. Se voltar a haver reload no caminho de salvar, esta contagem sobe
+    e o teste avisa antes de o comandante sentir a tela travar de novo.
+    """
+    import re
+    js = (pathlib.Path(__file__).resolve().parent.parent
+          / "app" / "static" / "escalas.js").read_text(encoding="utf-8")
+    # sem os comentarios: o proprio arquivo EXPLICA o reload que foi tirado,
+    # e contar a explicacao junto com o codigo esconderia a regressao
+    codigo = re.sub(r"//.*", "", re.sub(r"/\*.*?\*/", "", js, flags=re.S))
+    assert codigo.count("location.reload()") == 1, codigo.count("location.reload()")
+    assert "/navio/tela" in codigo
+
+
+# ---------------------------------------------------------------------------
+# Remover uma parada acrescentada por engano
+# ---------------------------------------------------------------------------
+
+def _extra(cliente, motivo="bunker", porto="ICOARACI"):
+    cliente.post("/navio/escala-extra", data={
+        "codigo_porto": porto, "motivo": motivo, "apos_ordem": 10,
+        "tipo_escala": "fundeio"}, follow_redirects=False)
+    with closing(db.conectar()) as conn:
+        return conn.execute(
+            "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.origem = 'extra' AND vg.status = 'aberta' "
+            " ORDER BY e.id DESC LIMIT 1").fetchone()[0]
+
+
+def _trilha(cliente):
+    """So a lista de paradas.
+
+    O nome do porto tambem aparece no seletor de "acrescentar parada", entao
+    procurar no HTML inteiro acharia Icoaraci mesmo depois de ela sair da viagem.
+    """
+    html = cliente.get("/navio/tela").text
+    return html[html.index('<ol class="trilha">'):html.index("</ol>")]
+
+
+def _remover(cliente, escala_id):
+    return cliente.post("/navio/escala-extra/remover",
+                        data={"escala_id": escala_id}, follow_redirects=False)
+
+
+def test_parada_extra_vazia_pode_ser_removida(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    assert 'class="remover"' in cliente.get("/navio").text
+
+    resposta = _remover(cliente, extra)
+    assert resposta.status_code == 303
+    assert resposta.headers["location"] == "/navio"
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?",
+                            (extra,)).fetchone() is None
+
+
+def test_parada_do_circuito_padrao_nao_sai(cliente):
+    """As seis definem a viagem: sem Juruti nao ha carregamento."""
+    entrar(cliente)
+    cliente.get("/navio")
+    juruti = escala_de(cliente, ordem=30)
+
+    resposta = _remover(cliente, juruti)
+    assert "circuito%20padr" in resposta.headers["location"]
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?", (juruti,)).fetchone()
+
+
+def test_parada_extra_com_lancamento_sai_da_tela_sem_perder_o_lancamento(cliente):
+    """O que se desfaz e a PARADA, nao o lancamento.
+
+    O comandante acrescentou Icoaraci e ela nao devia estar ali — some, mesmo
+    ja tendo marco dentro. Mas este sistema nunca destroi o que alguem afirmou:
+    a escala fica CANCELADA e o evento continua no banco, preso a ela.
+    """
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    cliente.post("/api/marco", json={
+        "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-1"})
+    assert "Icoaraci" in _trilha(cliente)
+
+    resposta = _remover(cliente, extra)
+    assert resposta.headers["location"] == "/navio"
+
+    # sumiu da trilha do comandante...
+    assert "Icoaraci" not in _trilha(cliente)
+    with closing(db.conectar()) as conn:
+        assert conn.execute(
+            "SELECT status FROM escala WHERE id = ?", (extra,)).fetchone()[0] == "cancelada"
+        # ...e o que ele digitou continua la
+        assert conn.execute(
+            "SELECT COUNT(*) FROM evento WHERE escala_id = ?", (extra,)).fetchone()[0] == 1
+        # ...sem cobrar nada nas filas
+        assert conn.execute(
+            "SELECT COUNT(*) FROM escalas_incompletas WHERE escala_id = ?",
+            (extra,)).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM escalas_a_conferir WHERE escala_id = ?",
+            (extra,)).fetchone()[0] == 0
+
+
+def test_remover_a_mesma_parada_duas_vezes_nao_e_erro(cliente):
+    """O comandante pode clicar de novo sem entender por que nao sumiu antes."""
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    cliente.post("/api/marco", json={
+        "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-2"})
+    _remover(cliente, extra)
+    assert _remover(cliente, extra).headers["location"] == "/navio"
+
+
+def test_um_navio_nao_remove_parada_do_outro(cliente):
+    """O escala_id vem do formulario: sem esta conferencia, trocar o numero
+    bastaria para mexer na viagem do navio ao lado."""
+    entrar(cliente, login="navio.pioneer")
+    cliente.get("/navio")
+    do_pioneer = _extra(cliente)
+
+    cliente.get("/logout")
+    entrar(cliente, login="navio.pathfinder")
+    resposta = _remover(cliente, do_pioneer)
+    assert "encontrada" in resposta.headers["location"]
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?",
+                            (do_pioneer,)).fetchone()
