@@ -47,7 +47,12 @@
   </nav>
 
   <main class="painel">
-    {% block conteudo %}{% endblock %}
+    {# O teto de largura mora AQUI, e nao em cada tela: a regra `.limite`
+       existia no estilo desde o redesenho, mas a classe nunca chegou ao HTML —
+       num monitor largo o conteudo vinha esparramando o tempo todo. #}
+    <div class="limite">
+      {% block conteudo %}{% endblock %}
+    </div>
   </main>
 </div>
 {% else %}

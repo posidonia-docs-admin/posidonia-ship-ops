@@ -240,7 +240,7 @@ def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
     assert "APT{}001".format(agora()[2:4]) in html
-    assert 'class="situacao"' in html
+    assert 'class="faixa"' in html               # a regua que substituiu o cartao
     assert "Viagem nova" in html                 # nada lancado ainda
 
 
@@ -248,10 +248,10 @@ def _parada_aberta(cliente):
     """O porto da parada que vem aberta — a que substituiu o cartao."""
     import re
     html = cliente.get("/navio").text
-    aberta = re.search(r'<details class="parada[^>]*\sopen>(.*?)</summary>', html, re.S)
+    aberta = re.search(r'<details class="escala[^>]*\sopen>(.*?)</summary>', html, re.S)
     if aberta is None:
         return None
-    nome = re.search(r'<span class="parada-nome">([^<]+)', aberta.group(1))
+    nome = re.search(r'<span class="porto">([^<]+)', aberta.group(1))
     return nome.group(1).strip() if nome else None
 
 
@@ -271,7 +271,7 @@ def test_o_cartao_de_proximo_lancamento_nao_volta(cliente):
     """Ele repetia num retangulo a parte a mesma parada que ja estava na lista."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for sumido in ('class="proximo"', "proximo-rot", "proximo-titulo", "destaque"):
+    for sumido in ('class="proximo"', "proximo-rot", "proximo-titulo"):
         assert sumido not in html, sumido
 
 
@@ -289,7 +289,7 @@ def test_a_parada_aberta_avanca_conforme_a_viagem(cliente):
     assert _parada_aberta(cliente) == "Fazendinha"  # a lista andou
 
 
-def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
+def test_tabela_mostra_o_progresso_de_cada_parada(cliente):
     entrar(cliente)
     cliente.get("/navio")
     juruti = escala_de(cliente, ordem=30)
@@ -298,9 +298,11 @@ def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "tr-1"})
 
     html = cliente.get("/navio").text
-    assert 'class="trilha"' in html
+    assert 'class="tabela"' in html
     assert "1 de 4" in html                       # por extenso, nao fracao solta
-    assert 'class="parada parcial' in html
+    assert 'class="escala parcial' in html
+    # Um marco so nao delimita janela: mostrar "0h00" sugeriria escala instantanea.
+    assert "0h00" not in html
 
 
 def test_lancamento_acontece_na_propria_tela(cliente):
@@ -451,7 +453,7 @@ def test_fora_do_render_o_sqlite_local_e_aceito(cliente):
 def test_portos_sao_colapsaveis_e_mostram_a_condicao(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert html.count('<details class="parada') >= 6      # cada porto fecha
+    assert html.count('<details class="escala') >= 6      # cada porto fecha
     for condicao in ("ballast", "loading", "laden", "discharging"):
         assert '>{}</span>'.format(condicao) in html
 
@@ -628,8 +630,8 @@ def test_sailing_de_abertura_aparece_no_cabecalho(cliente):
     assert "16/08/2026 14:00" in html
 
 
-def test_marcos_ja_lancados_aparecem_na_linha_da_parada(cliente):
-    """O ganho do computador: ver a viagem sem abrir parada nenhuma."""
+def test_a_linha_mostra_a_janela_da_escala(cliente):
+    """O ganho da tabela: ver a viagem sem abrir parada nenhuma."""
     entrar(cliente)
     cliente.get("/navio")
     juruti = escala_de(cliente, ordem=30)
@@ -640,11 +642,25 @@ def test_marcos_ja_lancados_aparecem_na_linha_da_parada(cliente):
             "offset": "-03:00", "nome_responsavel": "Cmt.",
             "id_cliente": "res-{}".format(i)})
 
+    # Com 2 de 4, a escala nao acabou: mostrar o ultimo marco na coluna FIM
+    # leria como escala encerrada, com o navio ainda atracado.
     html = cliente.get("/navio").text
-    assert 'class="marcos-resumo"' in html
-    assert "Arrival 21/08/2026 04:20 · Berth 21/08/2026 14:00" in html
-    # e o que AINDA falta, por extenso — o que o "2 de 4" nao diz
-    assert "falta Unberth e Sailing" in html
+    assert "21/08/2026 04:20" in html      # o inicio ja aparece
+    assert "em curso" in html
+    assert "2 de 4" in html
+    assert "9h40" not in html              # duracao so quando fecha
+
+    for i, (tipo, hora) in enumerate((("unberth", "2026-08-22T09:30"),
+                                      ("sailing", "2026-08-22T11:00"))):
+        cliente.post("/api/marco", json={
+            "escala_id": juruti, "tipo": tipo, "hora_local": hora,
+            "offset": "-03:00", "nome_responsavel": "Cmt.",
+            "id_cliente": "fim-{}".format(i)})
+
+    # Fechada: do PRIMEIRO ao ULTIMO lancamento, e quanto durou.
+    html = cliente.get("/navio").text
+    assert "21/08/2026 04:20" in html and "22/08/2026 11:00" in html
+    assert "30h40" in html                 # 21/08 04:20 -> 22/08 11:00
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
@@ -661,9 +677,12 @@ def test_a_tela_usa_a_grade_do_computador(cliente):
     uma das duas leituras."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="tela"', 'class="situacao"', 'class="bloco-viagem"'):
+    for marca in ('class="tela"', 'class="faixa"', 'class="bloco-viagem"',
+                  'class="tabela"', 'class="cabecalho"'):
         assert marca in html, marca
     assert 'class="coluna-lado"' not in html
+    # o teto de largura vive no base.html, uma vez, para todas as telas
+    assert 'class="limite"' in html
 
 
 def test_o_topo_mostra_o_quanto_da_viagem_ja_foi_lancado(cliente):
@@ -754,7 +773,7 @@ def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
     fragmento = cliente.get("/navio/tela")
     assert fragmento.status_code == 200
     corpo = fragmento.text
-    assert 'class="tela"' in corpo and 'class="trilha"' in corpo
+    assert 'class="tela"' in corpo and 'class="tabela"' in corpo
     for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
         assert fora not in corpo.lower(), fora
 
@@ -774,7 +793,7 @@ def test_o_fragmento_ja_vem_com_o_lancamento_que_acabou_de_entrar(cliente):
 
     depois = cliente.get("/navio/tela").text
     assert "1 de 14 marcos" in depois
-    assert "Sailing 20/08/2026 18:40" in depois
+    assert "20/08/2026 18:40" in depois
 
 
 def test_o_fragmento_e_so_do_comandante(cliente):
@@ -814,14 +833,14 @@ def _extra(cliente, motivo="bunker", porto="ICOARACI"):
             " ORDER BY e.id DESC LIMIT 1").fetchone()[0]
 
 
-def _trilha(cliente):
-    """So a lista de paradas.
+def _tabela(cliente):
+    """So a tabela de paradas.
 
     O nome do porto tambem aparece no seletor de "acrescentar parada", entao
     procurar no HTML inteiro acharia Icoaraci mesmo depois de ela sair da viagem.
     """
     html = cliente.get("/navio/tela").text
-    return html[html.index('<ol class="trilha">'):html.index("</ol>")]
+    return html[html.index('<div class="tabela">'):html.index('class="extra"')]
 
 
 def _remover(cliente, escala_id):
@@ -868,13 +887,13 @@ def test_parada_extra_com_lancamento_sai_da_tela_sem_perder_o_lancamento(cliente
     cliente.post("/api/marco", json={
         "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-1"})
-    assert "Icoaraci" in _trilha(cliente)
+    assert "Icoaraci" in _tabela(cliente)
 
     resposta = _remover(cliente, extra)
     assert resposta.headers["location"] == "/navio"
 
     # sumiu da trilha do comandante...
-    assert "Icoaraci" not in _trilha(cliente)
+    assert "Icoaraci" not in _tabela(cliente)
     with closing(db.conectar()) as conn:
         assert conn.execute(
             "SELECT status FROM escala WHERE id = ?", (extra,)).fetchone()[0] == "cancelada"
@@ -916,3 +935,24 @@ def test_um_navio_nao_remove_parada_do_outro(cliente):
     with closing(db.conectar()) as conn:
         assert conn.execute("SELECT 1 FROM escala WHERE id = ?",
                             (do_pioneer,)).fetchone()
+
+
+def test_abertura_esta_completa_e_mesmo_assim_nao_tem_fim(cliente):
+    """A saída de Alumar tem UM marco só.
+
+    Perguntar pelo fim antes de perguntar se a escala fechou fazia a linha dizer
+    "em curso" e "completa" na mesma linha — duas afirmações contraditórias
+    sobre a mesma escala.
+    """
+    entrar(cliente)
+    cliente.get("/navio")
+    abertura = escala_de(cliente, ordem=10)
+    cliente.post("/api/marco", json={
+        "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "ab-1"})
+
+    linha = _tabela(cliente)
+    alumar = linha[:linha.index("</details>")]
+    assert "01/03/2026 10:00" in alumar     # o início está lá
+    assert "completa" in alumar
+    assert "em curso" not in alumar

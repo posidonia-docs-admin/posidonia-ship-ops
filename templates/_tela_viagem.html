@@ -36,35 +36,36 @@
 
   <div class="tela">
 
-    {# ---------- onde o navio está ---------- #}
-    <section class="situacao">
-      <div class="rot">Posição</div>
-      {% if v.situacao %}
-        <div class="situacao-agora">
-          <span class="porto-agora">{{ v.situacao.escala.porto_nome }}</span>
-          {% if v.situacao.escala.condicao %}
-            <span class="condicao">{{ v.situacao.escala.condicao }}</span>
-          {% endif %}
-        </div>
-      {% else %}
-        <div class="situacao-agora">
-          <span class="porto-agora">Viagem nova</span>
-        </div>
-      {% endif %}
-
-      <div class="ancoras">
-        <div class="ancora">
-          <span class="rot">Saiu de Alumar</span>
-          <b>{{ v.abertura|br if v.abertura else "a lançar" }}</b>
-        </div>
-        {% if v.situacao %}
-        <div class="ancora">
-          <span class="rot">Último lançamento</span>
-          <b>{{ v.situacao.marco.curto }} · {{ v.situacao.marco.lancado.hora_local|br }}</b>
-        </div>
-        {% endif %}
+    {#
+      Onde o navio esta, em regua. Virou faixa porque a tabela quer a largura
+      inteira: um cartao na lateral empurraria as colunas para um espaco em que
+      "02/03/2026 22:30" nao cabe.
+    #}
+    <div class="faixa">
+      <div class="celula destaque">
+        <span class="rot">Posição</span>
+        <b>{% if v.situacao %}{{ v.situacao.escala.porto_nome }}{%
+             if v.situacao.escala.condicao %}<span class="cond">{{ v.situacao.escala.condicao }}</span>{%
+             endif %}{% else %}Viagem nova{% endif %}</b>
       </div>
-    </section>
+      <div class="celula">
+        <span class="rot">Saiu de Alumar</span>
+        <b>{{ v.abertura|br if v.abertura else "a lançar" }}</b>
+      </div>
+      <div class="celula">
+        <span class="rot">Último lançamento</span>
+        <b>{% if v.situacao %}{{ v.situacao.marco.curto }} · {{ v.situacao.marco.lancado.hora_local|br }}{%
+             else %}—{% endif %}</b>
+      </div>
+      <div class="celula">
+        <span class="rot">VLSFO a bordo</span>
+        <b>{{ v.situacao.marco.lancado.rob_vlsfo|mt if v.situacao else "—" }}</b>
+      </div>
+      <div class="celula">
+        <span class="rot">MGO a bordo</span>
+        <b>{{ v.situacao.marco.lancado.rob_mgo|mt if v.situacao else "—" }}</b>
+      </div>
+    </div>
 
     {#
       Nao ha mais cartao de "proximo lancamento". A viagem inteira e a tela: a
@@ -84,37 +85,53 @@
       </p>
       {% endif %}
 
-      <ol class="trilha">
+      {#
+        Uma linha por parada, colunas alinhadas. Recolhida diz do PRIMEIRO ao
+        ULTIMO lancamento da escala e quanto ela durou; aberta, cada marco.
+        A duracao vem de `hora_utc`, nunca do horario local — ver `_janela`.
+      #}
+      <div class="tabela">
+        <div class="cabecalho">
+          <span></span>
+          <span>Porto</span>
+          <span>Sentido</span>
+          <span>Condição</span>
+          <span>Início</span>
+          <span>Fim</span>
+          <span class="dir">Duração</span>
+          <span class="dir">Marcos</span>
+        </div>
+
         {% for b in v.blocos %}
-        <li>
           {% set atual = v.proximo and v.proximo.escala.id == b.escala.id %}
-          <details class="parada {{ b.estado }}{{ " atual" if atual else "" }}"
+          <details class="escala {{ b.estado }}{{ " atual" if atual else "" }}"
                    data-escala="{{ b.escala.id }}"{{ " open" if atual else "" }}>
             <summary>
-              <span class="marcador"></span>
-              <span class="parada-quem">
-                <span class="parada-nome">{{ b.escala.porto_nome }}{%
-                  if b.escala.sentido != "na" %}<small>{{ b.escala.sentido }}</small>{% endif %}</span>
-                {#
-                  O que a parada ja tem e o que ela espera, pelo nome inteiro do
-                  marco. E o que a contagem "2 de 4" nao diz: QUAL falta.
-                #}
-                {% if b.resumo %}
-                  <span class="marcos-resumo">{{ b.resumo }}{%
-                    if b.falta %}<em class="falta">falta {{ b.falta }}</em>{% endif %}</span>
-                {% elif b.falta %}
-                  <span class="marcos-resumo vazio">{{ b.falta }} a lançar</span>
-                {% endif %}
-              </span>
-              <span class="parada-fim">
-                {% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}
-                <span class="progresso">
-                  {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
-                </span>
+              <span class="seta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>
+              <span class="porto">{{ b.escala.porto_nome }}{%
+                if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}</span>
+              <span class="vazio">{{ b.escala.sentido if b.escala.sentido != "na" else "—" }}</span>
+              <span>{% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}</span>
+              <span class="num">{% if b.inicio %}{{ b.inicio|br }}{% else %}<span class="vazio">a lançar</span>{% endif %}</span>
+              <span class="num">{#
+                Escala aberta nao tem FIM. Mostrar o ultimo marco lancado aqui
+                leria como escala encerrada — Juruti apareceria fechada em 7h40
+                com o navio ainda atracado.
+              #}{#
+                A abertura tem UM marco so: esta completa e mesmo assim nao tem
+                fim. Perguntar pelo fim antes de perguntar se fechou faria a
+                saida de Alumar aparecer "em curso" e "completa" ao mesmo tempo.
+              #}{% if b.completa %}{% if b.fim %}{{ b.fim|br }}{%
+                else %}<span class="vazio">—</span>{% endif %}{%
+                elif b.inicio %}<span class="falta">em curso</span>{%
+                else %}<span class="vazio">—</span>{% endif %}</span>
+              <span class="num dir">{{ b.duracao if b.completa and b.duracao else "—" }}</span>
+              <span class="dir {{ "pronto" if b.completa else "falta" }}">
+                {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
               </span>
             </summary>
 
-            <div class="parada-corpo">
+            <div class="detalhe">
               {% if b.escala.origem == "extra" %}
                 <div class="parada-obs">
                   <span>Parada adicional · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}</span>
@@ -194,14 +211,12 @@
               {% endif %}
             </div>
           </details>
-        </li>
         {% endfor %}
-      </ol>
 
-      <details class="extra">
-        <summary>Acrescentar parada adicional</summary>
-        <form method="post" action="/navio/escala-extra">
-          <label>Porto
+        <details class="extra">
+          <summary>Acrescentar parada adicional</summary>
+          <form method="post" action="/navio/escala-extra">
+            <label>Porto
             <select name="codigo_porto" required>
               {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
             </select>
@@ -228,27 +243,10 @@
               {% endfor %}
             </select>
           </label>
-          <button type="submit" class="botao-largo">Acrescentar</button>
-        </form>
-      </details>
+            <button type="submit" class="botao-largo">Acrescentar</button>
+          </form>
+        </details>
+      </div>
     </div>
 
-    {# ---------- combustível a bordo ---------- #}
-    {% if v.situacao and (v.situacao.marco.lancado.rob_vlsfo is not none
-                          or v.situacao.marco.lancado.rob_mgo is not none) %}
-    <section class="bordo">
-      <span class="rot">Combustível a bordo</span>
-      <div class="bordo-numeros">
-        <div class="bordo-numero">
-          <b>{{ v.situacao.marco.lancado.rob_vlsfo|mt }}</b>
-          <span>VLSFO em toneladas</span>
-        </div>
-        <div class="bordo-numero">
-          <b>{{ v.situacao.marco.lancado.rob_mgo|mt }}</b>
-          <span>MGO em toneladas</span>
-        </div>
-      </div>
-      <span class="quando">Último informado em {{ v.situacao.marco.lancado.hora_local|br }}.</span>
-    </section>
-    {% endif %}
   </div>

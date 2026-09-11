@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import asynccontextmanager, closing
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -256,6 +257,44 @@ def _viagem_do_navio(conn, navio_id: int):
         " WHERE navio_id = ? AND status = 'aberta'", (navio_id,)).fetchone()
 
 
+def _duracao(minutos: int | None) -> str:
+    """125 -> '2h05'. Em horas e minutos, que e como se le uma escala.
+
+    O banco guarda o instante em UTC e as views calculam em horas decimais, que
+    e o que laytime usa. Aqui e leitura de tela: '32h10' diz mais a quem esta a
+    bordo do que '32,17'.
+    """
+    if minutos is None or minutos < 0:
+        return ""
+    return "{}h{:02d}".format(minutos // 60, minutos % 60)
+
+
+def _janela(marcos) -> dict:
+    """Do primeiro ao ultimo lancamento da escala.
+
+    A conta e sobre `hora_utc`, nunca sobre o horario local: dois portos com
+    offsets diferentes dariam duracao errada — e um dia darao, quando a frota
+    sair da costa norte.
+    """
+    momentos = []
+    for marco in marcos:
+        try:
+            momentos.append((datetime.fromisoformat(marco["hora_utc"]), marco))
+        except (TypeError, ValueError):
+            continue
+    if not momentos:
+        return {"inicio": None, "fim": None, "duracao": ""}
+    momentos.sort(key=lambda par: par[0])
+    minutos = int((momentos[-1][0] - momentos[0][0]).total_seconds() // 60)
+    return {
+        "inicio": momentos[0][1]["hora_local"],
+        # Um marco so nao delimita janela nenhuma: inicio e fim seriam o mesmo
+        # instante, e mostrar "0h00" sugeriria uma escala instantanea.
+        "fim": momentos[-1][1]["hora_local"] if len(momentos) > 1 else None,
+        "duracao": _duracao(minutos) if len(momentos) > 1 else "",
+    }
+
+
 def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
     """Cada escala com a lista de marcos que ELA pede, na ordem cronologica."""
     escalas = conn.execute(
@@ -271,8 +310,8 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "SELECT tipo_evento FROM marco_exigido WHERE tipo_escala = ? ORDER BY ordem",
             (escala["tipo_escala"],))]
         lancados = {r["tipo"]: r for r in conn.execute(
-            "SELECT tipo, hora_local, offset_utc, nome_responsavel, versao, observacao, "
-            "       rob_vlsfo, rob_mgo "
+            "SELECT tipo, hora_local, hora_utc, offset_utc, nome_responsavel, versao, "
+            "       observacao, rob_vlsfo, rob_mgo "
             "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
         bunker = conn.execute(
             "SELECT vlsfo, mgo, nome_responsavel FROM abastecimento WHERE escala_id = ?",
@@ -301,6 +340,7 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "movimenta_carga": escala["condicao"] in ("loading", "discharging"),
             "carrega": escala["condicao"] == "loading",
             "carga": carga,
+            **_janela(lancados.values()),
         })
     return saida
 
