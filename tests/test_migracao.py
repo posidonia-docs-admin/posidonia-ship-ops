@@ -238,10 +238,18 @@ def _sql_da_versao(commit, caminho):
     return r.stdout.decode("utf-8") if r.returncode == 0 else None
 
 
-# As versoes que ja foram publicadas. O banco de producao pode estar em
-# qualquer uma delas — nenhum deploy recente deu certo, entao nao da para
-# saber qual. A migracao tem de funcionar partindo de todas.
-VERSOES_PUBLICADAS = ["7aa95ef", "5196134", "1220afd", "d3bfbba", "5eb88f1"]
+# De onde o arranque precisa conseguir subir.
+#
+# `producao` e uma ETIQUETA do git que aponta para o que esta rodando no
+# Render — e o caso que realmente importa, e ela se move sozinha conforme o
+# projeto anda. MOVER A ETIQUETA APOS CADA DEPLOY BEM-SUCEDIDO:
+#
+#     git tag -f -a producao -m "..." <commit>  &&  git push -f origin producao
+#
+# Os SHAs sao versoes mais antigas que ja estiveram publicadas. Ficam porque
+# sao historia real e custam pouco; se um dia a lista incomodar, corte os
+# antigos e mantenha `producao`.
+VERSOES_PUBLICADAS = ["producao", "7aa95ef", "5196134", "1220afd", "d3bfbba", "5eb88f1"]
 
 
 @pytest.mark.parametrize("commit", VERSOES_PUBLICADAS)

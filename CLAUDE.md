@@ -253,6 +253,10 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
   `ALTER TABLE ... RENAME` e falha se alguma apontar para a tabela que acabou de ser
   apagada (`error in view escala_marcos: no such table`). Por isso `_apagar_views()` roda
   antes de tudo em `_migrar` — `views.sql` as recria logo depois, e view é derivada.
+- **Depois de cada deploy bem-sucedido, mova a etiqueta `producao`:**
+  `git tag -f -a producao -m "..." <commit> && git push -f origin producao`. É dela que o
+  teste de migração parte — sem isso ele testa a subida a partir de uma versão que não
+  está mais no ar, que é o mesmo que não testar.
 - **O teste de migração monta o banco como a versão PUBLICADA o deixou**, lendo
   `schema.sql`, `views.sql` e `seed.sql` daquele commit com `git show`. Três deploys
   quebraram porque o banco de teste não se parecia com o real; agora o teste roda o
