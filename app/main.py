@@ -1,6 +1,7 @@
 """Aplicacao web. FastAPI + Jinja2, sem build step, sem node, sem CDN."""
 from __future__ import annotations
 
+import hashlib
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from urllib.parse import quote
@@ -13,9 +14,32 @@ from fastapi.templating import Jinja2Templates
 from . import auth, config, contas, db, dominio, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
+ESTATICOS = Path(__file__).resolve().parent / "static"
 templates = Jinja2Templates(directory=str(RAIZ / "templates"))
 templates.env.globals["ROTULO_MOTIVO"] = dominio.ROTULO_MOTIVO
 templates.env.globals["ROTULO_MARCO"] = dominio.ROTULO_MARCO
+
+
+def versao_estaticos() -> str:
+    """Impressao digital do CSS e do JS, para o endereco deles mudar a cada deploy.
+
+    O navegador guarda `/static/estilo.css` e continua servindo a copia velha
+    depois de um deploy — o Vinicius viu a tela ANTERIOR ao redesenho por causa
+    disso. A bordo e pior: ninguem vai ensinar comandante a limpar cache.
+
+    Com `?v=<digest>` no fim, arquivo novo e ENDERECO novo: o navegador nao tem
+    o que reaproveitar. Calculado uma vez, no import — dentro do container os
+    arquivos nao mudam enquanto o processo vive.
+    """
+    digest = hashlib.blake2b(digest_size=8)
+    for arquivo in sorted(ESTATICOS.glob("*")):
+        if arquivo.is_file():
+            digest.update(arquivo.name.encode("utf-8"))
+            digest.update(arquivo.read_bytes())
+    return digest.hexdigest()
+
+
+templates.env.globals["V"] = versao_estaticos()
 
 # Menu por perfil. Declarativo, como o NAV_TREE do Sistema Emissor: menu novo
 # nasce de dado, nao de HTML espalhado. O do comandante e curto de proposito —
@@ -124,6 +148,11 @@ async def cabecalhos_de_seguranca(request: Request, resposta_seguinte):
         resposta.headers["Strict-Transport-Security"] = "max-age=31536000"
     if "text/html" in resposta.headers.get("content-type", ""):
         resposta.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static"):
+        # O endereco carrega a impressao digital do arquivo (ver versao_estaticos):
+        # conteudo novo e endereco novo. Entao o velho pode ser guardado para
+        # sempre — e a bordo isso vira economia de banda, nao risco de tela velha.
+        resposta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resposta
 
 

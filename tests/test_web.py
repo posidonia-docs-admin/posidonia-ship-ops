@@ -644,3 +644,50 @@ def test_a_tela_usa_a_grade_do_computador(cliente):
     html = cliente.get("/navio").text
     for marca in ('class="tela"', 'class="coluna-lado"', 'class="bloco-viagem"'):
         assert marca in html, marca
+
+
+# ---------------------------------------------------------------------------
+# Cache do CSS e do JS
+#
+# O Vinicius abriu o sistema depois do deploy e viu a tela ANTERIOR ao
+# redesenho: o navegador dele tinha `/static/estilo.css` guardado e nao foi
+# buscar de novo. A bordo isso e pior — ninguem vai ensinar comandante a
+# limpar cache. Estes testes guardam a correcao.
+# ---------------------------------------------------------------------------
+
+def test_links_estaticos_carregam_impressao_digital(cliente):
+    """Arquivo novo tem que ter endereco novo, senao o navegador nao rebusca."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    for arquivo in ("estilo.css", "fila.js", "escalas.js"):
+        assert "/static/{}?v=".format(arquivo) in html, arquivo
+    # e a impressao digital tem que estar preenchida, nao vazia
+    assert "?v=\"" not in html and "?v='" not in html
+
+
+def test_impressao_digital_muda_quando_o_arquivo_muda(tmp_path, monkeypatch):
+    """Se o digest nao mudar com o conteudo, o endereco congela e o bug volta."""
+    from app import main
+
+    pasta = tmp_path / "static"
+    pasta.mkdir()
+    (pasta / "estilo.css").write_text("body{color:red}", encoding="utf-8")
+    monkeypatch.setattr(main, "ESTATICOS", pasta)
+    antes = main.versao_estaticos()
+
+    (pasta / "estilo.css").write_text("body{color:blue}", encoding="utf-8")
+    assert main.versao_estaticos() != antes
+
+
+def test_estatico_pode_ser_guardado_para_sempre_e_o_html_nunca(cliente):
+    """O par que faz a coisa funcionar: endereco versionado + guardar a vontade.
+
+    O HTML tem que ser `no-store` — e ele que carrega o endereco novo. Se o
+    HTML fosse guardado, o navegador continuaria pedindo a versao velha do CSS.
+    """
+    entrar(cliente)
+    estatico = cliente.get("/static/estilo.css")
+    assert "immutable" in estatico.headers.get("cache-control", "")
+
+    pagina = cliente.get("/navio")
+    assert pagina.headers.get("cache-control") == "no-store"
