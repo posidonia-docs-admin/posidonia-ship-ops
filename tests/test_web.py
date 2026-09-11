@@ -244,35 +244,49 @@ def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
     assert "Viagem nova" in html                 # nada lancado ainda
 
 
+def _parada_aberta(cliente):
+    """O porto da parada que vem aberta — a que substituiu o cartao."""
+    import re
+    html = cliente.get("/navio").text
+    aberta = re.search(r'<details class="parada[^>]*\sopen>(.*?)</summary>', html, re.S)
+    if aberta is None:
+        return None
+    nome = re.search(r'<span class="parada-nome">([^<]+)', aberta.group(1))
+    return nome.group(1).strip() if nome else None
+
+
 def test_uma_acao_obvia_por_vez(cliente):
-    """O paredao de quinze formularios abertos foi o que motivou este desenho."""
+    """O paredao de quinze formularios abertos foi o que motivou este desenho.
+
+    A regra sobreviveu ao fim do cartao de "proximo lancamento": agora e UMA
+    parada que vem aberta, e so ela. O resto continua fechado.
+    """
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert html.count('class="lancar destaque"') == 1     # so o proximo em destaque
-    assert '<div class="proximo-rot">Próximo lançamento</div>' in html
+    assert html.count(" open>") == 1
+    assert _parada_aberta(cliente) == "Alumar"
 
 
-def test_o_proximo_lancamento_avanca_conforme_a_viagem(cliente):
-    """E o que faz a viagem 'se traduzir': o cartao anda sozinho."""
-    import re
+def test_o_cartao_de_proximo_lancamento_nao_volta(cliente):
+    """Ele repetia num retangulo a parte a mesma parada que ja estava na lista."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    for sumido in ('class="proximo"', "proximo-rot", "proximo-titulo", "destaque"):
+        assert sumido not in html, sumido
 
+
+def test_a_parada_aberta_avanca_conforme_a_viagem(cliente):
+    """E o que faz a viagem 'se traduzir': a lista anda sozinha."""
     entrar(cliente)
     cliente.get("/navio")
-
-    def proximo():
-        html = cliente.get("/navio").text
-        titulo = re.search(r'<h2 class="proximo-titulo">\s*(\S+)\s*<span class="em">em ([^<]+)<',
-                           html)
-        return (titulo.group(1), titulo.group(2).strip()) if titulo else None
-
-    assert proximo() == ("Sailing", "Alumar")     # a saida que abre a viagem
+    assert _parada_aberta(cliente) == "Alumar"     # a saida que abre a viagem
 
     abertura = escala_de(cliente, ordem=10)
     cliente.post("/api/marco", json={
         "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "av-1"})
 
-    assert proximo() == ("Arrival", "Fazendinha")  # o cartao andou
+    assert _parada_aberta(cliente) == "Fazendinha"  # a lista andou
 
 
 def test_trilha_mostra_o_progresso_de_cada_parada(cliente):
@@ -327,7 +341,7 @@ def test_escala_extra_pela_tela(cliente):
         "apos_ordem": 10, "tipo_escala": "fundeio"}, follow_redirects=False)
     assert resposta.status_code == 303
     pagina = cliente.get("/navio").text
-    assert "Icoaraci" in pagina and "fora do padrão" in pagina
+    assert "Icoaraci" in pagina and "Parada adicional" in pagina
 
 
 def test_estatico_e_publico(cliente):
@@ -647,8 +661,7 @@ def test_a_tela_usa_a_grade_do_computador(cliente):
     uma das duas leituras."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="tela"', 'class="proximo"', 'class="situacao"',
-                  'class="bloco-viagem"'):
+    for marca in ('class="tela"', 'class="situacao"', 'class="bloco-viagem"'):
         assert marca in html, marca
     assert 'class="coluna-lado"' not in html
 

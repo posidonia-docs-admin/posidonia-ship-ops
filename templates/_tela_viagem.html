@@ -66,81 +66,11 @@
       </div>
     </section>
 
-    {# ---------- a única ação ---------- #}
-      {% if v.proximo %}
-      <section class="proximo">
-        <div class="proximo-rot">Próximo lançamento</div>
-        <h2 class="proximo-titulo">
-          {% if v.proximo.bunker %}Combustível abastecido
-          {%- elif v.proximo.carga %}{{ "Quantidade carregada" if v.proximo.carrega else "Quantidade descarregada" }}
-          {%- else %}{{ v.proximo.marco.curto }}{% endif %}
-          <span class="em">em {{ v.proximo.escala.porto_nome }}</span>
-        </h2>
-        <p class="proximo-dica">
-          {% if v.proximo.bunker %}Quantas toneladas entraram nesta parada.
-          {% elif v.proximo.carga %}A quantidade oficial, em MT.
-          {% else %}Hora real, não estimada.{% endif %}
-        </p>
-
-        <div class="marco" data-escala="{{ v.proximo.escala.id }}"
-             data-tipo="{% if v.proximo.bunker %}abastecimento{% elif v.proximo.carga %}carga{% else %}{{ v.proximo.marco.tipo }}{% endif %}">
-          {#
-            Aqui o campo tem RÓTULO ACIMA e largura do que se digita. Nas
-            paradas da trilha os mesmos campos ficam compactos, sem rótulo:
-            lá é correção de algo já gravado, não o lançamento do dia.
-          #}
-          {% if v.proximo.carga %}
-            <form class="carregar destaque" data-avanca="1"
-                  data-nome="{{ 'Carregado' if v.proximo.carrega else 'Descarregado' }}">
-              <label class="campo quantidade">{{ "Quantidade carregada" if v.proximo.carrega else "Quantidade descarregada" }}
-                <input type="number" step="0.001" min="0" name="quantidade"
-                       placeholder="0,000" required>
-              </label>
-              <button type="submit">Salvar</button>
-              <span class="estado" data-estado></span>
-            </form>
-          {% elif v.proximo.bunker %}
-            <form class="abastecer destaque" data-avanca="1" data-nome="Abastecido">
-              <label class="campo rob">VLSFO abastecido
-                <input type="number" step="0.001" min="0" name="vlsfo" placeholder="0,000">
-              </label>
-              <label class="campo rob">MGO abastecido
-                <input type="number" step="0.001" min="0" name="mgo" placeholder="0,000">
-              </label>
-              <button type="submit">Salvar</button>
-              <span class="estado" data-estado></span>
-            </form>
-          {% else %}
-            <form class="lancar destaque" data-offset="{{ v.proximo.escala.offset_padrao }}"
-                  data-avanca="1" data-nome="{{ v.proximo.marco.curto }}"{% if v.proximo.marco.encerra %} data-encerra="1"{% endif %}>
-              <label class="campo data">Data
-                <input type="date" name="data" required>
-              </label>
-              <label class="campo hora">Hora
-                <input type="time" name="hora" required>
-              </label>
-              <label class="campo rob">VLSFO a bordo
-                <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="0,000">
-              </label>
-              <label class="campo rob">MGO a bordo
-                <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="0,000">
-              </label>
-              <button type="submit">Salvar</button>
-              <span class="estado" data-estado></span>
-            </form>
-          {% endif %}
-        </div>
-      </section>
-      {% else %}
-      <section class="proximo completa">
-        <div class="proximo-rot">Viagem completa</div>
-        <h2 class="proximo-titulo">Nada pendente<span class="em">nesta viagem</span></h2>
-        <p class="proximo-dica">
-          O Unberth de Alumar fecha esta viagem e abre a seguinte.
-        </p>
-      </section>
-      {% endif %}
-
+    {#
+      Nao ha mais cartao de "proximo lancamento". A viagem inteira e a tela: a
+      parada da vez ja vem ABERTA, e o comandante lanca ali mesmo, na linha dela.
+      Um cartao em cima repetia a mesma parada num retangulo a parte.
+    #}
     {# ---------- a viagem ---------- #}
     <div class="bloco-viagem">
       <div class="titulo-trilha">
@@ -148,12 +78,18 @@
         <span class="risco"></span>
       </div>
 
+      {% if not v.proximo %}
+      <p class="viagem-completa">
+        Nada pendente. O Unberth de Alumar encerra esta viagem e abre a seguinte.
+      </p>
+      {% endif %}
+
       <ol class="trilha">
         {% for b in v.blocos %}
         <li>
           {% set atual = v.proximo and v.proximo.escala.id == b.escala.id %}
           <details class="parada {{ b.estado }}{{ " atual" if atual else "" }}"
-                   data-escala="{{ b.escala.id }}">
+                   data-escala="{{ b.escala.id }}"{{ " open" if atual else "" }}>
             <summary>
               <span class="marcador"></span>
               <span class="parada-quem">
@@ -181,7 +117,7 @@
             <div class="parada-corpo">
               {% if b.escala.origem == "extra" %}
                 <div class="parada-obs">
-                  <span>Parada fora do padrão · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}</span>
+                  <span>Parada adicional · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}</span>
                   {#
                     Dois passos de propósito: abrir e confirmar. Um botão direto
                     ao lado dos campos seria clicado sem querer, e a CSP não
@@ -263,7 +199,7 @@
       </ol>
 
       <details class="extra">
-        <summary>Acrescentar parada fora do padrão</summary>
+        <summary>Acrescentar parada adicional</summary>
         <form method="post" action="/navio/escala-extra">
           <label>Porto
             <select name="codigo_porto" required>

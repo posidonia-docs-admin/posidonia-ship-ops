@@ -175,23 +175,30 @@ progress.barra::-moz-progress-bar { background: var(--teal); }
 
 /* ---- a grade da tela do comandante ------------------------------------- */
 
-/* No celular a ordem do HTML ja e a ordem de leitura: onde estou, o que lanço,
-   a viagem, o combustivel. No computador a ACAO vem primeiro, a esquerda — e o
-   que o comandante faz quase toda vez; posicao e combustivel viram apoio. */
+/* A VIAGEM E A TELA. Nao ha cartao de "proximo lancamento": ele mostrava num
+   retangulo a parte a mesma parada que ja estava na lista logo abaixo. Agora a
+   parada da vez vem aberta na propria trilha e se lanca ali.
+
+   No celular a ordem do HTML e a ordem de leitura: onde estou, a viagem, o
+   combustivel. No computador a viagem toma a coluna da esquerda inteira e os
+   dois cartoes de apoio se empilham a direita. */
 .tela { display: flex; flex-direction: column; gap: 16px; }
 
 @media (min-width: 1100px) {
   .tela {
     display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
-    grid-template-areas: "acao posicao" "viagem bordo";
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    grid-template-areas: "viagem posicao" "viagem bordo";
     gap: 22px 28px;
     align-items: start;
   }
-  .proximo { grid-area: acao; }
   .situacao { grid-area: posicao; }
   .bloco-viagem { grid-area: viagem; }
   .bordo { grid-area: bordo; }
+}
+
+.viagem-completa {
+  margin: 0 0 4px; padding: 11px 10px; font-size: 13.5px; color: var(--ok);
 }
 
 /* ---- onde o navio esta ------------------------------------------------- */
@@ -227,42 +234,6 @@ progress.barra::-moz-progress-bar { background: var(--teal); }
 .ancora { display: flex; flex-direction: column; gap: 3px; }
 .ancora .rot { color: #6c9cbe; }
 .ancora b { font-family: var(--mono); font-size: 13.5px; font-weight: 500; color: #fff; }
-
-/* ---- o proximo lancamento ---------------------------------------------- */
-
-.proximo {
-  background: var(--painel); border: 1px solid var(--campo-borda);
-  border-radius: var(--r-cartao); padding: 22px 22px 24px;
-  box-shadow: var(--sombra);
-  display: flex; flex-direction: column; gap: 13px;
-  position: relative; overflow: hidden;
-}
-/* o fio de teal: marca qual cartao e o da acao, sem precisar de palavra */
-.proximo::before {
-  content: ""; position: absolute; inset: 0 0 auto 0;
-  height: 3px; background: var(--teal);
-}
-.proximo.completa::before { background: var(--ok); }
-.proximo.completa { border-color: rgba(18,128,92,.3); }
-@media (min-width: 1100px) {
-  .proximo { padding: 26px 26px 28px; }
-  .proximo-titulo { font-size: 25px; }
-  .proximo-titulo .em { font-size: 19px; }
-}
-.proximo-rot { display: flex; align-items: center; gap: 9px;
-               font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
-               text-transform: uppercase; color: var(--teal); }
-.proximo-rot::before {
-  content: ""; width: 8px; height: 8px; border-radius: var(--r-chip);
-  background: var(--teal);
-}
-.proximo.completa .proximo-rot { color: var(--ok); }
-.proximo.completa .proximo-rot::before { background: var(--ok); }
-.proximo-titulo { font-size: 23px; font-weight: 600; margin: 0;
-                  letter-spacing: -.015em; }
-.proximo-titulo .em { color: var(--suave); font-weight: 400; font-size: 15px;
-                      margin-left: 7px; }
-.proximo-dica { color: var(--suave); font-size: 13px; margin: -6px 0 2px; }
 
 /* ---- a viagem ---------------------------------------------------------- */
 
@@ -344,51 +315,43 @@ progress.barra::-moz-progress-bar { background: var(--teal); }
 
 /* ---- marcos ------------------------------------------------------------ */
 
-.marco { border-top: 1px solid var(--linha); padding: 10px 16px; }
+.marco { border-top: 1px solid var(--linha); padding: 9px 14px; }
 .marco:first-of-type { border-top: 0; }
 .marco.bunker { background: #fffdf6; }
 .marco.carga { background: #f6fbf8; }
-.marco-nome { font-size: 12.5px; color: var(--suave); min-width: 78px; }
+.marco-nome { font-size: 12.5px; color: var(--suave); flex: 0 0 74px; }
 
+/* O LANCAMENTO CABE NUMA LINHA SO.
+   Campo sem `flex-grow` e com largura do que se digita — data nao precisa de
+   meia tela — para o botao ficar AO LADO dos campos e nao embaixo deles. Era o
+   `1 1 150px` da data que empurrava o "salvar" para a linha seguinte. */
 form.lancar, form.abastecer, form.carregar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: transparent; border: 0; padding: 0;
 }
-form.lancar input[type=date] { flex: 1 1 150px; }
-form.lancar input[type=time] { flex: 0 1 110px; }
-form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 1 104px; }
-form.carregar input[type=number] { flex: 0 1 150px; }
-form.lancar input[name=motivo_correcao] { flex: 1 1 100%; }
-
-/* O formulario em destaque do cartao "proximo lancamento".
-   CADA CAMPO TEM O TAMANHO DO QUE SE DIGITA. Data nao precisa de 900px, e um
-   botao "Salvar" da largura da tela foi o que mais fez o front parecer amador.
-   O rotulo fica ACIMA do campo, nao dentro: placeholder some quando se comeca a
-   digitar, e sao quatro numeros seguidos — e onde nasce erro de lancamento. */
-form.destaque { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-form.destaque .campo { display: flex; flex-direction: column; gap: 6px;
-                       margin: 0; min-height: 0; }
-form.destaque .campo input {
-  width: 100%; min-height: 48px;
-  font: 500 15px var(--mono); letter-spacing: normal; text-transform: none;
-  color: var(--tinta);
+form.lancar input, form.abastecer input, form.carregar input {
+  min-height: 38px; padding: 0 11px; font-size: 13.5px;
 }
-form.destaque .campo.data { width: 172px; }
-form.destaque .campo.hora { width: 118px; }
-form.destaque .campo.rob { width: 152px; }
-form.destaque .campo.quantidade { width: 190px; }
-form.destaque .campo.motivo { flex: 1 1 100%; }
-form.destaque button { min-height: 48px; padding: 0 32px; font-size: 15px; }
-form.destaque .estado { flex-basis: 100%; }
+form.lancar button, form.abastecer button, form.carregar button {
+  min-height: 38px; padding: 0 18px; font-size: 13.5px;
+}
+form.lancar input[type=date] { flex: 0 0 146px; }
+form.lancar input[type=time] { flex: 0 0 102px; }
+form.lancar input[type=number], form.abastecer input[type=number] { flex: 0 0 112px; }
+form.carregar input[type=number] { flex: 0 0 140px; }
+form.lancar input[name=motivo_correcao] { flex: 1 1 200px; }
 
-/* No celular o dedo manda: os campos se acomodam e o botao ocupa a linha. */
+/* No celular a linha unica nao cabe, e o dedo precisa de alvo: os campos voltam
+   a crescer e a altura volta aos 46px que o toque pede. */
 @media (max-width: 1099px) {
-  form.destaque .campo.data { flex: 1 1 150px; width: auto; }
-  form.destaque .campo.hora { flex: 0 1 112px; width: auto; }
-  form.destaque .campo.rob { flex: 1 1 132px; width: auto; }
-  form.destaque .campo.quantidade { flex: 1 1 100%; width: auto; }
-  form.destaque .campo input { min-height: 50px; font-size: 16px; }
-  form.destaque button { flex: 1 1 100%; min-height: 52px; }
+  form.lancar input, form.abastecer input, form.carregar input,
+  form.lancar button, form.abastecer button, form.carregar button {
+    min-height: 46px; font-size: 15px; padding-left: 13px; padding-right: 13px;
+  }
+  form.lancar input[type=date] { flex: 1 1 148px; }
+  form.lancar input[type=time] { flex: 1 1 106px; }
+  form.lancar input[type=number], form.abastecer input[type=number] { flex: 1 1 120px; }
+  form.carregar input[type=number] { flex: 1 1 140px; }
 }
 
 .gravado { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
