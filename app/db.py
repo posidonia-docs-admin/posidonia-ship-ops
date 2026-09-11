@@ -290,6 +290,21 @@ def _pragma(conn, comando: str) -> None:
         pass
 
 
+def _apagar_views(conn) -> None:
+    """Apaga todas as views. Elas sao recriadas logo em seguida, por views.sql.
+
+    Enquanto existirem, travam a reconstrucao de tabela: o SQLite valida TODA
+    view durante um ALTER TABLE ... RENAME e falha se alguma apontar para uma
+    tabela que acabou de ser apagada. Foi assim que um deploy quebrou com
+    "error in view escala_marcos: no such table: main.escala".
+
+    View e derivada — apagar nao custa dado nenhum.
+    """
+    for linha in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'view'").fetchall():
+        conn.execute("DROP VIEW IF EXISTS {}".format(linha[0]))
+
+
 def _recriar_com_check_novo(conn) -> None:
     """Reconstroi tabela cujo CHECK ficou para tras. Idempotente.
 
@@ -340,6 +355,9 @@ def _migrar(conn) -> None:
     Uma conexao por coluna derrubava o Turso no boot no Sistema Emissor — a
     licao ja foi paga uma vez.
     """
+    # As views vem antes de tudo: elas travam a reconstrucao e sao recriadas
+    # por views.sql, que roda logo depois desta funcao.
+    _apagar_views(conn)
     _recriar_com_check_novo(conn)
     for tabela, coluna, tipo in _COLUNAS_NOVAS:
         existentes = {linha[1] for linha in

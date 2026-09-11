@@ -25,6 +25,8 @@ jobs:
       SHIPOPS_BACKEND: ${{ matrix.backend == 'libsql-local' && 'libsql-local' || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # o teste de migracao le versoes publicadas com git show
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

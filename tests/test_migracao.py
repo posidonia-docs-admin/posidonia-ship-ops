@@ -5,7 +5,10 @@ caminho — que e exatamente o de producao: o banco do Turso ja existia quando a
 coluna `prefixo` foi criada. Foi assim que o arranque quebrou uma vez.
 """
 
+import pathlib
 import sqlite3
+
+import pytest
 
 from app import db
 
@@ -84,7 +87,12 @@ def test_escalas_antigas_herdam_a_condicao(tmp_path):
 
 
 def _banco_com_check_antigo(caminho):
-    """Recria o schema com a lista de tipo_escala anterior a 'encerramento'."""
+    """Um banco como o de PRODUCAO antes da mudanca: tabelas com o CHECK antigo
+    E AS VIEWS JA CRIADAS.
+
+    As views sao o que faltava aqui: sem elas o teste passava e o deploy
+    quebrava, porque o SQLite valida toda view durante um ALTER TABLE RENAME.
+    """
     import sqlite3
 
     sql = db._ARQ_SCHEMA.read_text(encoding="utf-8").replace(
@@ -94,6 +102,7 @@ def _banco_com_check_antigo(caminho):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(sql)
+    conn.executescript(db._ARQ_VIEWS.read_text(encoding="utf-8"))
     conn.commit()
     return conn
 
@@ -186,7 +195,6 @@ def test_migracao_so_usa_pragma_que_o_turso_aceita():
     guarda para nao acontecer de novo — cada PRAGMA aqui precisa de evidencia
     de que o servidor aceita.
     """
-    import pathlib
     import re
 
     # Evidencia, nesta ordem de confianca:
@@ -208,8 +216,68 @@ def test_a_reconstrucao_nao_depende_de_renomear_a_tabela_original(tmp_path):
     """Renomear a original faria o SQLite reescrever a chave estrangeira de
     quem a referencia. A ordem correta cria a nova com nome temporario e so
     renomeia ela — e por isso nao precisa de `legacy_alter_table`."""
-    import pathlib
-
     fonte = pathlib.Path(db.__file__).read_text(encoding="utf-8")
     assert '"PRAGMA legacy_alter_table' not in fonte      # citado, nunca executado
     assert 'ALTER TABLE {} RENAME TO {}".format(temporaria, tabela)' in fonte
+
+
+# ---------------------------------------------------------------------------
+# Subir a partir de uma versao JA PUBLICADA
+# ---------------------------------------------------------------------------
+
+def _sql_da_versao(commit, caminho):
+    """O arquivo como estava naquele commit, ou None se nao der para ler."""
+    import subprocess
+
+    raiz = pathlib.Path(db.__file__).resolve().parent.parent
+    try:
+        r = subprocess.run(["git", "show", "{}:{}".format(commit, caminho)],
+                           cwd=raiz, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.decode("utf-8") if r.returncode == 0 else None
+
+
+# As versoes que ja foram publicadas. O banco de producao pode estar em
+# qualquer uma delas — nenhum deploy recente deu certo, entao nao da para
+# saber qual. A migracao tem de funcionar partindo de todas.
+VERSOES_PUBLICADAS = ["7aa95ef", "5196134", "1220afd", "d3bfbba", "5eb88f1"]
+
+
+@pytest.mark.parametrize("commit", VERSOES_PUBLICADAS)
+def test_arranque_a_partir_de_versao_publicada(tmp_path, commit):
+    """Tres deploys quebraram porque o banco de teste nao parecia com o real.
+
+    Aqui o banco e montado com o schema, as views e o seed DAQUELA versao — e
+    o arranque de hoje roda em cima. E o caminho de producao, nao uma imitacao.
+    """
+    import sqlite3
+
+    schema = _sql_da_versao(commit, "app/schema.sql")
+    if schema is None:
+        pytest.skip("historico do git indisponivel para {}".format(commit))
+
+    conn = sqlite3.connect(str(tmp_path / "{}.db".format(commit)))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    for caminho in ("app/schema.sql", "app/views.sql", "app/seed.sql"):
+        sql = _sql_da_versao(commit, caminho)
+        if sql:
+            conn.executescript(sql)
+    conn.commit()
+
+    db.inicializar(conn)          # o arranque de hoje
+
+    assert conn.execute(
+        "SELECT COUNT(*) FROM rota_etapa").fetchone()[0] == 6
+    assert conn.execute(
+        "SELECT COUNT(*) FROM marco_exigido WHERE tipo_escala = 'encerramento'"
+    ).fetchone()[0] == 3
+    # as views voltaram todas
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'view'").fetchone()[0] >= 9
+    # e o banco responde de verdade
+    conn.execute("SELECT * FROM escala_completa").fetchall()
+    conn.execute("SELECT * FROM consumo_combustivel").fetchall()
+    conn.execute("SELECT * FROM carga_bordo").fetchall()
+    conn.close()

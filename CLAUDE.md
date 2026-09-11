@@ -249,6 +249,14 @@ grafias em `porto_alias`. Cadastrar dois duplicaria a escala.
   aparece na migração, e um `CREATE VIEW`/`CREATE INDEX` sobre ela antes disso derruba o
   arranque inteiro. Os testes normais partem de banco vazio e **não pegam isso**;
   `tests/test_migracao.py` pega.
+- **View trava reconstrução de tabela.** O SQLite valida **todas** as views durante um
+  `ALTER TABLE ... RENAME` e falha se alguma apontar para a tabela que acabou de ser
+  apagada (`error in view escala_marcos: no such table`). Por isso `_apagar_views()` roda
+  antes de tudo em `_migrar` — `views.sql` as recria logo depois, e view é derivada.
+- **O teste de migração monta o banco como a versão PUBLICADA o deixou**, lendo
+  `schema.sql`, `views.sql` e `seed.sql` daquele commit com `git show`. Três deploys
+  quebraram porque o banco de teste não se parecia com o real; agora o teste roda o
+  arranque de hoje sobre cada versão já publicada. O CI precisa de `fetch-depth: 0`.
 - **O Turso remoto NÃO é o libsql local.** O servidor tem uma **lista de comandos
   permitidos** e recusa vários PRAGMAs com `SQL_PARSE_ERROR` — `PRAGMA legacy_alter_table`
   derrubou um deploy inteiro. A suite local passa e o deploy quebra, porque `libsql-local`
