@@ -1145,3 +1145,83 @@ def test_o_plural_de_viagem(cliente):
     html = cliente.get("/navio/encerradas").text
     assert "1</b>\n    viagem encerrada" in html.replace("\r\n", "\n")
     assert "viagems" not in html
+
+
+# ---------------------------------------------------------------------------
+# A marca da Posidonia e o nome do sistema
+# ---------------------------------------------------------------------------
+
+def _marca(nome):
+    return (pathlib.Path(__file__).resolve().parent.parent
+            / "app" / "static" / "marca" / nome)
+
+
+def test_o_sistema_se_chama_corsair(cliente):
+    html = cliente.get("/login").text
+    assert "<title>Entrar no Corsair · Posidonia</title>" in html
+    entrar(cliente)
+    assert "Corsair" in cliente.get("/navio").text
+
+
+def test_o_tridente_vai_para_a_aba_do_navegador(cliente):
+    """Os três tamanhos têm de EXISTIR: um href para arquivo ausente não dá
+    erro nenhum — o navegador só mostra o ícone em branco."""
+    html = cliente.get("/login").text
+    for tamanho in (16, 32, 180):
+        assert "/static/marca/icone-{}.png".format(tamanho) in html, tamanho
+        assert _marca("icone-{}.png".format(tamanho)).exists(), tamanho
+    assert 'rel="apple-touch-icon"' in html
+
+
+def test_a_barra_lateral_usa_a_marca_branca(cliente):
+    """A versão colorida tem o tridente em navy. Sobre a barra, que também é
+    navy, ele desapareceria e sobraria a palavra POSIDONIA solta."""
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert "posidonia-branca.png" in html
+    assert "marca/posidonia.png" not in html       # a colorida fica no login
+    assert _marca("posidonia-branca.png").exists()
+
+
+def test_o_login_usa_a_marca_colorida_sobre_o_fundo_claro(cliente):
+    html = cliente.get("/login").text
+    assert "marca/posidonia.png" in html
+    assert "posidonia-branca.png" not in html
+
+
+def test_o_casco_diz_em_que_navio_ele_esta_lancando(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert "marca/navio.png" in html
+    # o cadastro guarda o nome oficial em caixa alta
+    assert "AMAZON PATHFINDER" in html
+    assert _marca("navio.png").exists()
+
+
+def test_trocar_uma_logo_muda_o_endereco_dos_estaticos(monkeypatch, tmp_path):
+    """A marca vive numa SUBPASTA. Varrendo só o primeiro nível, trocar a logo
+    não mudaria a impressão digital e a antiga ficaria presa no cache."""
+    from app import main
+
+    pasta = tmp_path / "static"
+    (pasta / "marca").mkdir(parents=True)
+    (pasta / "estilo.css").write_text("body{}", encoding="utf-8")
+    (pasta / "marca" / "posidonia.png").write_bytes(b"logo antiga")
+    monkeypatch.setattr(main, "ESTATICOS", pasta)
+    antes = main.versao_estaticos()
+
+    (pasta / "marca" / "posidonia.png").write_bytes(b"logo nova")
+    assert main.versao_estaticos() != antes
+
+
+def test_todo_item_do_menu_tem_icone(cliente):
+    """Um item sem ícone fica torto na barra, e o macro falha em silêncio:
+    rota que ele não conhece simplesmente não desenha nada."""
+    import re
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    lateral = html[html.index('<nav class="lateral">'):html.index("</nav>")]
+    itens = re.findall(r'<a href="[^"]*"[^>]*>(.*?)</a>', lateral, re.S)
+    assert itens, "menu vazio"
+    for item in itens:
+        assert "<svg" in item, item.strip()[:60]

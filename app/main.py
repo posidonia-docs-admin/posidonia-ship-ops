@@ -33,9 +33,12 @@ def versao_estaticos() -> str:
     arquivos nao mudam enquanto o processo vive.
     """
     digest = hashlib.blake2b(digest_size=8)
-    for arquivo in sorted(ESTATICOS.glob("*")):
+    # rglob, nao glob: a marca vive em `static/marca/`. Varrendo so o primeiro
+    # nivel, trocar a logo nao mudaria o endereco e a antiga ficaria presa no
+    # cache — exatamente o problema que esta funcao existe para evitar.
+    for arquivo in sorted(ESTATICOS.rglob("*")):
         if arquivo.is_file():
-            digest.update(arquivo.name.encode("utf-8"))
+            digest.update(str(arquivo.relative_to(ESTATICOS)).replace("\\", "/").encode("utf-8"))
             digest.update(arquivo.read_bytes())
     return digest.hexdigest()
 
@@ -124,7 +127,7 @@ async def ciclo_de_vida(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Posidonia Ship Ops", lifespan=ciclo_de_vida,
+app = FastAPI(title="Corsair — Posidonia", lifespan=ciclo_de_vida,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 

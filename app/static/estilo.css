@@ -551,3 +551,54 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
   .detalhe-viagem { padding: 12px 10px 14px; }
   .resumo-viagem { gap: 16px; }
 }
+
+/* ---- a marca --------------------------------------------------------- */
+
+/* Versão BRANCA da logo na barra lateral. A colorida tem o tridente em navy e
+   sobre o fundo navy ele desapareceria, sobrando a palavra solta. */
+.marca img { display: block; width: 154px; height: auto; }
+.marca .produto {
+  display: block; margin-top: 9px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase; color: #7fb2d4;
+}
+
+/* O casco no pé da barra: em que embarcação estou lançando. */
+.embarcacao-bloco {
+  border-top: 1px solid rgba(255,255,255,.12);
+  padding-top: 15px; margin-top: 15px;
+}
+.embarcacao-bloco .rot { color: #6fa8cc; }
+.embarcacao-bloco .nome {
+  display: block; font-weight: 600; font-size: 14px;
+  margin-top: 4px; letter-spacing: .01em; color: #fff;
+}
+.embarcacao-bloco .silhueta {
+  display: block; width: 100%; height: auto; margin-top: 11px; opacity: .9;
+}
+
+/* ---- a tela de entrar ------------------------------------------------- */
+
+.login-marca img { display: block; width: 232px; height: auto; margin: 0 auto 18px; }
+.login-marca strong {
+  display: block; font-family: var(--mono); font-size: 15px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase; color: var(--navy);
+}
+.login-marca span { display: block; margin-top: 6px; }
+
+/* O mar e o navio: só na tela de entrar, que é a única sem trabalho a fazer. */
+.mar {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 42vh; pointer-events: none;
+  background: linear-gradient(180deg, rgba(238,242,246,0) 0%, #e2e9f0 100%);
+}
+.navio-entrada {
+  position: fixed; left: 50%; bottom: 6vh; transform: translateX(-50%);
+  width: min(760px, 92vw); height: auto; opacity: .4; pointer-events: none;
+}
+.login-caixa { position: relative; z-index: 1; }
+
+/* No celular o navio fica pequeno demais para se ler, e come a altura que o
+   teclado vai querer. Some; a logo continua. */
+@media (max-width: 640px), (max-height: 620px) {
+  .mar, .navio-entrada { display: none; }
+}

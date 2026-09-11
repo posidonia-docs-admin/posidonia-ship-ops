@@ -1,11 +1,16 @@
 {% extends "base.html" %}
-{% block titulo %}Entrar{% endblock %}
+{% block titulo %}Entrar no Corsair{% endblock %}
 
 {% block avulso %}
+{# A unica tela sem trabalho a fazer — e onde a marca cabe inteira. #}
+<div class="mar"></div>
+<img class="navio-entrada" src="/static/marca/navio.png?v={{ V }}" alt="">
+
 <div class="login-caixa">
   <div class="login-marca">
-    <strong>Posidonia · Ship Ops</strong>
-    <span>Registro de escalas</span>
+    <img src="/static/marca/posidonia.png?v={{ V }}" alt="Posidonia">
+    <strong>Corsair</strong>
+    <span>Registro operacional dos navios Amazon</span>
   </div>
 
   {% if erro %}<p class="aviso aviso-erro">{{ erro }}</p>{% endif %}
