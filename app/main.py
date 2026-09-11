@@ -367,12 +367,14 @@ def _situacao(blocos):
     return ultimo
 
 
-@app.get("/navio", response_class=HTMLResponse)
-def navio_inicio(request: Request):
-    conta = request.state.conta
-    if conta["perfil"] != "navio":
-        return RedirectResponse("/painel", 303)
+def _contexto_navio(conta) -> dict:
+    """Tudo o que a tela do comandante precisa.
 
+    Serve as DUAS rotas: a pagina inteira e o fragmento de `GET /navio/tela`.
+    Uma funcao so porque o fragmento tem que mostrar exatamente o mesmo que a
+    pagina mostraria — se as duas montassem contexto por conta propria, um dia
+    divergiriam e o comandante veria uma tela que nao existe.
+    """
     with closing(db.conectar()) as conn:
         # Sem viagem aberta o comandante ficaria sem onde lancar.
         if _viagem_do_navio(conn, conta["navio_id"]) is None:
@@ -420,9 +422,36 @@ def navio_inicio(request: Request):
                    for b in (corrente["blocos"] if corrente else []))
     total = sum(len(b["marcos"]) for b in (corrente["blocos"] if corrente else []))
 
-    return templates.TemplateResponse(request, "navio_inicio.html", {
-        "conta": conta, "lista": lista, "portos": portos,
-        "corrente": corrente, "lancados": lancados, "total": total})
+    return {"conta": conta, "lista": lista, "portos": portos,
+            "corrente": corrente, "lancados": lancados, "total": total}
+
+
+@app.get("/navio", response_class=HTMLResponse)
+def navio_inicio(request: Request):
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return RedirectResponse("/painel", 303)
+    return templates.TemplateResponse(
+        request, "navio_inicio.html", _contexto_navio(conta))
+
+
+@app.get("/navio/tela", response_class=HTMLResponse)
+def navio_tela(request: Request):
+    """So a tela da viagem, sem a pagina em volta.
+
+    E o que substituiu o `location.reload()` depois de cada lancamento. O
+    reload deixava a tela em branco enquanto o Render acordava — 20 a 50
+    segundos parecendo travamento, logo depois de o comandante clicar Salvar.
+    Aqui so o miolo volta, e a pagina nunca pisca.
+    """
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return HTMLResponse("", status_code=403)
+    contexto = _contexto_navio(conta)
+    if contexto["corrente"] is None:
+        # Sem viagem aberta a tela inteira muda de forma; o JavaScript recarrega.
+        return HTMLResponse("", status_code=409)
+    return templates.TemplateResponse(request, "_tela_viagem.html", contexto)
 
 
 @app.post("/api/marco")
@@ -552,6 +581,28 @@ def navio_escala_extra(
         _, erros = viagens.adicionar_escala_extra(
             conn, viagem["id"], codigo_porto=codigo_porto, tipo_escala=tipo_escala,
             motivo=motivo, apos_ordem=apos_ordem, por=conta["login"])
+    destino = "/navio"
+    if erros:
+        destino += "?erro=" + quote(" | ".join(erros))
+    return RedirectResponse(destino, 303)
+
+
+@app.post("/navio/escala-extra/remover")
+def navio_escala_extra_remover(request: Request, escala_id: int = Form(...)):
+    """Desfaz uma parada acrescentada por engano.
+
+    O `escala_id` vem do formulario, entao o vinculo com o navio da sessao e
+    conferido AQUI: sem isso um comandante removeria parada de outro navio so
+    trocando o numero.
+    """
+    conta = request.state.conta
+    with closing(db.conectar()) as conn:
+        dono = conn.execute(
+            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.id = ? AND vg.navio_id = ?",
+            (escala_id, conta["navio_id"])).fetchone()
+        erros = (["Parada não encontrada nesta embarcação."] if dono is None
+                 else viagens.remover_escala_extra(conn, escala_id)[1])
     destino = "/navio"
     if erros:
         destino += "?erro=" + quote(" | ".join(erros))

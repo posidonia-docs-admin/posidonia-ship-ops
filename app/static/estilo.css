@@ -341,8 +341,6 @@ progress.barra::-moz-progress-bar { background: var(--teal); }
              color: var(--suave); white-space: nowrap; text-align: right; }
 .parada.pronta .progresso { color: var(--ok); }
 .parada-corpo { border-top: 1px solid var(--linha); background: var(--painel); }
-.parada-obs { margin: 0; padding: 11px 16px; font-size: 12.5px;
-              color: var(--suave); background: #fbfcfe; }
 
 /* ---- marcos ------------------------------------------------------------ */
 
@@ -515,3 +513,29 @@ h1 { font-size: 22px; margin: 0 0 5px; letter-spacing: -.015em; }
    silencio: o atributo e ignorado e o espaco simplesmente nao aparece. */
 .titulo-afastado { margin-top: 26px; }
 .legenda-afastada { margin-top: 20px; }
+
+/* ---- a tela se atualizando sozinha ------------------------------------- */
+
+/* Enquanto o miolo e rebuscado, a tela continua la, so esmaecida. O atraso de
+   .35s e deliberado: troca rapida nao chega a piscar, e so a demorada (o
+   Render acordando) avisa que algo esta acontecendo. */
+#tela-viagem { transition: opacity .15s ease; }
+#tela-viagem.atualizando { opacity: .55; transition: opacity .2s ease .35s; }
+
+/* ---- remover uma parada acrescentada por engano ------------------------ */
+
+.parada-obs { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+              margin: 0; padding: 11px 16px; font-size: 12.5px;
+              color: var(--suave); background: #fbfcfe; }
+.parada-obs > span { flex: 1; min-width: 0; }
+
+details.remover > summary { cursor: pointer; font-size: 12.5px; color: var(--erro);
+                            list-style: none; }
+details.remover > summary::-webkit-details-marker { display: none; }
+details.remover[open] > summary { font-weight: 600; }
+details.remover form { width: 100%; padding: 12px 0 4px; }
+details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
+                    line-height: 1.5; max-width: 52ch; }
+
+.botao-perigo { background: var(--erro); }
+.botao-perigo:hover { background: #8f1e17; }

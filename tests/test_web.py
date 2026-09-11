@@ -717,3 +717,147 @@ def test_estatico_pode_ser_guardado_para_sempre_e_o_html_nunca(cliente):
 
     pagina = cliente.get("/navio")
     assert pagina.headers.get("cache-control") == "no-store"
+
+
+# ---------------------------------------------------------------------------
+# Salvar sem recarregar a pagina
+#
+# Antes, cada lancamento do cartao "proximo lancamento" terminava em
+# `location.reload()`. Numa maquina que dormiu no Render isso e a tela em
+# branco por 20 a 50 segundos logo depois do clique em Salvar — parece
+# travamento, e o formulario reaparece preenchido como se nada tivesse
+# sido gravado. Agora o servidor devolve so o miolo da tela.
+# ---------------------------------------------------------------------------
+
+def test_a_tela_vive_numa_caixa_que_o_javascript_sabe_trocar(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    assert 'id="tela-viagem"' in html
+
+
+def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
+    """Se voltasse a pagina inteira, a troca aninharia <html> dentro do corpo."""
+    entrar(cliente)
+    fragmento = cliente.get("/navio/tela")
+    assert fragmento.status_code == 200
+    corpo = fragmento.text
+    assert 'class="tela"' in corpo and 'class="trilha"' in corpo
+    for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
+        assert fora not in corpo.lower(), fora
+
+
+def test_o_fragmento_ja_vem_com_o_lancamento_que_acabou_de_entrar(cliente):
+    """E o que substitui o reload: o cartao avanca e a contagem sobe."""
+    entrar(cliente)
+    cliente.get("/navio")
+    alumar = escala_de(cliente, ordem=10)
+
+    antes = cliente.get("/navio/tela").text
+    assert "0 de 14 marcos" in antes
+
+    cliente.post("/api/marco", json={
+        "escala_id": alumar, "tipo": "sailing", "hora_local": "2026-08-20T18:40",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "frag-1"})
+
+    depois = cliente.get("/navio/tela").text
+    assert "1 de 14 marcos" in depois
+    assert "Sailing 20/08/2026 18:40" in depois
+
+
+def test_o_fragmento_e_so_do_comandante(cliente):
+    entrar(cliente, login="vlo")
+    assert cliente.get("/navio/tela").status_code == 403
+
+
+def test_o_javascript_so_recarrega_quando_nao_ha_alternativa(cliente):
+    """Guarda de regressao.
+
+    Um unico `location.reload()` deve restar — o da sessao caida / viagem
+    trocada. Se voltar a haver reload no caminho de salvar, esta contagem sobe
+    e o teste avisa antes de o comandante sentir a tela travar de novo.
+    """
+    import re
+    js = (pathlib.Path(__file__).resolve().parent.parent
+          / "app" / "static" / "escalas.js").read_text(encoding="utf-8")
+    # sem os comentarios: o proprio arquivo EXPLICA o reload que foi tirado,
+    # e contar a explicacao junto com o codigo esconderia a regressao
+    codigo = re.sub(r"//.*", "", re.sub(r"/\*.*?\*/", "", js, flags=re.S))
+    assert codigo.count("location.reload()") == 1, codigo.count("location.reload()")
+    assert "/navio/tela" in codigo
+
+
+# ---------------------------------------------------------------------------
+# Remover uma parada acrescentada por engano
+# ---------------------------------------------------------------------------
+
+def _extra(cliente, motivo="bunker", porto="ICOARACI"):
+    cliente.post("/navio/escala-extra", data={
+        "codigo_porto": porto, "motivo": motivo, "apos_ordem": 10,
+        "tipo_escala": "fundeio"}, follow_redirects=False)
+    with closing(db.conectar()) as conn:
+        return conn.execute(
+            "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.origem = 'extra' AND vg.status = 'aberta' "
+            " ORDER BY e.id DESC LIMIT 1").fetchone()[0]
+
+
+def _remover(cliente, escala_id):
+    return cliente.post("/navio/escala-extra/remover",
+                        data={"escala_id": escala_id}, follow_redirects=False)
+
+
+def test_parada_extra_vazia_pode_ser_removida(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    assert 'class="remover"' in cliente.get("/navio").text
+
+    resposta = _remover(cliente, extra)
+    assert resposta.status_code == 303
+    assert resposta.headers["location"] == "/navio"
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?",
+                            (extra,)).fetchone() is None
+
+
+def test_parada_do_circuito_padrao_nao_sai(cliente):
+    """As seis definem a viagem: sem Juruti nao ha carregamento."""
+    entrar(cliente)
+    cliente.get("/navio")
+    juruti = escala_de(cliente, ordem=30)
+
+    resposta = _remover(cliente, juruti)
+    assert "circuito%20padr" in resposta.headers["location"]
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?", (juruti,)).fetchone()
+
+
+def test_parada_extra_com_lancamento_nao_sai(cliente):
+    """Este sistema nunca apaga afirmacao — corrigir gera versao, nao sumico."""
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    cliente.post("/api/marco", json={
+        "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-1"})
+
+    resposta = _remover(cliente, extra)
+    assert "lan%C3%A7amento" in resposta.headers["location"]
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?", (extra,)).fetchone()
+
+
+def test_um_navio_nao_remove_parada_do_outro(cliente):
+    """O escala_id vem do formulario: sem esta conferencia, trocar o numero
+    bastaria para mexer na viagem do navio ao lado."""
+    entrar(cliente, login="navio.pioneer")
+    cliente.get("/navio")
+    do_pioneer = _extra(cliente)
+
+    cliente.get("/logout")
+    entrar(cliente, login="navio.pathfinder")
+    resposta = _remover(cliente, do_pioneer)
+    assert "encontrada" in resposta.headers["location"]
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT 1 FROM escala WHERE id = ?",
+                            (do_pioneer,)).fetchone()
