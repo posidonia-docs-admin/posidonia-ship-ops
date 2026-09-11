@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block titulo %}Viagens encerradas{% endblock %}
+
+{#
+  Viagens encerradas: consulta e correção.
+
+  Mesma gramática do painel, um nível acima — aqui a LINHA É A VIAGEM. Abrir
+  uma traz a mesma tabela de paradas, e abrir uma parada chega no marco, onde
+  fica o "corrigir". A correção gera versão, como em qualquer outro lugar do
+  sistema: nada é sobrescrito.
+#}
+
+{% macro campos_correcao(marco) %}
+  <input type="date" name="data" value="{{ marco.lancado.hora_local[:10] }}" required>
+  <input type="time" name="hora" value="{{ marco.lancado.hora_local[11:16] }}" required>
+  <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t"
+         value="{{ marco.lancado.rob_vlsfo if marco.lancado.rob_vlsfo is not none else "" }}">
+  <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t"
+         value="{{ marco.lancado.rob_mgo if marco.lancado.rob_mgo is not none else "" }}">
+  <input type="text" name="motivo_correcao" required placeholder="motivo da correção">
+{% endmacro %}
+
+{% block lateral_rodape %}
+  <div class="responsavel">
+    <label for="responsavel">Quem preenche</label>
+    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
+    <span class="dica">Fica registrado em cada correção.</span>
+  </div>
+{% endblock %}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Viagens encerradas</span>
+  <span class="embarcacao">{{ conta.navio_nome }}</span>
+  <span class="selo-conta">
+    <span class="iniciais">{{ conta.navio_nome[7:9] if conta.navio_nome else "??" }}</span>
+  </span>
+</div>
+
+{# GET, não POST: assim o filtro fica no endereço e pode ser guardado. #}
+<form class="consulta" method="get" action="/navio/encerradas">
+  <label class="busca">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+    </svg>
+    <input type="search" name="busca" value="{{ busca }}"
+           placeholder="Buscar por código de viagem ou porto">
+  </label>
+  {% for a in anos %}
+    <button type="submit" name="ano" value="{{ a if ano != a else "" }}"
+            class="filtro{{ " ativo" if ano == a else "" }}">{{ a }}</button>
+  {% endfor %}
+  <button type="submit" name="ano" value=""
+          class="filtro{{ " ativo" if not ano else "" }}">Todas</button>
+  <span class="resumo-consulta">
+    <b>{{ encerradas|length }}</b>
+    {{ "viagem encerrada" if encerradas|length == 1 else "viagens encerradas" }}{%
+      if ano %} em {{ ano }}{% endif %}{%
+      if com_pendencia %} · <b>{{ com_pendencia }}</b>
+      com marco faltando{% endif %}
+  </span>
+</form>
+
+{% if not encerradas %}
+  <p class="aviso">
+    {% if busca or ano %}Nenhuma viagem encerrada corresponde a esta busca.
+    {% else %}Nenhuma viagem encerrada ainda. A primeira aparece aqui quando o
+    Unberth de Alumar fechar a viagem em curso.{% endif %}
+  </p>
+{% else %}
+
+<div class="tabela">
+  <div class="cabecalho cabecalho-viagem">
+    <span></span>
+    <span>Viagem</span>
+    <span></span>
+    <span>Saída de Alumar</span>
+    <span>Encerrada em</span>
+    <span class="dir">Duração</span>
+    <span class="dir">Carga (MT)</span>
+    <span class="dir">Paradas</span>
+    <span>Situação</span>
+  </div>
+
+  {% for v in encerradas %}
+  <details class="escala viagem-encerrada">
+    <summary>
+      <span class="seta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      </span>
+      <span class="viagem-linha">{{ v.viagem.numero }}</span>
+      <span>{% if v.viagem.adicionais %}<span class="extra-chip">+{{ v.viagem.adicionais }} adicional</span>{% endif %}</span>
+      <span class="num">{{ v.viagem.saida|br if v.viagem.saida else "—" }}</span>
+      <span class="num">{{ v.viagem.chegada|br if v.viagem.chegada else "—" }}</span>
+      <span class="num dir">{{ v.duracao or "—" }}</span>
+      <span class="num dir">{{ v.viagem.descarregado|mt }}</span>
+      <span class="num dir">{{ v.viagem.paradas }}</span>
+      <span>
+        {% if v.viagem.faltantes %}
+          <span class="selo selo-falta">{{ v.viagem.faltantes }} marco{{ "" if v.viagem.faltantes == 1 else "s" }} faltando</span>
+        {% else %}
+          <span class="selo selo-ok">completa</span>
+        {% endif %}
+      </span>
+    </summary>
+
+    <div class="detalhe-viagem">
+      <div class="resumo-viagem">
+        <span class="par">Duração da viagem<b>{{ v.duracao or "—" }}</b></span>
+        <span class="par">Espera de berço, somada<b>{{ v.espera or "—" }}</b></span>
+        <span class="par">Tempo atracado, somado<b>{{ v.atracado or "—" }}</b></span>
+        <span class="par">VLSFO consumido<b>{{ v.consumo_vlsfo|mt }}</b></span>
+        <span class="par">MGO consumido<b>{{ v.consumo_mgo|mt }}</b></span>
+        <span class="par">Carga descarregada<b>{{ v.viagem.descarregado|mt }}</b></span>
+      </div>
+
+      {# A mesma tabela do painel, sem nada a lançar. #}
+      <div class="tabela aninhada">
+        <div class="cabecalho">
+          <span></span>
+          <span>Porto</span>
+          <span>Sentido</span>
+          <span>Condição</span>
+          <span>Início</span>
+          <span>Fim</span>
+          <span class="dir">Duração</span>
+          <span class="dir">Marcos</span>
+        </div>
+
+        {% for b in v.blocos %}
+        <details class="escala {{ b.estado }}">
+          <summary>
+            <span class="seta">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </span>
+            <span class="porto">{{ b.escala.porto_nome }}{%
+              if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}</span>
+            <span class="vazio">{{ b.escala.sentido if b.escala.sentido != "na" else "—" }}</span>
+            <span>{% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}</span>
+            <span class="num">{% if b.inicio %}{{ b.inicio|br }}{% else %}<span class="vazio">não lançado</span>{% endif %}</span>
+            {#
+              Viagem encerrada pode ter parada incompleta — o Unberth de Alumar
+              fecha a viagem mesmo com um Arrival do meio nunca lançado. Sem FIM
+              não há duração: inventar uma esconderia o buraco.
+            #}
+            <span class="num">{% if b.completa and b.fim %}{{ b.fim|br }}{%
+              else %}<span class="vazio">—</span>{% endif %}</span>
+            <span class="num dir">{{ b.duracao if b.completa and b.duracao else "—" }}</span>
+            <span class="dir {{ "pronto" if b.completa else "falta" }}">
+              {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
+            </span>
+          </summary>
+
+          <div class="detalhe">
+            {% for m in b.marcos %}
+            <div class="marco" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
+              {% if m.lancado %}
+                <div class="gravado">
+                  <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+                  <span class="valor">{{ m.lancado.hora_local|br }}</span>
+                  {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
+                    <span class="rob">VLSFO {{ m.lancado.rob_vlsfo|mt }} · MGO {{ m.lancado.rob_mgo|mt }}</span>
+                  {% endif %}
+                  <span class="por">{{ m.lancado.nome_responsavel }}{% if m.lancado.versao > 1 %} · corrigido{% endif %}</span>
+                  <span class="estado" data-estado></span>
+                  <details>
+                    <summary class="corrigir">corrigir</summary>
+                    {#
+                      O motivo é obrigatório aqui. Numa viagem encerrada a
+                      correção chega depois do fechamento — sem o porquê, a
+                      versão anterior vira mistério para quem conferir.
+                    #}
+                    <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"
+                          data-recarrega="1">
+                      {{ campos_correcao(m) }}
+                      <button type="submit">salvar</button>
+                    </form>
+                  </details>
+                </div>
+              {% else %}
+                <div class="gravado">
+                  <span class="marco-nome" title="{{ m.rotulo }}">{{ m.curto }}</span>
+                  <span class="por">não lançado</span>
+                  <span class="estado" data-estado></span>
+                  <details>
+                    <summary class="corrigir">lançar agora</summary>
+                    <form class="lancar" data-offset="{{ b.escala.offset_padrao }}"
+                          data-recarrega="1">
+                      <input type="date" name="data" required>
+                      <input type="time" name="hora" required>
+                      <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t">
+                      <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t">
+                      <button type="submit">salvar</button>
+                    </form>
+                  </details>
+                </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/fila.js?v={{ V }}"></script>
+<script src="/static/escalas.js?v={{ V }}"></script>
+{% endblock %}

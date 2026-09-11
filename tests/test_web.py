@@ -804,9 +804,15 @@ def test_o_fragmento_e_so_do_comandante(cliente):
 def test_o_javascript_so_recarrega_quando_nao_ha_alternativa(cliente):
     """Guarda de regressao.
 
-    Um unico `location.reload()` deve restar — o da sessao caida / viagem
-    trocada. Se voltar a haver reload no caminho de salvar, esta contagem sobe
-    e o teste avisa antes de o comandante sentir a tela travar de novo.
+    DOIS `location.reload()` sao legitimos, e so eles:
+
+    1. Sessao caida ou viagem trocada — a pagina inteira mudou de forma.
+    2. Correcao em viagem encerrada (`data-recarrega`) — mexe no RESUMO da
+       viagem, nao so na linha, e ali nao ha miolo a trocar.
+
+    O caminho do dia a dia — lancar marco no painel — nao pode ter nenhum. Se
+    esta contagem subir, e sinal de que voltou, e o comandante vai sentir a
+    tela travar de novo.
     """
     import re
     js = (pathlib.Path(__file__).resolve().parent.parent
@@ -814,7 +820,8 @@ def test_o_javascript_so_recarrega_quando_nao_ha_alternativa(cliente):
     # sem os comentarios: o proprio arquivo EXPLICA o reload que foi tirado,
     # e contar a explicacao junto com o codigo esconderia a regressao
     codigo = re.sub(r"//.*", "", re.sub(r"/\*.*?\*/", "", js, flags=re.S))
-    assert codigo.count("location.reload()") == 1, codigo.count("location.reload()")
+    assert codigo.count("location.reload()") == 2, codigo.count("location.reload()")
+    assert "data-recarrega" not in codigo  # o JavaScript le dataset.recarrega
     assert "/navio/tela" in codigo
 
 
@@ -956,3 +963,185 @@ def test_abertura_esta_completa_e_mesmo_assim_nao_tem_fim(cliente):
     assert "01/03/2026 10:00" in alumar     # o início está lá
     assert "completa" in alumar
     assert "em curso" not in alumar
+
+
+# ---------------------------------------------------------------------------
+# Viagens encerradas
+#
+# Tela separada do painel porque as duas respondem perguntas diferentes: o
+# painel diz "o que lanço agora", esta diz "o que aconteceu".
+# ---------------------------------------------------------------------------
+
+VIAGEM_INTEIRA = (
+    (10, "sailing", "2026-03-01T18:40", 1421.5, 112.25),
+    (20, "arrival", "2026-03-02T09:15", 1388.0, 110.1),
+    (20, "sailing", "2026-03-02T10:05", 1386.2, 110.0),
+    (30, "arrival", "2026-03-03T22:30", 1301.75, 99.5),
+    (30, "berth", "2026-03-04T06:10", 1284.5, 98.2),
+    (30, "unberth", "2026-03-05T14:20", 1276.1, 96.4),
+    (30, "sailing", "2026-03-05T16:05", 1274.8, 96.1),
+    (40, "arrival", "2026-03-06T20:40", 1208.3, 90.7),
+    (40, "sailing", "2026-03-06T21:25", 1206.9, 90.5),
+    (50, "arrival", "2026-03-07T04:10", 1190.4, 88.9),
+    (50, "sailing", "2026-03-07T11:50", 1188.1, 88.6),
+    (60, "arrival", "2026-03-07T19:30", 1171.6, 87.0),
+    (60, "berth", "2026-03-07T23:50", 1169.9, 86.7),
+    (60, "unberth", "2026-03-08T07:55", 1166.2, 85.9),
+)
+
+
+def _percorrer(cliente, marcos=VIAGEM_INTEIRA, prefixo="ok", carga=True):
+    """Lança uma viagem inteira; o unberth de Alumar a fecha e abre a próxima."""
+    cliente.get("/navio")
+    with closing(db.conectar()) as conn:
+        ids = {e["ordem"]: e["id"] for e in conn.execute(
+            "SELECT e.ordem, e.id FROM escala e JOIN viagem v ON v.id = e.viagem_id"
+            " WHERE v.status = 'aberta' AND v.navio_id ="
+            " (SELECT navio_id FROM viagem WHERE status = 'aberta' ORDER BY id LIMIT 1)"
+        )}
+    if carga:
+        cliente.post("/api/carga", json={
+            "escala_id": ids[30], "quantidade": 58000, "nome_responsavel": "Cmt.",
+            "id_cliente": "{}-carga-sobe".format(prefixo)})
+    for i, (ordem, tipo, hora, vl, mg) in enumerate(marcos):
+        cliente.post("/api/marco", json={
+            "escala_id": ids[ordem], "tipo": tipo, "hora_local": hora,
+            "offset": "-03:00", "nome_responsavel": "Cmte. Andrade",
+            "rob_vlsfo": vl, "rob_mgo": mg,
+            "id_cliente": "{}-{}".format(prefixo, i)})
+        if ordem == 60 and tipo == "arrival" and carga:
+            cliente.post("/api/carga", json={
+                "escala_id": ids[60], "quantidade": 57500, "nome_responsavel": "Cmt.",
+                "id_cliente": "{}-carga-desce".format(prefixo)})
+    return ids
+
+
+def test_encerradas_lista_o_que_se_procura_numa_consulta(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+
+    html = cliente.get("/navio/encerradas").text
+    assert "APT26001" in html
+    assert "01/03/2026 18:40" in html       # saída de Alumar
+    assert "08/03/2026 07:55" in html       # encerrada em
+    assert "6d 13h" in html                 # duração da viagem
+    assert "57.500,000" in html             # carga descarregada
+    assert "completa" in html
+
+
+def test_encerradas_denuncia_a_viagem_com_marco_faltando(cliente):
+    """O Unberth de Alumar fecha a viagem mesmo com um Arrival do meio vazio.
+
+    Sem a coluna de situação esse buraco ficaria invisível para sempre.
+    """
+    entrar(cliente)
+    sem_o_arrival = tuple(m for m in VIAGEM_INTEIRA
+                          if not (m[0] == 40 and m[1] == "arrival"))
+    _percorrer(cliente, sem_o_arrival, prefixo="furo")
+
+    html = cliente.get("/navio/encerradas").text
+    assert "1 marco faltando" in html
+    assert "não lançado" in html
+
+
+def test_a_busca_encontra_por_codigo_e_por_porto(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+
+    assert "APT26001" in cliente.get("/navio/encerradas?busca=26001").text
+    assert "APT26001" in cliente.get("/navio/encerradas?busca=juruti").text
+    vazio = cliente.get("/navio/encerradas?busca=santos").text
+    assert "APT26001" not in vazio
+    assert "Nenhuma viagem encerrada corresponde" in vazio
+
+
+def test_o_filtro_de_ano_usa_a_saida_de_alumar(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+
+    assert "APT26001" in cliente.get("/navio/encerradas?ano=2026").text
+    assert "APT26001" not in cliente.get("/navio/encerradas?ano=2025").text
+
+
+def test_corrigir_o_unberth_de_alumar_move_a_ancora_da_viagem(cliente):
+    """Sem mover a âncora, a viagem guardaria para sempre a hora errada.
+
+    `evento_encerramento_id` aponta para o evento que a fechou. A correção cria
+    uma VERSÃO nova e aposenta a anterior — se a âncora ficasse na aposentada, a
+    duração da viagem sairia da versão que ninguém mais considera vigente.
+    """
+    entrar(cliente)
+    ids = _percorrer(cliente)
+
+    assert "6d 13h" in cliente.get("/navio/encerradas").text
+
+    cliente.post("/api/marco", json={
+        "escala_id": ids[60], "tipo": "unberth", "hora_local": "2026-03-08T15:55",
+        "offset": "-03:00", "nome_responsavel": "Cmte. Andrade",
+        "motivo_correcao": "hora conferida no diário de bordo",
+        "id_cliente": "corrige-unberth"})
+
+    html = cliente.get("/navio/encerradas").text
+    assert "08/03/2026 15:55" in html      # a versão nova
+    assert "6d 21h" in html                # e a duração acompanhou
+    assert "corrigido" in html
+
+    with closing(db.conectar()) as conn:
+        vigente = conn.execute(
+            "SELECT ev.vigente FROM viagem vg "
+            "  JOIN evento ev ON ev.id = vg.evento_encerramento_id "
+            " WHERE vg.status = 'encerrada'").fetchone()[0]
+        assert vigente == 1, "a âncora ficou num evento aposentado"
+
+    # e corrigir o que ja fechou NAO abre outra viagem
+    with closing(db.conectar()) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM viagem WHERE status = 'aberta'").fetchone()[0] == 1
+
+
+def test_um_navio_nao_ve_as_viagens_encerradas_do_outro(cliente):
+    entrar(cliente, login="navio.pioneer")
+    _percorrer(cliente, prefixo="pio")
+    cliente.get("/logout")
+
+    entrar(cliente, login="navio.pathfinder")
+    html = cliente.get("/navio/encerradas").text
+    assert "APN26001" not in html
+    assert "Nenhuma viagem encerrada ainda" in html
+
+
+def test_encerradas_e_so_do_comandante(cliente):
+    entrar(cliente, login="vlo")
+    resposta = cliente.get("/navio/encerradas", follow_redirects=False)
+    assert resposta.status_code == 303
+    assert resposta.headers["location"] == "/painel"
+
+
+def test_o_painel_ficou_so_com_a_viagem_em_curso(cliente):
+    """Juntas, a lista de encerradas empurrava a viagem em curso para fora da
+    tela — e é ela que o comandante veio preencher."""
+    entrar(cliente)
+    _percorrer(cliente)
+
+    painel = cliente.get("/navio").text
+    assert "Viagens anteriores" not in painel
+    assert painel.count("APT26001") == 0      # a encerrada nao aparece aqui
+    assert "APT26002" in painel               # a nova, sim
+
+
+def test_zero_nunca_aparece_com_sinal_de_menos(cliente):
+    """-0,0004 arredondado virava '-0,000' — um menos que nao diz nada."""
+    from app.main import formato_mt
+    assert formato_mt(-0.0004) == "0,000"
+    assert formato_mt(-1.2) == "-1,200"
+    assert formato_mt(0) == "0,000"
+    assert formato_mt(None) == "\u2014"
+
+
+def test_o_plural_de_viagem(cliente):
+    entrar(cliente)
+    assert "Nenhuma viagem encerrada ainda" in cliente.get("/navio/encerradas").text
+    _percorrer(cliente)
+    html = cliente.get("/navio/encerradas").text
+    assert "1</b>\n    viagem encerrada" in html.replace("\r\n", "\n")
+    assert "viagems" not in html

@@ -157,6 +157,13 @@
         return;
       }
       virarRegistro(bloco, form, registro);
+      // Em viagens encerradas nao ha miolo a trocar, e a correcao mexe no
+      // RESUMO da viagem la em cima — duracao, espera, atracado. Deixar so a
+      // linha atualizada faria a tela mostrar a hora nova com a duracao velha.
+      if (form.dataset.recarrega === "1") {
+        window.location.reload();
+        return;
+      }
       return trocarTela();
     }).catch(function () {
       // Ficou na fila local e sera reenviado sozinho. Vira registro do mesmo

@@ -483,3 +483,71 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
 
 .botao-perigo { background: var(--erro); }
 .botao-perigo:hover { background: #8f1e17; }
+
+/* ---- viagens encerradas ------------------------------------------------ */
+
+/* A barra de consulta. GET de propósito: o filtro fica no endereço. */
+.consulta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            margin-bottom: 18px; }
+.busca { display: flex; align-items: center; gap: 9px;
+         background: var(--campo); border: 1px solid var(--campo-borda);
+         border-radius: var(--r-campo); height: 44px; padding: 0 14px;
+         flex: 1 1 280px; max-width: 420px; margin: 0; }
+.busca svg { flex: 0 0 16px; color: var(--suave); }
+.busca input { flex: 1; min-width: 0; background: transparent; border: 0;
+               padding: 0; min-height: 0; font-size: 14px; }
+.busca input:focus { outline: none; box-shadow: none; }
+.filtro { height: 44px; padding: 0 17px; border: 1px solid var(--campo-borda);
+          border-radius: var(--r-chip); background: var(--painel);
+          color: #47586b; font: 500 13.5px var(--sans); }
+.filtro:hover { background: var(--campo); color: #47586b; }
+.filtro.ativo { background: var(--navy); border-color: var(--navy); color: #fff; }
+.filtro.ativo:hover { background: var(--navy); color: #fff; }
+.resumo-consulta { margin-left: auto; font-size: 13px; color: var(--suave); }
+.resumo-consulta b { font-family: var(--mono); color: var(--navy); }
+
+/* A linha É a viagem. Uma coluna a mais que a tabela de paradas. */
+.cabecalho-viagem,
+.viagem-encerrada > summary {
+  grid-template-columns: 28px 130px 116px minmax(0, 1fr) minmax(0, 1fr)
+                         96px 122px 84px 152px;
+}
+.viagem-linha { font-family: var(--mono); font-weight: 700; font-size: 15px;
+                color: var(--navy); letter-spacing: .03em; }
+.selo-ok { background: rgba(18,128,92,.10); color: var(--ok); }
+
+/* A tabela de dentro é a mesma de fora, um tom mais clara, para a de fora
+   continuar sendo a que manda. */
+.detalhe-viagem { border-top: 1px solid var(--campo-borda); background: #f7fafc;
+                  padding: 16px 18px 18px; }
+.aninhada { background: var(--painel); }
+.aninhada .cabecalho > span { font-size: 9.5px; padding: 9px 12px; }
+.aninhada .escala > summary { min-height: 46px; }
+.aninhada .escala > summary > * { padding: 10px 12px; }
+
+.resumo-viagem { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 14px; }
+.resumo-viagem .par { font-size: 12px; color: var(--suave); }
+.resumo-viagem b { display: block; font-family: var(--mono); font-size: 15px;
+                   font-weight: 600; color: var(--navy); margin-top: 3px; }
+
+@media (max-width: 1099px) {
+  .cabecalho-viagem { display: none; }
+  .viagem-encerrada > summary {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas: "seta codigo selo" ". extra extra" ". janela janela";
+    row-gap: 0; padding-bottom: 10px;
+  }
+  .viagem-encerrada > summary > .seta { grid-area: seta; }
+  .viagem-encerrada > summary > .viagem-linha { grid-area: codigo; }
+  .viagem-encerrada > summary > *:nth-child(3) { grid-area: extra; padding: 0 12px; }
+  .viagem-encerrada > summary > *:nth-child(4),
+  .viagem-encerrada > summary > *:nth-child(5) { grid-area: janela; display: inline; }
+  .viagem-encerrada > summary > *:nth-child(4) { padding: 0 4px 10px 12px; }
+  .viagem-encerrada > summary > *:nth-child(5) { padding: 0 12px 10px 0; }
+  .viagem-encerrada > summary > *:nth-child(6),
+  .viagem-encerrada > summary > *:nth-child(7),
+  .viagem-encerrada > summary > *:nth-child(8) { display: none; }
+  .viagem-encerrada > summary > *:nth-child(9) { grid-area: selo; text-align: right; }
+  .detalhe-viagem { padding: 12px 10px 14px; }
+  .resumo-viagem { gap: 16px; }
+}

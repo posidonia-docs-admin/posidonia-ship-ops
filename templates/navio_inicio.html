@@ -35,85 +35,12 @@
   </div>
 {% endif %}
 
-{# ---------- viagens encerradas ---------- #}
-{% set fechadas = lista | rejectattr("aberta") | list %}
-{% if fechadas %}
-<div class="titulo-trilha titulo-afastado">
-  <span class="rot">Viagens anteriores</span>
-  <span class="risco"></span>
-</div>
-{% for v in fechadas %}
-<details class="viagem">
-  <summary>
-    <span class="codigo">{{ v.viagem.numero }}</span>
-    <span class="embarcacao">{{ conta.navio_nome }}</span>
-    <span class="selo selo-fechada">encerrada</span>
-  </summary>
-  <div class="corpo">
-    {#
-      Mesma tabela da viagem em curso, sem nada a lançar. Vive aqui até a tela
-      dedicada de viagens encerradas existir — duas gramáticas na mesma página
-      seria pedir ao comandante para aprender a ler duas vezes.
-    #}
-    <div class="tabela">
-      <div class="cabecalho">
-        <span></span>
-        <span>Porto</span>
-        <span>Sentido</span>
-        <span>Condição</span>
-        <span>Início</span>
-        <span>Fim</span>
-        <span class="dir">Duração</span>
-        <span class="dir">Marcos</span>
-      </div>
-
-      {% for b in v.blocos %}
-      <details class="escala {{ b.estado }}">
-        <summary>
-          <span class="seta"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>
-          <span class="porto">{{ b.escala.porto_nome }}{%
-            if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}</span>
-          <span class="vazio">{{ b.escala.sentido if b.escala.sentido != "na" else "—" }}</span>
-          <span>{% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}</span>
-          <span class="num">{% if b.inicio %}{{ b.inicio|br }}{% else %}<span class="vazio">não lançado</span>{% endif %}</span>
-          {#
-            Viagem encerrada pode ter parada incompleta — o Unberth de Alumar
-            fecha a viagem mesmo com um Arrival do meio nunca lançado. Sem FIM
-            não há duração: inventar uma esconderia o buraco.
-          #}
-          <span class="num">{% if b.completa and b.fim %}{{ b.fim|br }}{%
-            else %}<span class="vazio">—</span>{% endif %}</span>
-          <span class="num dir">{{ b.duracao if b.completa and b.duracao else "—" }}</span>
-          <span class="dir {{ "pronto" if b.completa else "falta" }}">
-            {% if b.completa %}completa{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}
-          </span>
-        </summary>
-
-        <div class="detalhe">
-          {% for m in b.marcos %}
-          <div class="marco">
-            <div class="gravado">
-              <span class="marco-nome">{{ m.curto }}</span>
-              {% if m.lancado %}
-                <span class="valor">{{ m.lancado.hora_local|br }}</span>
-                {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none %}
-                  <span class="rob">VLSFO {{ m.lancado.rob_vlsfo|mt }} · MGO {{ m.lancado.rob_mgo|mt }}</span>
-                {% endif %}
-                <span class="por">{{ m.lancado.nome_responsavel }}</span>
-              {% else %}
-                <span class="por">não lançado</span>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </details>
-      {% endfor %}
-    </div>
-  </div>
-</details>
-{% endfor %}
-{% endif %}
+{#
+  As viagens encerradas moraram aqui ate ganharem tela propria. Saíram porque
+  as duas telas respondem perguntas diferentes: o painel diz "o que lanço
+  agora", a outra diz "o que aconteceu". Juntas, a segunda empurrava a primeira
+  para fora do campo de visão.
+#}
 {% endblock %}
 
 {% block scripts %}

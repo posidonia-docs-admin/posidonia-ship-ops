@@ -46,7 +46,7 @@ templates.env.globals["V"] = versao_estaticos()
 # nasce de dado, nao de HTML espalhado. O do comandante e curto de proposito —
 # o acesso dele e so lancar escala.
 MENU = {
-    "navio": ((("/navio"), "Viagens"),),
+    "navio": ((("/navio"), "Painel"), (("/navio/encerradas"), "Encerradas")),
     "supervisor": ((("/painel"), "Frota"),),
     "analytics": ((("/painel"), "Frota"),),
     "admin": ((("/painel"), "Frota"), (("/admin/contas"), "Contas")),
@@ -77,7 +77,12 @@ def formato_mt(valor, casas=3):
     if valor is None or valor == "":
         return "\u2014"
     try:
-        texto = "{:,.{}f}".format(float(valor), casas)
+        numero = float(valor)
+        # Arredondar -0.0004 dava "-0,000": sinal de menos num zero e ruido, e
+        # some justamente a informacao que o sinal deveria carregar.
+        if round(numero, casas) == 0:
+            numero = 0.0
+        texto = "{:,.{}f}".format(numero, casas)
     except (TypeError, ValueError):
         return str(valor)
     # de 1,234.500 para 1.234,500
@@ -267,6 +272,24 @@ def _duracao(minutos: int | None) -> str:
     if minutos is None or minutos < 0:
         return ""
     return "{}h{:02d}".format(minutos // 60, minutos % 60)
+
+
+def _duracao_longa(minutos: int | None) -> str:
+    """11.227 -> '7d 19h'. Uma viagem leva dias; '187h07' nao se le."""
+    if minutos is None or minutos < 0:
+        return ""
+    dias, resto = divmod(minutos // 60, 24)
+    return "{}d {:02d}h".format(dias, resto) if dias else "{}h{:02d}".format(
+        resto, minutos % 60)
+
+
+def _entre(inicio: str | None, fim: str | None) -> int | None:
+    """Minutos entre dois instantes UTC. None se algum nao existe."""
+    try:
+        return int((datetime.fromisoformat(fim)
+                    - datetime.fromisoformat(inicio)).total_seconds() // 60)
+    except (TypeError, ValueError):
+        return None
 
 
 def _janela(marcos) -> dict:
@@ -603,6 +626,115 @@ async def api_carga(request: Request):
     if erros:
         return JSONResponse({"ok": False, "erros": erros}, status_code=422)
     return {"ok": True}
+
+
+def _encerradas(conta, busca: str = "", ano: str = "") -> dict:
+    """As viagens ja fechadas deste navio, para consulta e correcao.
+
+    A carga e a soma do DESCARREGADO: e ela que diz o que a viagem entregou.
+    O carregado ja aparece na parada de Juruti, dentro da propria viagem.
+    """
+    with closing(db.conectar()) as conn:
+        linhas = conn.execute(
+            "SELECT vg.id, vg.numero, "
+            "       ab.hora_local AS saida, ab.hora_utc AS saida_utc, "
+            "       en.hora_local AS chegada, en.hora_utc AS chegada_utc, "
+            "       (SELECT COUNT(*) FROM escala e "
+            "         WHERE e.viagem_id = vg.id AND e.status <> 'cancelada') AS paradas, "
+            "       (SELECT COUNT(*) FROM escala e "
+            "         WHERE e.viagem_id = vg.id AND e.status <> 'cancelada' "
+            "           AND e.origem = 'extra') AS adicionais, "
+            "       (SELECT COUNT(*) FROM escalas_incompletas i "
+            "         WHERE i.viagem_id = vg.id) AS faltantes, "
+            "       (SELECT ROUND(SUM(mc.descarregado), 3) FROM movimento_carga mc "
+            "          JOIN escala e ON e.id = mc.escala_id "
+            "         WHERE e.viagem_id = vg.id) AS descarregado "
+            "  FROM viagem vg "
+            "  LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id "
+            "  LEFT JOIN evento en ON en.id = vg.evento_encerramento_id "
+            " WHERE vg.navio_id = ? AND vg.status = 'encerrada' "
+            " ORDER BY vg.id DESC", (conta["navio_id"],)).fetchall()
+
+        viagens_lista = []
+        anos = set()
+        for viagem in linhas:
+            ano_da = (viagem["saida"] or "")[:4]
+            if ano_da:
+                anos.add(ano_da)
+            blocos = _escalas_com_marcos(conn, viagem["id"])
+            for bloco in blocos:
+                lancados = sum(1 for m in bloco["marcos"] if m["lancado"])
+                bloco["lancados"] = lancados
+                bloco["total"] = len(bloco["marcos"])
+                bloco["estado"] = ("pronta" if bloco["completa"]
+                                   else "parcial" if lancados else "vazia")
+
+            # Somas da viagem: o que a escala ja calcula, acumulado.
+            espera = atracado = 0
+            for bloco in blocos:
+                marcos = {m["tipo"]: m["lancado"] for m in bloco["marcos"]
+                          if m["lancado"]}
+                for de, para, alvo in (("arrival", "berth", "espera"),
+                                       ("berth", "unberth", "atracado")):
+                    if de in marcos and para in marcos:
+                        minutos = _entre(marcos[de]["hora_utc"], marcos[para]["hora_utc"])
+                        if minutos and minutos > 0:
+                            if alvo == "espera":
+                                espera += minutos
+                            else:
+                                atracado += minutos
+
+            consumo = conn.execute(
+                "SELECT ROUND(SUM(consumo_vlsfo), 3), ROUND(SUM(consumo_mgo), 3) "
+                "  FROM consumo_combustivel "
+                " WHERE viagem = ? AND consumo_vlsfo IS NOT NULL",
+                (viagem["numero"],)).fetchone()
+
+            viagens_lista.append({
+                "viagem": viagem,
+                "blocos": blocos,
+                "ano": ano_da,
+                "duracao": _duracao_longa(_entre(viagem["saida_utc"],
+                                                 viagem["chegada_utc"])),
+                "espera": _duracao(espera) if espera else "",
+                "atracado": _duracao(atracado) if atracado else "",
+                "consumo_vlsfo": consumo[0] if consumo else None,
+                "consumo_mgo": consumo[1] if consumo else None,
+                "portos": " ".join(b["escala"]["porto_nome"] for b in blocos),
+            })
+
+    # O filtro e depois da montagem de proposito: a busca varre tambem os PORTOS
+    # da viagem, e isso exige as escalas ja carregadas.
+    procurado = (busca or "").strip().lower()
+    visiveis = [
+        v for v in viagens_lista
+        if (not ano or v["ano"] == ano)
+        and (not procurado
+             or procurado in (v["viagem"]["numero"] or "").lower()
+             or procurado in v["portos"].lower())
+    ]
+    return {
+        "encerradas": visiveis,
+        "anos": sorted(anos, reverse=True),
+        "ano": ano,
+        "busca": busca or "",
+        "com_pendencia": sum(1 for v in visiveis if v["viagem"]["faltantes"]),
+    }
+
+
+@app.get("/navio/encerradas", response_class=HTMLResponse)
+def navio_encerradas(request: Request, busca: str = "", ano: str = ""):
+    """Consulta e correcao do que ja passou.
+
+    Tela separada porque o painel responde "o que lanco agora" e esta responde
+    "o que aconteceu" — perguntas diferentes, em momentos diferentes do dia.
+    """
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return RedirectResponse("/painel", 303)
+    contexto = {"conta": conta}
+    contexto.update(_encerradas(conta, busca=busca, ano=ano))
+    return templates.TemplateResponse(request, "encerradas.html", contexto)
 
 
 @app.post("/navio/escala-extra")

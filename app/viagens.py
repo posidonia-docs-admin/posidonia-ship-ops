@@ -450,6 +450,17 @@ def lancar_marco(
             (cur.lastrowid, escala[4]),
         )
 
+    # O mesmo vale para o FIM: corrigir o unberth de Alumar depois que a viagem
+    # fechou tem de mover a ancora, senao a viagem guarda para sempre a hora
+    # errada e a duracao sai da versao que foi substituida. So move a ancora que
+    # apontava para o evento que acabou de ser substituido — nunca outra.
+    if escala[0] == "encerramento" and tipo == "unberth" and vigente_atual is not None:
+        conn.execute(
+            "UPDATE viagem SET evento_encerramento_id = ? "
+            " WHERE id = ? AND evento_encerramento_id = ?",
+            (cur.lastrowid, escala[4], vigente_atual[0]),
+        )
+
     conn.commit()
 
     # O UNBERTH de Alumar e o ULTIMO lancamento da viagem: fecha esta e abre a
