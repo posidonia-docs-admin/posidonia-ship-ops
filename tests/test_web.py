@@ -801,6 +801,16 @@ def _extra(cliente, motivo="bunker", porto="ICOARACI"):
             " ORDER BY e.id DESC LIMIT 1").fetchone()[0]
 
 
+def _trilha(cliente):
+    """So a lista de paradas.
+
+    O nome do porto tambem aparece no seletor de "acrescentar parada", entao
+    procurar no HTML inteiro acharia Icoaraci mesmo depois de ela sair da viagem.
+    """
+    html = cliente.get("/navio/tela").text
+    return html[html.index('<ol class="trilha">'):html.index("</ol>")]
+
+
 def _remover(cliente, escala_id):
     return cliente.post("/navio/escala-extra/remover",
                         data={"escala_id": escala_id}, follow_redirects=False)
@@ -832,19 +842,51 @@ def test_parada_do_circuito_padrao_nao_sai(cliente):
         assert conn.execute("SELECT 1 FROM escala WHERE id = ?", (juruti,)).fetchone()
 
 
-def test_parada_extra_com_lancamento_nao_sai(cliente):
-    """Este sistema nunca apaga afirmacao — corrigir gera versao, nao sumico."""
+def test_parada_extra_com_lancamento_sai_da_tela_sem_perder_o_lancamento(cliente):
+    """O que se desfaz e a PARADA, nao o lancamento.
+
+    O comandante acrescentou Icoaraci e ela nao devia estar ali — some, mesmo
+    ja tendo marco dentro. Mas este sistema nunca destroi o que alguem afirmou:
+    a escala fica CANCELADA e o evento continua no banco, preso a ela.
+    """
     entrar(cliente)
     cliente.get("/navio")
     extra = _extra(cliente)
     cliente.post("/api/marco", json={
         "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-1"})
+    assert "Icoaraci" in _trilha(cliente)
 
     resposta = _remover(cliente, extra)
-    assert "lan%C3%A7amento" in resposta.headers["location"]
+    assert resposta.headers["location"] == "/navio"
+
+    # sumiu da trilha do comandante...
+    assert "Icoaraci" not in _trilha(cliente)
     with closing(db.conectar()) as conn:
-        assert conn.execute("SELECT 1 FROM escala WHERE id = ?", (extra,)).fetchone()
+        assert conn.execute(
+            "SELECT status FROM escala WHERE id = ?", (extra,)).fetchone()[0] == "cancelada"
+        # ...e o que ele digitou continua la
+        assert conn.execute(
+            "SELECT COUNT(*) FROM evento WHERE escala_id = ?", (extra,)).fetchone()[0] == 1
+        # ...sem cobrar nada nas filas
+        assert conn.execute(
+            "SELECT COUNT(*) FROM escalas_incompletas WHERE escala_id = ?",
+            (extra,)).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM escalas_a_conferir WHERE escala_id = ?",
+            (extra,)).fetchone()[0] == 0
+
+
+def test_remover_a_mesma_parada_duas_vezes_nao_e_erro(cliente):
+    """O comandante pode clicar de novo sem entender por que nao sumiu antes."""
+    entrar(cliente)
+    cliente.get("/navio")
+    extra = _extra(cliente)
+    cliente.post("/api/marco", json={
+        "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-2"})
+    _remover(cliente, extra)
+    assert _remover(cliente, extra).headers["location"] == "/navio"
 
 
 def test_um_navio_nao_remove_parada_do_outro(cliente):

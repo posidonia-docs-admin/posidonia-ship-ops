@@ -289,51 +289,52 @@ def adicionar_escala_extra(
 
 
 def remover_escala_extra(conn, escala_id: int) -> tuple[bool, list[str]]:
-    """Desfaz uma parada acrescentada por engano. So a EXTRA, e so se vazia.
+    """Desfaz uma parada acrescentada por engano. So a EXTRA.
 
-    Duas recusas, e as duas sao de propósito:
+    O que se desfaz e a PARADA, nao o lancamento: o comandante acrescentou
+    Icoaraci no fim da lista e ela nao devia estar ali. Lancamento errado tem
+    outro caminho, que e a correcao — e continua tendo.
 
-    - **Escala do modelo nao sai.** As seis do circuito definem a viagem; sem
-      Juruti nao ha carregamento, sem Alumar nao ha o que a encerre. Apagar uma
-      delas nao seria corrigir engano, seria quebrar a viagem.
+    Escala do modelo nao sai. As seis do circuito definem a viagem: sem Juruti
+    nao ha carregamento, sem Alumar nao ha o que a encerre. Apagar uma delas nao
+    seria corrigir engano, seria quebrar a viagem.
 
-    - **Escala com lancamento nao sai.** Este sistema nunca apaga afirmacao:
-      corrigir gera versao nova e a anterior fica. Deixar uma remocao levar
-      evento junto abriria a unica porta por onde dado registrado some — e
-      seria justamente a porta mais facil de empurrar sem querer.
+    Dois desfechos, pela mesma razao de fundo — nunca destruir o que alguem
+    afirmou:
 
-    A saida honesta para "lancei na parada errada" e corrigir o lancamento,
-    que preserva o rastro de que houve correcao.
+    - **Parada vazia sai do banco.** Nao ha o que preservar, e a posicao de
+      ordenacao fica livre para ela ser reinserida no mesmo lugar.
+
+    - **Parada com lancamento e CANCELADA.** Some da tela do comandante e das
+      filas de cobranca e de conferencia, exatamente como se tivesse sido
+      apagada, mas o que foi digitado continua no banco, preso a uma escala
+      marcada como cancelada. A supervisao ainda consegue ver que houve.
     """
     escala = conn.execute(
-        "SELECT e.id, e.origem, e.codigo_porto, vg.status "
+        "SELECT e.id, e.origem, e.status AS escala_status, vg.status AS viagem_status "
         "  FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
         " WHERE e.id = ?", (escala_id,)).fetchone()
     if escala is None:
         return False, ["Parada {} não existe.".format(escala_id)]
     if escala["origem"] != "extra":
         return False, ["Esta parada é do circuito padrão e não pode ser removida."]
-    if escala["status"] != "aberta":
-        return False, ["A viagem está {} — não aceita remoção.".format(escala["status"])]
-
-    lancados = conn.execute(
-        "SELECT COUNT(*) FROM evento WHERE escala_id = ? AND vigente = 1",
-        (escala_id,)).fetchone()[0]
-    if lancados:
+    if escala["viagem_status"] != "aberta":
         return False, [
-            "Esta parada já tem {} lançamento(s). Corrija o lançamento em vez de "
-            "remover a parada — assim fica registrado que houve correção.".format(
-                lancados)
-        ]
-    for tabela, o_que in (("abastecimento", "abastecimento"), ("movimento_carga", "carga")):
-        if conn.execute("SELECT 1 FROM {} WHERE escala_id = ?".format(tabela),
-                        (escala_id,)).fetchone():
-            return False, ["Esta parada já tem {} registrado.".format(o_que)]
+            "A viagem está {} — não aceita remoção.".format(escala["viagem_status"])]
+    if escala["escala_status"] == "cancelada":
+        return True, []  # ja saiu; repetir o pedido nao e erro
 
-    # Evento nao-vigente pode existir (lancado e depois corrigido). Se chegou
-    # aqui nao ha nenhum vigente, entao nao ha afirmacao em pe a preservar.
-    conn.execute("DELETE FROM evento WHERE escala_id = ?", (escala_id,))
-    conn.execute("DELETE FROM escala WHERE id = ?", (escala_id,))
+    tem_dado = bool(
+        conn.execute("SELECT 1 FROM evento WHERE escala_id = ?", (escala_id,)).fetchone()
+        or conn.execute("SELECT 1 FROM abastecimento WHERE escala_id = ?",
+                        (escala_id,)).fetchone()
+        or conn.execute("SELECT 1 FROM movimento_carga WHERE escala_id = ?",
+                        (escala_id,)).fetchone()
+    )
+    if tem_dado:
+        conn.execute("UPDATE escala SET status = 'cancelada' WHERE id = ?", (escala_id,))
+    else:
+        conn.execute("DELETE FROM escala WHERE id = ?", (escala_id,))
     conn.commit()
     return True, []
 

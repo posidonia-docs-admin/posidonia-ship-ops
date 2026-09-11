@@ -77,7 +77,10 @@ SELECT
 FROM evento_vigente v
 JOIN escala e ON e.id = v.escala_id
 LEFT JOIN conferencia c ON c.evento_id = v.id
+-- Parada cancelada some das filas junto com a parada. O evento continua no
+-- banco — mas cobrar conferencia de escala que foi desfeita e so ruido.
 WHERE c.id IS NULL
+  AND e.status <> 'cancelada'
 ORDER BY v.registrado_em;
 
 -- A viagem inteira num relance.
@@ -91,8 +94,11 @@ SELECT
     ab.hora_utc AS abertura_utc,
     en.hora_utc AS encerramento_utc,
     ROUND((julianday(en.hora_utc) - julianday(ab.hora_utc)) * 24, 2) AS horas_viagem,
-    (SELECT COUNT(*) FROM escala e WHERE e.viagem_id = vg.id)                        AS escalas,
-    (SELECT COUNT(*) FROM escala e WHERE e.viagem_id = vg.id AND e.origem = 'extra') AS escalas_extras,
+    (SELECT COUNT(*) FROM escala e
+      WHERE e.viagem_id = vg.id AND e.status <> 'cancelada')                         AS escalas,
+    (SELECT COUNT(*) FROM escala e
+      WHERE e.viagem_id = vg.id AND e.status <> 'cancelada'
+        AND e.origem = 'extra')                                                      AS escalas_extras,
     (SELECT COUNT(*) FROM escalas_incompletas i WHERE i.viagem_id = vg.id)           AS marcos_faltantes
 FROM viagem vg
 JOIN navio n ON n.id = vg.navio_id
