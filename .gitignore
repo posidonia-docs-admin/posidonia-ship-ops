@@ -7,3 +7,12 @@ venv/
 *.sqlite3
 .env
 storage/
+
+# Planilhas e documentos corporativos deixados na raiz para leitura.
+# Nunca vao para o GitHub: sao dados de operacao (e podem ter DRM).
+*.xls
+*.xlsx
+*.xlsm
+*.docx
+*.pptx
+~$*

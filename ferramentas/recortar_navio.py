@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tira o fundo branco do navio SEM comer a superestrutura, que tambem e branca.
+"""Tira o fundo branco (ou o xadrez de "transparencia") SEM comer o branco de dentro.
 
 Um recorte ingenuo — "branco vira transparente" — apagaria o castelo do navio
 junto com o fundo. Aqui o fundo e o que se alcanca a partir da BORDA da imagem
@@ -86,4 +86,9 @@ def main(origem: pathlib.Path, destino: pathlib.Path) -> int:
 if __name__ == "__main__":
     origem = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else MARCA / "navio.png"
     destino = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else origem
+    # Terceiro argumento: o limiar. O navio precisou de 60 (fundo branco); a
+    # logo da Alcoa veio com o xadrez cinza de "transparencia" pintado, e o
+    # cinza esta a ~150 do branco — precisa de 200 para sair inteiro.
+    if len(sys.argv) > 3:
+        LIMIAR = int(sys.argv[3])
     sys.exit(main(origem, destino))
