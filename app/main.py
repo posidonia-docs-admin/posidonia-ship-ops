@@ -837,7 +837,22 @@ def _colunas_de_viagens(conn, navio_id: int) -> list[dict]:
     for v in linhas:
         valores = pernadas.calcular(conn, v["id"])
         aberta = v["status"] == "aberta"
+        # A carga: o que subiu em Juruti e o que FICOU a bordo depois da descarga
+        # em Alumar. Nunca se descarrega exatamente o que se carregou; a sobra
+        # atravessa para a viagem seguinte, e a view carga_bordo ja a acumula.
+        carregado = conn.execute(
+            "SELECT ROUND(SUM(mc.carregado), 3) FROM movimento_carga mc "
+            "  JOIN escala e ON e.id = mc.escala_id WHERE e.viagem_id = ?",
+            (v["id"],)).fetchone()[0]
+        rob = conn.execute(
+            "SELECT cb.carga_bordo FROM carga_bordo cb "
+            "  JOIN escala e ON e.id = cb.escala_id "
+            " WHERE e.viagem_id = ? AND e.tipo_escala = 'encerramento' "
+            "   AND e.status <> 'cancelada'",
+            (v["id"],)).fetchone()
         colunas.append({
+            "carregado": carregado,
+            "rob_carga": rob[0] if rob else None,
             "id": v["id"], "numero": v["numero"], "aberta": aberta,
             "sub": "em curso" if aberta else "encerrada " + formato_br(v["termino"])[:5],
             "inicio": v["inicio"], "termino": v["termino"],

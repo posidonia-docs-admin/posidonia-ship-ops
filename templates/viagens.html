@@ -73,6 +73,20 @@
     {% for c in colunas %}<span class="h">{{ c.duracao or "—" }}</span>{% endfor %}
     <span class="h ref"></span>
   </div>
+  {#
+    A carga, sem pedir nada a mais: o carregado vem do movimento de carga de
+    Juruti e o ROB da view carga_bordo, que acumula a sobra viagem a viagem.
+  #}
+  <div class="grade linha-var resumo cols-{{ n }}" data-carga="carregado">
+    <span class="var">Carregado em Juruti<small>MT, pelo comandante</small></span>
+    {% for c in colunas %}<span class="h">{{ c.carregado|mt }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
+  <div class="grade linha-var resumo cols-{{ n }}" data-carga="rob">
+    <span class="var">ROB de carga<small>a bordo após a descarga em Alumar</small></span>
+    {% for c in colunas %}<span class="h">{{ c.rob_carga|mt }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
 
   {# ---- as pernadas, por trecho ---- #}
   {% for grupo, linhas in grupos %}

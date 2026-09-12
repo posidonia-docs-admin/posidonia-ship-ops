@@ -1257,6 +1257,11 @@ def test_viagens_poe_uma_coluna_por_viagem_e_a_media_como_referencia(cliente):
     assert "51h25" in html                                 # Juruti -> Alumar (total)
     assert "<small>média</small>" in html             # sem premissa: media
     assert "<small>orçado</small>" not in html
+    # a carga: 58.000 carregadas em Juruti, 57.500 descarregadas em Alumar
+    carregado = html[html.index('data-carga="carregado"'):]
+    assert "58.000,000" in carregado[:carregado.index("</div>")]
+    rob = html[html.index('data-carga="rob"'):]
+    assert "500,000" in rob[:rob.index("</div>")]          # o que FICOU a bordo
 
 
 def test_a_premissa_do_admin_substitui_a_media(cliente):
