@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import auth, bunker, config, contas, db, dominio, pernadas, viagens
+from . import auth, bunker, config, contas, db, dominio, frota, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -288,11 +288,25 @@ def _duracao_longa(minutos: int | None) -> str:
         resto, minutos % 60)
 
 
+def _instante_utc(iso: str) -> datetime:
+    """Le um instante ISO e devolve-o em UTC, SEM fuso — comparavel a _agora_utc().
+
+    O banco guarda `hora_utc` com o fuso explicito (+00:00); `_agora_utc()` e
+    nu. Subtrair um do outro levanta TypeError, que `_entre` engolia — e a
+    frota mostrava "—" no "Ha", e a pernada em curso de Viagens saia
+    "· correndo" sem as horas. Os testes nao pegaram porque "correndo" estava
+    la; so as horas e que nao.
+    """
+    valor = datetime.fromisoformat(iso)
+    if valor.tzinfo is not None:
+        valor = valor.astimezone(timezone.utc).replace(tzinfo=None)
+    return valor
+
+
 def _entre(inicio: str | None, fim: str | None) -> int | None:
     """Minutos entre dois instantes UTC. None se algum nao existe."""
     try:
-        return int((datetime.fromisoformat(fim)
-                    - datetime.fromisoformat(inicio)).total_seconds() // 60)
+        return int((_instante_utc(fim) - _instante_utc(inicio)).total_seconds() // 60)
     except (TypeError, ValueError):
         return None
 
@@ -790,21 +804,64 @@ def navio_escala_extra_remover(request: Request, escala_id: int = Form(...)):
 # Painel da equipe em terra (esqueleto — Fase 3)
 # ---------------------------------------------------------------------------
 
+MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+         "agosto", "setembro", "outubro", "novembro", "dezembro")
+
+
 @app.get("/painel", response_class=HTMLResponse)
 def painel(request: Request):
+    """A frota agora: em que pernada cada navio esta, e ha quanto tempo.
+
+    A posicao vem do ultimo marco lancado (app/frota.py) — ninguem digita
+    "posicao". "Em falta" sao marcos que ficaram PARA TRAS, nao os que ainda
+    vao acontecer: e a diferenca entre cobrar e esperar.
+    """
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    agora_utc, agora_local = _agora_utc(), db.agora()
+
     with closing(db.conectar()) as conn:
-        frota = conn.execute(
-            "SELECT n.nome_oficial, vg.numero, vg.status, "
-            "       (SELECT COUNT(*) FROM escalas_incompletas i WHERE i.viagem_id = vg.id) "
-            "         AS faltantes "
-            "  FROM navio n LEFT JOIN viagem vg "
-            "    ON vg.navio_id = n.id AND vg.status = 'aberta' "
-            " WHERE n.ativo = 1 ORDER BY n.id").fetchall()
-        a_conferir = conn.execute(
-            "SELECT COUNT(*) FROM escalas_a_conferir").fetchone()[0]
+        navios = conn.execute(
+            "SELECT id, nome_oficial FROM navio WHERE ativo = 1 ORDER BY id").fetchall()
+        lista, total_conferir, total_falta, navios_falta, em_viagem = [], 0, 0, [], 0
+        for n in navios:
+            viagem = conn.execute(
+                "SELECT id, numero FROM viagem WHERE navio_id = ? AND status = 'aberta' "
+                " ORDER BY id DESC LIMIT 1", (n["id"],)).fetchone()
+            blocos = _escalas_com_marcos(conn, viagem["id"]) if viagem else []
+            situacao = (frota.pernada_atual(blocos) if blocos else
+                        {"titulo": "Sem viagem aberta", "detalhe": "", "condicao": None,
+                         "ultimo": None})
+            pulados = frota.marcos_pulados(blocos) if blocos else []
+            conferir = conn.execute(
+                "SELECT COUNT(*) FROM escalas_a_conferir WHERE viagem_id = ?",
+                (viagem["id"],)).fetchone()[0] if viagem else 0
+            ha = ""
+            if situacao["ultimo"]:
+                em_viagem += 1
+                ha = _duracao_longa(_entre(situacao["ultimo"]["hora_utc"], agora_utc))
+            if pulados:
+                total_falta += len(pulados)
+                navios_falta.append(n["nome_oficial"].replace("AMAZON ", "").title())
+            total_conferir += conferir
+            lista.append({"id": n["id"], "nome": n["nome_oficial"],
+                          "numero": viagem["numero"] if viagem else None,
+                          "situacao": situacao, "ha": ha, "pulados": pulados,
+                          "a_conferir": conferir})
+
+        encerradas_mes = conn.execute(
+            "SELECT COUNT(*) FROM viagem vg "
+            "  JOIN evento en ON en.id = vg.evento_encerramento_id "
+            " WHERE vg.status = 'encerrada' AND substr(en.hora_local, 1, 7) = ?",
+            (agora_local[:7],)).fetchone()[0]
+
     return templates.TemplateResponse(request, "painel.html", {
-        "conta": request.state.conta,
-        "frota": frota, "a_conferir": a_conferir})
+        "conta": conta, "frota": lista, "em_viagem": em_viagem,
+        "a_conferir": total_conferir, "em_falta": total_falta,
+        "navios_em_falta": navios_falta, "encerradas_mes": encerradas_mes,
+        "mes_nome": MESES[int(agora_local[5:7]) - 1], "agora_local": agora_local,
+    })
 
 
 # ---------------------------------------------------------------------------

@@ -715,3 +715,53 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
                  margin: 0 0 10px; }
 .titulo-tabela .risco { flex: 1 1 40px; height: 1px; background: var(--linha); }
 .titulo-tabela .abas, .titulo-tabela .alternador { flex: 0 0 auto; }
+
+/* ---- frota: a entrada da supervisao ------------------------------------ */
+
+.faixa.quatro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1100px) { .faixa.quatro { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.faixa.quatro .celula b { font-size: 22px; }
+.faixa.quatro .celula.destaque { grid-column: auto; }
+.celula.atencao b { color: var(--alerta); }
+.celula b small { font-family: var(--sans); font-size: 12px; font-weight: 400;
+                  color: var(--suave); margin-left: 6px; letter-spacing: 0; }
+.celula.destaque b small { color: #7fb2d4; }
+
+/* o cliente da operacao, no topo, sobre fundo claro */
+.cliente { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.cliente img { height: 40px; width: auto; display: block; }
+.cliente span { font-size: 12px; color: var(--suave); line-height: 1.35; }
+.cliente span b { display: block; color: var(--tinta); font-weight: 600; font-size: 13px; }
+
+/* uma linha por navio; a linha inteira e um link para as viagens dele */
+.frota { display: grid; align-items: center;
+         grid-template-columns: 28px 200px minmax(0, 1fr) 150px 220px 110px 110px; }
+.frota > span { padding: 12px; min-width: 0; }
+.cabecalho.frota > span { padding: 11px 12px; }
+a.frota.linha { color: inherit; border-top: 1px solid var(--linha); min-height: 56px; }
+.tabela > a.frota.linha:first-of-type { border-top: 0; }
+a.frota.linha:hover { background: #fafcfe; color: inherit; }
+.navio { font-weight: 600; font-size: 14.5px; }
+.navio small { display: block; font-family: var(--mono); font-weight: 600; font-size: 11.5px;
+               color: var(--navy); letter-spacing: .04em; margin-top: 2px; }
+.pernada { font-weight: 500; font-size: 14px; }
+.pernada small { display: block; font-size: 12px; color: var(--suave); margin-top: 3px; }
+.ha { font-family: var(--mono); font-size: 17px; font-weight: 600; color: var(--navy); }
+.ha.correndo { color: var(--teal); }
+.ha small { display: block; font-family: var(--sans); font-weight: 400; font-size: 11.5px;
+            color: var(--tenue); }
+.ultimo { font-size: 13px; }
+.ultimo .num { display: block; font-size: 12.5px; color: var(--suave); margin-top: 2px; }
+
+@media (max-width: 1099px) {
+  .cabecalho.frota { display: none; }
+  .frota { grid-template-columns: 24px minmax(0, 1fr) auto;
+           grid-template-areas: "seta navio ha" ". pernada pernada" ". ultimo marcos"; }
+  .frota > .seta { grid-area: seta; }
+  .frota > .navio { grid-area: navio; }
+  .frota > .pernada { grid-area: pernada; padding-top: 0; }
+  .frota > .ha { grid-area: ha; text-align: right; }
+  .frota > .ultimo { grid-area: ultimo; padding-top: 0; }
+  .frota > *:nth-child(6) { grid-area: marcos; text-align: right; padding-top: 0; }
+  .frota > *:nth-child(7) { display: none; }
+}

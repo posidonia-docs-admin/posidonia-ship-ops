@@ -1345,6 +1345,9 @@ def test_pernada_em_curso_diz_que_a_hora_esta_correndo(cliente):
     linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
     linha = linha[:linha.index("</div>")]
     assert "correndo" in linha and 'class="h curso"' in linha
+    celula = linha[linha.index('class="h curso"'):]
+    celula = celula[:celula.index("</span>")]
+    assert "h" in celula.split("·")[0] and celula.split("·")[0].strip()  # as horas
     # a pernada seguinte nem comecou
     seguinte = html[html.index('data-pernada="sub_espera_faz"'):]
     assert "correndo" not in seguinte[:seguinte.index("</div>")]
@@ -1411,3 +1414,86 @@ def test_bunker_e_da_supervisao(cliente):
     cliente.get("/logout")
     entrar(cliente, login="bi")
     assert cliente.get("/bunker").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Frota: a entrada da supervisao
+# ---------------------------------------------------------------------------
+
+def _linha_frota(html, navio_id):
+    i = html.index('data-navio="{}"'.format(navio_id))
+    return html[i:html.index("</a>", i)]
+
+
+def test_frota_lista_os_navios_e_a_viagem_nova(cliente):
+    entrar(cliente)
+    cliente.get("/navio")                    # abre a viagem do Pathfinder
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/painel").text
+    assert "Sem viagem aberta" in _linha_frota(html, 2)   # o Pioneer nunca entrou
+    assert "AMAZON PATHFINDER" in html and 'data-navio="1"' in html
+    linha = _linha_frota(html, 1)
+    assert "Aguardando sa\u00edda de Alumar" in linha and "viagem nova" in linha
+    assert "nenhum ainda" in linha and "em dia" in linha
+    assert "nenhum marco ficou para tr\u00e1s" in html
+    assert "marca/alcoa.png" in html                       # o cliente, no topo
+
+
+def test_frota_deduz_a_pernada_do_ultimo_marco(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    alumar, juruti = escala_de(cliente, ordem=10), escala_de(cliente, ordem=30)
+
+    def lanca(escala, tipo, hora, i):
+        cliente.post("/api/marco", json={
+            "escala_id": escala, "tipo": tipo, "hora_local": hora, "offset": "-03:00",
+            "nome_responsavel": "Cmt.", "id_cliente": "fr-{}".format(i)})
+
+    def frota():
+        cliente.get("/logout"); entrar(cliente, login="vlo")
+        html = cliente.get("/painel").text
+        cliente.get("/logout"); entrar(cliente)
+        return html, _linha_frota(html, 1)
+
+    lanca(alumar, "sailing", "2026-03-01T18:40", 1)
+    html, linha = frota()
+    assert "Navegando Alumar \u2192 Fazendinha" in linha and "ballast" in linha
+    assert "Sailing \u00b7 Alumar" in linha and "01/03/2026 18:40" in linha
+    assert "nesta pernada" in linha                         # a hora esta correndo
+    assert "<b>1<small>de 4 navios" in html                 # so o Pathfinder saiu
+    ha = linha[linha.index('class="ha correndo"'):]
+    assert "d " in ha[:ha.index("</span>")]                # dias e horas, nao "—"
+
+    # pula Fazendinha inteira e chega em Juruti: dois marcos ficaram para tras
+    lanca(juruti, "arrival", "2026-03-03T22:30", 2)
+    html, linha = frota()
+    assert "Aguardando ber\u00e7o em Juruti" in linha and "loading" in linha
+    assert "2 em falta" in linha
+    assert 'title="Arrival \u00b7 Fazendinha \u00b7 Sailing \u00b7 Fazendinha"' in linha
+    faixa = html[html.index('data-frota="em-falta"'):]
+    assert "<b>2<small>marcos \u00b7 Pathfinder" in faixa[:faixa.index("</div>")]
+
+    lanca(juruti, "berth", "2026-03-04T06:10", 3)
+    _, linha = frota()
+    assert "Atracado em Juruti" in linha and "carregando" in linha
+
+
+def test_frota_conta_o_que_ha_para_conferir(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    cliente.post("/api/marco", json={
+        "escala_id": escala_de(cliente, ordem=10), "tipo": "sailing",
+        "hora_local": "2026-03-01T18:40", "offset": "-03:00",
+        "nome_responsavel": "Cmt.", "id_cliente": "cf-1"})
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/painel").text
+    assert '<span class="num dir">1</span>' in _linha_frota(html, 1)
+    assert "<b>1<small>marco</small>" in html
+
+
+def test_frota_e_da_supervisao(cliente):
+    entrar(cliente)
+    r = cliente.get("/painel", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/navio"

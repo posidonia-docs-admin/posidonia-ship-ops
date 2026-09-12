@@ -1,32 +1,89 @@
 {% extends "base.html" %}
 {% block titulo %}Frota{% endblock %}
 
+{#
+  Frota — a entrada da supervisão (e do admin).
+
+  Uma linha por navio: em que viagem está, EM QUE PERNADA ESTÁ AGORA e há
+  quantas horas — a hora corre enquanto o marco seguinte não entra —, qual foi
+  o último lançamento, se ficou marco para trás e quantos há para conferir.
+  A posição é deduzida do último marco, nunca digitada.
+#}
+
+{% block lateral_rodape %}
+  <div class="responsavel">
+    <label for="responsavel">Quem preenche</label>
+    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
+    <span class="dica">Fica registrado em cada correção.</span>
+  </div>
+{% endblock %}
+
 {% block conteudo %}
 <div class="topo-conteudo">
   <span class="codigo">Frota</span>
-  <span class="embarcacao">{{ conta.nome_exibicao }}</span>
-  <span class="selo-conta">
-    <span class="quando">{{ a_conferir }} a conferir</span>
+  <span class="embarcacao">{{ conta.nome_exibicao }} · {{ conta.perfil }}</span>
+  {# A Alcoa só sobre fundo claro: aqui, no topo, ao lado de quem manda na operação. #}
+  <span class="cliente">
+    <img src="/static/marca/alcoa.png?v={{ V }}" alt="Alcoa">
+    <span><b>Ship Management</b>navios Amazon · Alcoa</span>
   </span>
 </div>
 
-<table>
-  <thead>
-    <tr><th>Navio</th><th>Viagem</th><th>Marcos em falta</th></tr>
-  </thead>
-  <tbody>
-    {% for n in frota %}
-    <tr>
-      <td>{{ n.nome_oficial }}</td>
-      <td><span class="mono">{{ n.numero or "—" }}</span></td>
-      <td>{{ n.faltantes if n.numero else "—" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="faixa quatro">
+  <div class="celula destaque">
+    <span class="rot">Em viagem</span>
+    <b>{{ em_viagem }}<small>de {{ frota|length }} navios</small></b>
+  </div>
+  <div class="celula">
+    <span class="rot">A conferir</span>
+    <b>{{ a_conferir }}<small>marco{{ "" if a_conferir == 1 else "s" }}</small></b>
+  </div>
+  <div class="celula{{ " atencao" if em_falta else "" }}" data-frota="em-falta">
+    <span class="rot">Em falta</span>
+    <b>{{ em_falta }}<small>{% if em_falta %}marco{{ "" if em_falta == 1 else "s" }} · {{ navios_em_falta|join(", ") }}{% else %}nenhum marco ficou para trás{% endif %}</small></b>
+  </div>
+  <div class="celula">
+    <span class="rot">Encerradas em {{ mes_nome }}</span>
+    <b>{{ encerradas_mes }}<small>viage{{ "m" if encerradas_mes == 1 else "ns" }}</small></b>
+  </div>
+</div>
 
-<p class="legenda legenda-afastada">
-  As filas de conferência e de cobrança entram na próxima fase, junto com a
-  visão dos supervisores.
-</p>
+<div class="titulo-tabela">
+  <span class="rot">Onde cada navio está agora</span>
+  <span class="risco"></span>
+  <span class="legenda-curta num">{{ agora_local|br }}</span>
+</div>
+
+<div class="tabela">
+  <div class="cabecalho frota">
+    <span></span><span>Navio</span><span>Pernada atual</span><span>Há</span>
+    <span>Último lançamento</span><span>Marcos</span><span class="dir">A conferir</span>
+  </div>
+  {% for n in frota %}
+  <a class="frota linha" href="/viagens?navio={{ n.id }}" data-navio="{{ n.id }}">
+    <span class="seta">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </span>
+    <span class="navio">{{ n.nome }}<small>{{ n.numero or "sem viagem aberta" }}</small></span>
+    <span class="pernada">{{ n.situacao.titulo }}
+      <small>{% if n.situacao.detalhe %}{{ n.situacao.detalhe }}{% endif %}{%
+        if n.situacao.condicao %} <span class="condicao">{{ n.situacao.condicao }}</span>{% endif %}</small>
+    </span>
+    <span class="ha{{ " correndo" if n.ha else "" }}">{{ n.ha or "—" }}<small>{{ "nesta pernada" if n.ha else "" }}</small></span>
+    <span class="ultimo">
+      {% if n.situacao.ultimo %}{{ n.situacao.ultimo.curto }} · {{ n.situacao.ultimo.porto }}
+        <span class="num">{{ n.situacao.ultimo.hora_local|br }}</span>
+      {% else %}<span class="vazio">nenhum ainda</span>{% endif %}
+    </span>
+    <span>
+      {% if n.pulados %}
+        <span class="selo selo-falta" title="{{ n.pulados|join(' · ') }}">{{ n.pulados|length }} em falta</span>
+      {% else %}<span class="pronto">em dia</span>{% endif %}
+    </span>
+    <span class="num dir">{{ n.a_conferir }}</span>
+  </a>
+  {% endfor %}
+</div>
 {% endblock %}
