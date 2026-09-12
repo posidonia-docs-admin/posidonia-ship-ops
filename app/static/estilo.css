@@ -706,3 +706,12 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
 .abast .porto small { display: block; font-weight: 400; font-size: 11px;
                       color: var(--tenue); margin-top: 1px; }
 .abast .viagem-linha { font-size: 13px; }
+
+/* O titulo das telas de Viagens e Bunker: rotulo, abas de navio, alternador
+   e o fio, numa LINHA so. Faltava esta regra — sem ela o titulo era um bloco
+   comum, as abas caiam para a linha de baixo e o alternador VLSFO/MGO, um
+   flex solto, esticava ate a borda. */
+.titulo-tabela { display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+                 margin: 0 0 10px; }
+.titulo-tabela .risco { flex: 1 1 40px; height: 1px; background: var(--linha); }
+.titulo-tabela .abas, .titulo-tabela .alternador { flex: 0 0 auto; }
