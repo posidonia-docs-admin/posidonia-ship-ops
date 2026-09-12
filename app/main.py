@@ -822,22 +822,17 @@ def _agora_utc() -> str:
 
 def _colunas_de_viagens(conn, navio_id: int) -> list[dict]:
     """A viagem em curso (se houver) e as ultimas cinco encerradas."""
-    linhas = conn.execute(
+    # Duas consultas simples, nao um UNION com subconsulta ordenada: o Turso
+    # remoto tem parser proprio e ja recusou SQL que o SQLite local aceita.
+    BASE = (
         "SELECT vg.id, vg.numero, vg.status, "
         "       ab.hora_local AS inicio, en.hora_local AS termino "
         "  FROM viagem vg "
         "  LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id "
         "  LEFT JOIN evento en ON en.id = vg.evento_encerramento_id "
-        " WHERE vg.navio_id = ? AND vg.status = 'aberta' "
-        " UNION ALL "
-        "SELECT * FROM (SELECT vg.id, vg.numero, vg.status, "
-        "       ab.hora_local, en.hora_local "
-        "  FROM viagem vg "
-        "  LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id "
-        "  LEFT JOIN evento en ON en.id = vg.evento_encerramento_id "
-        " WHERE vg.navio_id = ? AND vg.status = 'encerrada' "
-        " ORDER BY vg.id DESC LIMIT 5)",
-        (navio_id, navio_id)).fetchall()
+        " WHERE vg.navio_id = ? AND vg.status = ? ORDER BY vg.id DESC LIMIT ?")
+    linhas = (conn.execute(BASE, (navio_id, "aberta", 1)).fetchall()
+              + conn.execute(BASE, (navio_id, "encerrada", 5)).fetchall())
     colunas = []
     for v in linhas:
         valores = pernadas.calcular(conn, v["id"])

@@ -288,4 +288,12 @@ def test_arranque_a_partir_de_versao_publicada(tmp_path, commit):
     conn.execute("SELECT * FROM escala_completa").fetchall()
     conn.execute("SELECT * FROM consumo_combustivel").fetchall()
     conn.execute("SELECT * FROM carga_bordo").fetchall()
+    # Tabela que nasceu DEPOIS de producao existir: Viagens e Premissas caem
+    # com Internal Server Error se ela nao aparecer num banco antigo. Foi o
+    # que aconteceu em 12/set/2026 — os testes so criavam banco do zero.
+    from app import pernadas
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+        "   AND name = 'premissa_pernada'").fetchone()[0] == 1
+    assert pernadas.premissas(conn) == {}
     conn.close()

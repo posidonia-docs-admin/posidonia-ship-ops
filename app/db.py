@@ -225,6 +225,16 @@ _COLUNAS_NOVAS = (
 )
 
 
+# Tabelas que nasceram depois do primeiro deploy. Idempotentes.
+_TABELAS_POSTERIORES = (
+    "CREATE TABLE IF NOT EXISTS premissa_pernada ("
+    "  chave TEXT PRIMARY KEY,"
+    "  horas REAL NOT NULL CHECK (horas >= 0),"
+    "  atualizado_por TEXT,"
+    "  atualizado_em TEXT NOT NULL)",
+)
+
+
 # Indices que dependem de coluna acrescentada acima. Ficam FORA do schema.sql
 # porque aquele script roda antes da migracao — num banco antigo a coluna ainda
 # nao existe e o CREATE INDEX derruba o arranque.
@@ -365,6 +375,11 @@ def _migrar(conn) -> None:
         if coluna not in existentes:
             conn.execute("ALTER TABLE {} ADD COLUMN {} {}".format(tabela, coluna, tipo))
     for comando in _INDICES_POSTERIORES:
+        conn.execute(comando)
+    # Tabelas acrescentadas depois que producao ja existia. O schema.sql tambem
+    # as cria, mas por `executescript`; aqui e um `execute` simples, que e o
+    # caminho que o Turso remoto comprovadamente aceita.
+    for comando in _TABELAS_POSTERIORES:
         conn.execute(comando)
 
 

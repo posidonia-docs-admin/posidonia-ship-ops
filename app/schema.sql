@@ -292,8 +292,6 @@ CREATE TABLE IF NOT EXISTS log_acesso (
 CREATE INDEX IF NOT EXISTS ix_log_quando ON log_acesso (quando);
 
 -- Manter em sincronia com VERSAO_SCHEMA em db.py.
-PRAGMA user_version = 1;
-
 -- ---------------------------------------------------------------------------
 -- premissa_pernada — o orcamento de horas de cada pernada.
 --
@@ -307,3 +305,5 @@ CREATE TABLE IF NOT EXISTS premissa_pernada (
     atualizado_por TEXT,
     atualizado_em  TEXT NOT NULL
 );
+
+PRAGMA user_version = 1;
