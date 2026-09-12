@@ -135,6 +135,16 @@ def _bunker_na_saida(escalas, marcos) -> int:
     return total
 
 
+def _janela_bunker(escalas, marcos):
+    """(arrival, sailing) da PRIMEIRA parada adicional de bunker antes de Fazendinha."""
+    limite = next((e["ordem"] for e in escalas if _casa(e, FAZ_SUBIDA)), None)
+    for escala in escalas:
+        if escala["origem"] == "extra" and escala["motivo"] == "bunker"                 and (limite is None or escala["ordem"] < limite):
+            m = marcos[escala["id"]]
+            return m.get("arrival"), m.get("sailing")
+    return None, None
+
+
 def calcular(conn, viagem_id: int) -> dict:
     """Minutos de cada pernada desta viagem, mais o resumo.
 
@@ -145,16 +155,20 @@ def calcular(conn, viagem_id: int) -> dict:
     saida = {}
     # O instante em que cada pernada COMECOU. E o que deixa a tela dizer
     # "10h55 e correndo" numa pernada que ainda nao terminou.
-    comecos = {}
+    comecos, fins = {}, {}
     for chave, _grupo, _nome, _sub, de, para in PERNADAS:
         if chave == "sub_bunker_saida":
             saida[chave] = _bunker_na_saida(escalas, marcos)
-            comecos[chave] = None
+            comecos[chave], fins[chave] = _janela_bunker(escalas, marcos)
         else:
             inicio_pernada = _hora(escalas, marcos, de)
-            saida[chave] = _minutos(inicio_pernada, _hora(escalas, marcos, para))
-            comecos[chave] = inicio_pernada
+            fim_pernada = _hora(escalas, marcos, para)
+            saida[chave] = _minutos(inicio_pernada, fim_pernada)
+            comecos[chave], fins[chave] = inicio_pernada, fim_pernada
+    # Comeco e fim de cada pernada, em UTC. O Bunker le os dois: o consumo da
+    # pernada e o ROB no comeco menos o ROB no fim, mais o abastecido no meio.
     saida["_de"] = comecos
+    saida["_ate"] = fins
 
     inicio = _hora(escalas, marcos, (ABERTURA, "sailing"))
     termino = _hora(escalas, marcos, (ENCERRAMENTO, "unberth"))

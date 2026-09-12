@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block titulo %}Bunker{% endblock %}
+
+{#
+  Bunker — consumo por pernada e os abastecimentos.
+
+  A mesma grade de Viagens, em toneladas: colunas são viagens, linhas são as
+  pernadas. O consumo de uma pernada é ROB na saída − ROB na chegada + o que
+  foi abastecido no meio. VLSFO e MGO alternam a grade inteira; dois números
+  por célula sujariam a tela. A referência é a média das encerradas mostradas.
+#}
+
+{% block lateral_rodape %}
+  <div class="responsavel">
+    <label for="responsavel">Quem preenche</label>
+    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
+    <span class="dica">Fica registrado em cada correção.</span>
+  </div>
+{% endblock %}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Bunker</span>
+  <span class="embarcacao">{{ navio.nome_oficial if navio else "" }}</span>
+  <span class="selo-conta">
+    <span class="quando">{{ conta.nome_exibicao }}</span>
+  </span>
+</div>
+
+<div class="titulo-tabela">
+  <span class="rot">Consumo por pernada</span>
+  <nav class="abas">
+    {% for n in navios %}
+      <a class="aba{{ " ativa" if navio and n.id == navio.id else "" }}"
+         href="/bunker?navio={{ n.id }}&amp;comb={{ comb }}">
+        {{ n.nome_oficial|replace("AMAZON ", "")|title }}
+      </a>
+    {% endfor %}
+  </nav>
+  <nav class="alternador">
+    <a class="{{ "ativo" if comb == "vlsfo" else "" }}" href="/bunker?navio={{ navio.id if navio else 0 }}&amp;comb=vlsfo">VLSFO</a>
+    <a class="{{ "ativo" if comb == "mgo" else "" }}" href="/bunker?navio={{ navio.id if navio else 0 }}&amp;comb=mgo">MGO</a>
+  </nav>
+  <span class="risco"></span>
+  <span class="legenda-curta">toneladas · ROB de saída − ROB de chegada + abastecido</span>
+</div>
+
+{% if not colunas %}
+  <p class="aviso">Nenhuma viagem deste navio ainda.</p>
+{% else %}
+{% set n = colunas|length %}
+<div class="tabela">
+  <div class="cabecalho grade cols-{{ n }}">
+    <span></span>
+    {% for c in colunas %}
+      <span class="cab-viagem{{ " curso" if c.aberta else "" }}">{{ c.numero }}<small>{{ c.sub }}</small></span>
+    {% endfor %}
+    <span class="cab-viagem">Média<small>das encerradas</small></span>
+  </div>
+
+  {# ---- o resumo da viagem inteira ---- #}
+  <div class="grade grupo resumo cols-{{ n }}"><span>Resumo da viagem</span></div>
+  {% for chave, nome, sub, casas in (
+        ("rob_inicio", "ROB na saída", "Sailing de Alumar", 3),
+        ("abastecido", "Abastecido na viagem", "soma dos abastecimentos", 3),
+        ("consumido", "Consumido na viagem", comb|upper, 3),
+        ("rob_fim", "ROB no fim", "Unberth de Alumar", 3),
+        ("por_dia", "Consumo médio", "t por dia de viagem", 2)) %}
+  <div class="grade linha-var resumo cols-{{ n }}" data-bunker="{{ chave }}">
+    <span class="var">{{ nome }}<small>{{ sub }}</small></span>
+    {% for c in colunas %}<span class="h">{{ c.resumo[comb][chave]|mt(casas) }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
+  {% endfor %}
+
+  {# ---- as pernadas, por trecho ---- #}
+  {% for grupo, linhas in grupos %}
+  <div class="grade grupo cols-{{ n }}"><span>{{ grupo }}</span></div>
+  {% for l in linhas %}
+  <div class="grade linha-var cols-{{ n }}" data-pernada="{{ l.chave }}">
+    <span class="var">{{ l.nome }}{% if l.sub %}<small>{{ l.sub }}</small>{% endif %}</span>
+    {% for cel in l.celulas %}
+      <span class="h {{ cel.classe }}">{{ cel.texto }}</span>
+    {% endfor %}
+    <span class="h ref">{{ l.ref }}{% if l.ref != "—" %}<small>média</small>{% endif %}</span>
+  </div>
+  {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="rodape-grade">
+  <span>acima da média do navio:
+    <i class="chip-1"></i>1,15×
+    <i class="chip-2"></i>1,3×
+    <i class="chip-3"></i>1,6×
+  </span>
+  <span>A pernada em curso não tem consumo ainda: falta o ROB de chegada.</span>
+</div>
+{% endif %}
+
+<div class="secao">
+  <div class="titulo-tabela">
+    <span class="rot">Abastecimentos</span>
+    <span class="risco"></span>
+    <span class="legenda-curta">{{ navio.nome_oficial if navio else "" }} · os últimos {{ abastecimentos|length }}</span>
+  </div>
+  {% if not abastecimentos %}
+    <p class="aviso">Nenhum abastecimento lançado para este navio.</p>
+  {% else %}
+  <div class="tabela">
+    <div class="abast cabecalho">
+      <span></span><span>Quando</span><span>Viagem</span><span>Onde</span>
+      <span class="dir">VLSFO (t)</span><span class="dir">MGO (t)</span><span>Quem lançou</span>
+    </div>
+    {% for a in abastecimentos %}
+    <div class="abast linha">
+      <span class="seta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      </span>
+      <span class="num">{{ a.quando|br if a.quando else "—" }}</span>
+      <span class="viagem-linha">{{ a.numero }}</span>
+      <span class="porto">{{ a.porto }}<small>{{ "parada adicional" if a.origem == "extra" else "parada do circuito" }} · {{ "fundeado" if a.tipo_escala == "fundeio" else "atracado" if a.tipo_escala == "operacional" else a.tipo_escala }}</small></span>
+      <span class="h">{{ a.vlsfo|mt }}</span>
+      <span class="h">{{ a.mgo|mt }}</span>
+      <span class="vazio">{{ a.nome_responsavel }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

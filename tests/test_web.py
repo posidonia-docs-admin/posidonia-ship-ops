@@ -1348,3 +1348,66 @@ def test_pernada_em_curso_diz_que_a_hora_esta_correndo(cliente):
     # a pernada seguinte nem comecou
     seguinte = html[html.index('data-pernada="sub_espera_faz"'):]
     assert "correndo" not in seguinte[:seguinte.index("</div>")]
+
+
+# ---------------------------------------------------------------------------
+# Bunker: consumo por pernada e a lista de abastecimentos
+# ---------------------------------------------------------------------------
+
+def test_bunker_mostra_o_consumo_de_cada_pernada_e_o_resumo(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    entrar(cliente, login="vlo")
+    html = cliente.get("/bunker?navio=1").text
+
+    # Sailing Alumar 1.421,500 -> Arrival Fazendinha 1.388,000
+    linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
+    assert "33,500" in linha[:linha.index("</div>")]
+    # a viagem inteira: 1.421,500 na saida, 1.166,200 no fim, nada abastecido
+    resumo = html[html.index('data-bunker="consumido"'):]
+    assert "255,300" in resumo[:resumo.index("</div>")]
+    assert "APT26001" in html and "<small>m\u00e9dia</small>" in html
+
+
+def test_bunker_alterna_para_mgo(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    entrar(cliente, login="vlo")
+    html = cliente.get("/bunker?navio=1&comb=mgo").text
+    linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
+    assert "2,150" in linha[:linha.index("</div>")]      # 112,250 -> 110,100
+    assert 'class="ativo" href="/bunker?navio=1&amp;comb=mgo"' in html
+
+
+def test_bunker_lista_os_abastecimentos_do_navio(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    cliente.post("/navio/escala-extra", data={
+        "codigo_porto": "ICOARACI", "motivo": "bunker", "apos_ordem": 10,
+        "tipo_escala": "fundeio"}, follow_redirects=False)
+    with closing(db.conectar()) as conn:
+        extra = conn.execute(
+            "SELECT id FROM escala WHERE origem = 'extra' ORDER BY id DESC LIMIT 1").fetchone()[0]
+    for i, (tipo, hora) in enumerate((("arrival", "2026-03-02T06:00"),
+                                      ("sailing", "2026-03-02T10:30"))):
+        cliente.post("/api/marco", json={
+            "escala_id": extra, "tipo": tipo, "hora_local": hora, "offset": "-03:00",
+            "nome_responsavel": "Cmt.", "rob_vlsfo": 1400 if i == 0 else 1800,
+            "rob_mgo": 100, "id_cliente": "ab-m{}".format(i)})
+    cliente.post("/api/abastecimento", json={
+        "escala_id": extra, "vlsfo": 420, "mgo": 35, "nome_responsavel": "Cmt.",
+        "id_cliente": "ab-1"})
+    cliente.get("/logout")
+
+    entrar(cliente, login="vlo")
+    html = cliente.get("/bunker?navio=1").text
+    lista = html[html.index('class="abast cabecalho"'):]
+    assert "Icoaraci" in lista and "420,000" in lista and "35,000" in lista
+    assert "02/03/2026 10:30" in lista                    # o Sailing da parada
+
+
+def test_bunker_e_da_supervisao(cliente):
+    entrar(cliente)
+    r = cliente.get("/bunker", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/navio"
+    cliente.get("/logout")
+    entrar(cliente, login="bi")
+    assert cliente.get("/bunker").status_code == 200

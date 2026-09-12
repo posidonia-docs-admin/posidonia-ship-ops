@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import auth, config, contas, db, dominio, pernadas, viagens
+from . import auth, bunker, config, contas, db, dominio, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -50,10 +50,10 @@ templates.env.globals["V"] = versao_estaticos()
 # o acesso dele e so lancar escala.
 MENU = {
     "navio": ((("/navio"), "Painel"), (("/navio/encerradas"), "Encerradas")),
-    "supervisor": ((("/painel"), "Frota"), (("/viagens"), "Viagens")),
-    "analytics": ((("/painel"), "Frota"), (("/viagens"), "Viagens")),
+    "supervisor": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker")),
+    "analytics": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker")),
     # A visao do admin e a da supervisao mais a administracao — e so isso.
-    "admin": ((("/painel"), "Frota"), (("/viagens"), "Viagens"),
+    "admin": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker"),
               (("/admin/contas"), "Contas"), (("/admin/premissas"), "Premissas")),
 }
 templates.env.globals["MENU"] = MENU
@@ -906,6 +906,60 @@ def viagens_por_pernada(request: Request, navio: int = 0):
         "colunas": colunas, "grupos": grupos,
         "encerradas": sum(1 for c in colunas if not c["aberta"]),
         "tem_orcado": bool(orcado),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Bunker: consumo por pernada e os abastecimentos
+#
+# A mesma grade de Viagens, em toneladas. Nada e digitado a mais: o ROB ja e
+# lancado em todo marco, e o consumo de uma pernada e ROB de saida menos ROB
+# de chegada, mais o abastecido no meio.
+# ---------------------------------------------------------------------------
+
+def _linhas_de_bunker(colunas, comb: str) -> list[tuple]:
+    encerradas = [c for c in colunas if not c["aberta"]]
+    linhas = []
+    for chave, grupo, nome, sub, _de, _para in pernadas.PERNADAS:
+        ref = bunker.media([c["consumo"][chave][comb] for c in encerradas])
+        celulas = []
+        for col in colunas:
+            v = col["consumo"][chave][comb]
+            if v is None:
+                celulas.append({"texto": "—", "classe": "vazio"})
+            else:
+                d = bunker.degrau(v, ref)
+                celulas.append({"texto": formato_mt(v),
+                                "classe": "acima-{}".format(d) if d else ""})
+        linhas.append({"chave": chave, "grupo": grupo, "nome": nome, "sub": sub,
+                       "celulas": celulas,
+                       "ref": formato_mt(ref) if ref is not None else "—"})
+    return [(g, [l for l in linhas if l["grupo"] == g]) for g in pernadas.GRUPOS]
+
+
+@app.get("/bunker", response_class=HTMLResponse)
+def bunker_por_pernada(request: Request, navio: int = 0, comb: str = "vlsfo"):
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    if comb not in bunker.COMBUSTIVEIS:
+        comb = "vlsfo"
+    with closing(db.conectar()) as conn:
+        navios = conn.execute(
+            "SELECT id, nome_oficial FROM navio WHERE ativo = 1 ORDER BY id").fetchall()
+        escolhido = next((n for n in navios if n["id"] == navio), navios[0] if navios else None)
+        colunas, lista, leituras = [], [], []
+        if escolhido:
+            colunas = _colunas_de_viagens(conn, escolhido["id"])
+            leituras = bunker.leituras(conn, escolhido["id"])
+            for col in colunas:
+                col["consumo"] = bunker.consumo_por_pernada(leituras, col["valores"])
+                col["resumo"] = bunker.resumo_da_viagem(conn, col["id"], leituras, col["valores"])
+            lista = bunker.abastecimentos(conn, escolhido["id"])
+    return templates.TemplateResponse(request, "bunker.html", {
+        "conta": conta, "navios": navios, "navio": escolhido, "comb": comb,
+        "colunas": colunas, "grupos": _linhas_de_bunker(colunas, comb),
+        "abastecimentos": lista,
     })
 
 

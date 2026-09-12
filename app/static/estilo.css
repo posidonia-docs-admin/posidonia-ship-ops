@@ -684,3 +684,25 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
 .rodape-grade .chip-1 { background: rgba(154,91,0,.25); }
 .rodape-grade .chip-2 { background: rgba(154,91,0,.5); }
 .rodape-grade .chip-3 { background: rgba(179,38,30,.6); }
+
+/* ---- bunker: consumo por pernada e abastecimentos ---------------------- */
+
+/* VLSFO / MGO trocam a grade inteira: dois numeros por celula sujariam a tela. */
+.alternador { display: flex; gap: 3px; margin-left: 14px; background: var(--campo);
+              border: 1px solid var(--campo-borda); border-radius: var(--r-chip); padding: 3px; }
+.alternador a { height: 30px; padding: 0 14px; border-radius: var(--r-chip); display: flex;
+                align-items: center; font: 600 12.5px var(--sans); color: #47586b; }
+.alternador a:hover { color: var(--navy); }
+.alternador a.ativo { background: var(--navy); color: #fff; }
+.alternador a.ativo:hover { color: #fff; }
+.secao { margin-top: 26px; }
+/* a lista de abastecimentos, um por linha */
+.abast { display: grid; align-items: center;
+         grid-template-columns: 28px 160px 120px minmax(0, 1fr) 130px 130px 200px; }
+.abast > span { padding: 11px 12px; min-width: 0; }
+.abast.cabecalho > span { padding: 10px 12px; }
+.abast.linha { border-top: 1px solid var(--linha); min-height: 52px; }
+.tabela > .abast.linha:first-of-type { border-top: 0; }
+.abast .porto small { display: block; font-weight: 400; font-size: 11px;
+                      color: var(--tenue); margin-top: 1px; }
+.abast .viagem-linha { font-size: 13px; }
