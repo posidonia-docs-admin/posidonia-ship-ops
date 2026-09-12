@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block titulo %}Viagens{% endblock %}
+
+{#
+  Horas por pernada — a planilha "análise viagens" das supervisoras, calculada.
+
+  Colunas são viagens, linhas são pernadas, um navio por vez. A última coluna é
+  a REFERÊNCIA: a premissa que o admin cadastrou ou, na falta dela, a média das
+  encerradas mostradas. Cada célula se lê contra ela, em três degraus.
+#}
+
+{% block lateral_rodape %}
+  <div class="responsavel">
+    <label for="responsavel">Quem preenche</label>
+    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
+    <span class="dica">Fica registrado em cada correção.</span>
+  </div>
+{% endblock %}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Viagens</span>
+  <span class="embarcacao">{{ navio.nome_oficial if navio else "" }}</span>
+  <span class="selo-conta">
+    <span class="quando">{{ conta.nome_exibicao }}</span>
+  </span>
+</div>
+
+<div class="titulo-tabela">
+  <span class="rot">Horas por pernada</span>
+  <nav class="abas">
+    {% for n in navios %}
+      <a class="aba{{ " ativa" if navio and n.id == navio.id else "" }}" href="/viagens?navio={{ n.id }}">
+        {{ n.nome_oficial|replace("AMAZON ", "")|title }}
+      </a>
+    {% endfor %}
+  </nav>
+  <span class="risco"></span>
+  <span class="legenda-curta">
+    {% if colunas %}
+      {% if colunas[0].aberta %}a viagem em curso e {% endif %}{{ encerradas }} encerrada{{ "" if encerradas == 1 else "s" }}
+    {% endif %}
+  </span>
+</div>
+
+{% if not colunas %}
+  <p class="aviso">Nenhuma viagem deste navio ainda.</p>
+{% else %}
+{% set n = colunas|length %}
+<div class="tabela">
+  <div class="cabecalho grade cols-{{ n }}">
+    <span></span>
+    {% for c in colunas %}
+      <span class="cab-viagem{{ " curso" if c.aberta else "" }}">{{ c.numero }}<small>{{ c.sub }}</small></span>
+    {% endfor %}
+    <span class="cab-viagem">Referência<small>orçado ou média</small></span>
+  </div>
+
+  {# ---- o resumo da viagem: não é pernada, tem fundo próprio ---- #}
+  <div class="grade grupo resumo cols-{{ n }}"><span>Resumo da viagem</span></div>
+  <div class="grade linha-var resumo cols-{{ n }}">
+    <span class="var">Início<small>Sailing de Alumar</small></span>
+    {% for c in colunas %}<span class="h">{{ c.inicio|br if c.inicio else "—" }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
+  <div class="grade linha-var resumo cols-{{ n }}">
+    <span class="var">Término<small>Unberth de Alumar</small></span>
+    {% for c in colunas %}<span class="h">{{ c.termino|br if c.termino else "—" }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
+  <div class="grade linha-var resumo cols-{{ n }}">
+    <span class="var">Duração da viagem</span>
+    {% for c in colunas %}<span class="h">{{ c.duracao or "—" }}</span>{% endfor %}
+    <span class="h ref"></span>
+  </div>
+
+  {# ---- as pernadas, por trecho ---- #}
+  {% for grupo, linhas in grupos %}
+  <div class="grade grupo cols-{{ n }}"><span>{{ grupo }}</span></div>
+  {% for l in linhas %}
+  <div class="grade linha-var cols-{{ n }}" data-pernada="{{ l.chave }}">
+    <span class="var">{{ l.nome }}{% if l.sub %}<small>{{ l.sub }}</small>{% endif %}</span>
+    {% for cel in l.celulas %}
+      <span class="h {{ cel.classe }}">{{ cel.texto }}</span>
+    {% endfor %}
+    <span class="h ref{{ " orcado" if l.origem == "orçado" else "" }}">
+      {{ l.ref }}{% if l.origem %}<small>{{ l.origem }}</small>{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="rodape-grade">
+  <span><i class="chip-curso"></i>pernada em curso — a hora ainda está correndo</span>
+  <span>acima da referência:
+    <i class="chip-1"></i>1,15×
+    <i class="chip-2"></i>1,3×
+    <i class="chip-3"></i>1,6×
+  </span>
+  {% if conta.perfil == "admin" %}
+    <a href="/admin/premissas">{{ "Ajustar as premissas" if tem_orcado else "Cadastrar premissas de horas" }}</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

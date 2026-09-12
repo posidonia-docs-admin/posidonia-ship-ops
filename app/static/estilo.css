@@ -602,3 +602,85 @@ details.remover p { margin: 0 0 12px; font-size: 12.5px; color: var(--suave);
 @media (max-width: 640px), (max-height: 620px) {
   .mar, .navio-entrada { display: none; }
 }
+
+/* ---- viagens: horas por pernada ---------------------------------------- */
+
+/* Abas de navio no titulo. Sao links: o filtro fica no endereco. */
+.abas { display: flex; gap: 6px; margin-left: 14px; }
+.aba { height: 36px; padding: 0 15px; border-radius: var(--r-chip); display: flex;
+       align-items: center; font: 500 13px var(--sans); color: #47586b;
+       border: 1px solid var(--campo-borda); background: var(--painel); }
+.aba:hover { background: var(--campo); color: #47586b; }
+.aba.ativa { background: var(--navy); border-color: var(--navy); color: #fff; }
+.aba.ativa:hover { background: var(--navy); color: #fff; }
+.legenda-curta { font-size: 12px; color: var(--suave); }
+
+/* A grade: primeira coluna e a pernada, uma coluna por viagem, a ultima e a
+   referencia. O numero de viagens varia (ate 6), e a CSP proibe `style=`,
+   entao a contagem vira classe. */
+.grade { display: grid; align-items: center; }
+.grade > span { padding: 9px 12px; min-width: 0; }
+.cols-1 { grid-template-columns: minmax(0, 1fr) repeat(1, 132px) 136px; }
+.cols-2 { grid-template-columns: minmax(0, 1fr) repeat(2, 132px) 136px; }
+.cols-3 { grid-template-columns: minmax(0, 1fr) repeat(3, 132px) 136px; }
+.cols-4 { grid-template-columns: minmax(0, 1fr) repeat(4, 132px) 136px; }
+.cols-5 { grid-template-columns: minmax(0, 1fr) repeat(5, 132px) 136px; }
+.cols-6 { grid-template-columns: minmax(0, 1fr) repeat(6, 132px) 136px; }
+.cabecalho.grade > span { padding: 9px 12px; }
+.cab-viagem { display: block; font-family: var(--mono); font-weight: 700; font-size: 12.5px;
+              color: var(--navy); letter-spacing: .04em; text-transform: none; }
+.cab-viagem small { display: block; font-family: var(--sans); font-weight: 400;
+                    font-size: 10.5px; color: var(--suave); letter-spacing: 0; margin-top: 1px; }
+.cab-viagem.curso { color: var(--teal); }
+.grupo { background: var(--campo); border-top: 1px solid var(--campo-borda);
+         border-bottom: 1px solid var(--campo-borda); }
+.grupo > span { font-family: var(--mono); font-size: 10px; font-weight: 600;
+                letter-spacing: .12em; text-transform: uppercase; color: var(--suave);
+                padding: 7px 12px; grid-column: 1 / -1; }
+/* o resumo da viagem nao e pernada: fundo proprio, para nao se ler como um trecho */
+.grupo.resumo { background: var(--navy); border-color: var(--navy); }
+.grupo.resumo > span { color: #cfe9f5; }
+.linha-var { border-top: 1px solid var(--linha); }
+.linha-var.resumo { background: #eef3f8; }
+.linha-var.resumo .var { font-weight: 600; }
+.var { font-size: 13.5px; }
+.var small { display: block; font-size: 11px; color: var(--tenue); margin-top: 1px; }
+.h { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13.5px;
+     text-align: right; }
+.h.curso { color: var(--teal); font-weight: 600; }
+/* o desvio da referencia em tres degraus: quanto mais acima, mais forte */
+.h.acima-1 { color: var(--alerta); background: rgba(154,91,0,.07); }
+.h.acima-2 { color: var(--alerta); font-weight: 600; background: rgba(154,91,0,.16); }
+.h.acima-3 { color: var(--erro); font-weight: 700; background: rgba(179,38,30,.14); }
+/* a referencia: orcado quando o admin cadastrou, media das encerradas no resto */
+.h.ref { color: var(--navy); font-weight: 600; background: #f7fafc; }
+.h.ref small { display: block; font-family: var(--sans); font-weight: 400; font-size: 10px;
+               letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+.h.ref.orcado small { color: var(--teal); }
+.rodape-grade { display: flex; gap: 22px; align-items: center; margin-top: 12px;
+                font-size: 12px; color: var(--suave); flex-wrap: wrap; }
+.rodape-grade i { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                  margin: 0 6px 0 8px; vertical-align: -1px; }
+
+/* ---- premissas (so admin) ---------------------------------------------- */
+
+.premissas { border: 1px solid var(--campo-borda); border-radius: var(--r-cartao);
+             overflow: hidden; }
+.premissa { display: grid; grid-template-columns: minmax(0, 1fr) 150px 220px;
+            align-items: center; gap: 14px; padding: 10px 14px;
+            border-top: 1px solid var(--linha); }
+.premissas > .premissa:first-of-type { border-top: 0; }
+.premissa .campo-horas { display: flex; align-items: center; gap: 8px; }
+.premissa input { width: 96px; min-height: 40px; padding: 0 12px; text-align: right;
+                  font-family: var(--mono); font-size: 14px; }
+.premissa .unidade { font-size: 12.5px; color: var(--suave); }
+.premissa .media-dica { font-size: 12px; color: var(--suave); }
+.premissa .media-dica b { font-family: var(--mono); color: var(--navy); font-weight: 600; }
+.premissas .grupo { display: grid; }
+.acoes-premissas { display: flex; align-items: center; gap: 16px; margin-top: 18px; }
+.acoes-premissas .dica { font-size: 12.5px; color: var(--suave); }
+/* os chips da legenda — cor via classe, porque a CSP proibe `style=` */
+.rodape-grade .chip-curso { background: var(--teal); }
+.rodape-grade .chip-1 { background: rgba(154,91,0,.25); }
+.rodape-grade .chip-2 { background: rgba(154,91,0,.5); }
+.rodape-grade .chip-3 { background: rgba(179,38,30,.6); }

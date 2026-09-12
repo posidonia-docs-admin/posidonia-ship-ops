@@ -293,3 +293,17 @@ CREATE INDEX IF NOT EXISTS ix_log_quando ON log_acesso (quando);
 
 -- Manter em sincronia com VERSAO_SCHEMA em db.py.
 PRAGMA user_version = 1;
+
+-- ---------------------------------------------------------------------------
+-- premissa_pernada — o orcamento de horas de cada pernada.
+--
+-- Cadastrado pelo admin, uma linha por pernada (as chaves vivem em
+-- app/pernadas.py). Onde nao ha linha, a tela de Viagens usa a MEDIA das
+-- viagens encerradas do navio. Tabela nova: nao precisa de migracao.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS premissa_pernada (
+    chave          TEXT PRIMARY KEY,
+    horas          REAL NOT NULL CHECK (horas >= 0),
+    atualizado_por TEXT,
+    atualizado_em  TEXT NOT NULL
+);

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import asynccontextmanager, closing
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import auth, config, contas, db, dominio, viagens
+from . import auth, config, contas, db, dominio, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -50,9 +50,11 @@ templates.env.globals["V"] = versao_estaticos()
 # o acesso dele e so lancar escala.
 MENU = {
     "navio": ((("/navio"), "Painel"), (("/navio/encerradas"), "Encerradas")),
-    "supervisor": ((("/painel"), "Frota"),),
-    "analytics": ((("/painel"), "Frota"),),
-    "admin": ((("/painel"), "Frota"), (("/admin/contas"), "Contas")),
+    "supervisor": ((("/painel"), "Frota"), (("/viagens"), "Viagens")),
+    "analytics": ((("/painel"), "Frota"), (("/viagens"), "Viagens")),
+    # A visao do admin e a da supervisao mais a administracao — e so isso.
+    "admin": ((("/painel"), "Frota"), (("/viagens"), "Viagens"),
+              (("/admin/contas"), "Contas"), (("/admin/premissas"), "Premissas")),
 }
 templates.env.globals["MENU"] = MENU
 templates.env.globals["ROTULO_CONDICAO"] = dominio.ROTULO_CONDICAO
@@ -803,6 +805,168 @@ def painel(request: Request):
     return templates.TemplateResponse(request, "painel.html", {
         "conta": request.state.conta,
         "frota": frota, "a_conferir": a_conferir})
+
+
+# ---------------------------------------------------------------------------
+# Viagens: horas por pernada
+#
+# A planilha "analise viagens" das supervisoras, calculada. Colunas sao
+# viagens, linhas sao pernadas, um navio por vez. A ultima coluna e a
+# REFERENCIA: a premissa cadastrada pelo admin ou, na falta dela, a media
+# das encerradas mostradas.
+# ---------------------------------------------------------------------------
+
+def _agora_utc() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="minutes")
+
+
+def _colunas_de_viagens(conn, navio_id: int) -> list[dict]:
+    """A viagem em curso (se houver) e as ultimas cinco encerradas."""
+    linhas = conn.execute(
+        "SELECT vg.id, vg.numero, vg.status, "
+        "       ab.hora_local AS inicio, en.hora_local AS termino "
+        "  FROM viagem vg "
+        "  LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id "
+        "  LEFT JOIN evento en ON en.id = vg.evento_encerramento_id "
+        " WHERE vg.navio_id = ? AND vg.status = 'aberta' "
+        " UNION ALL "
+        "SELECT * FROM (SELECT vg.id, vg.numero, vg.status, "
+        "       ab.hora_local, en.hora_local "
+        "  FROM viagem vg "
+        "  LEFT JOIN evento ab ON ab.id = vg.evento_abertura_id "
+        "  LEFT JOIN evento en ON en.id = vg.evento_encerramento_id "
+        " WHERE vg.navio_id = ? AND vg.status = 'encerrada' "
+        " ORDER BY vg.id DESC LIMIT 5)",
+        (navio_id, navio_id)).fetchall()
+    colunas = []
+    for v in linhas:
+        valores = pernadas.calcular(conn, v["id"])
+        aberta = v["status"] == "aberta"
+        colunas.append({
+            "id": v["id"], "numero": v["numero"], "aberta": aberta,
+            "sub": "em curso" if aberta else "encerrada " + formato_br(v["termino"])[:5],
+            "inicio": v["inicio"], "termino": v["termino"],
+            "duracao": _duracao_longa(valores["_duracao"]),
+            "valores": valores,
+        })
+    return colunas
+
+
+def _linhas_de_pernadas(colunas, orcado, agora_utc) -> list[tuple]:
+    """[(grupo, [linha...])]: cada linha com uma celula por coluna e a referencia."""
+    historico = [c["valores"] for c in colunas if not c["aberta"]]
+    linhas = []
+    for chave, grupo, nome, sub, _de, _para in pernadas.PERNADAS:
+        ref_min, origem = pernadas.referencia(chave, orcado, historico)
+        celulas = []
+        for col in colunas:
+            v = col["valores"][chave]
+            comeco = col["valores"]["_de"].get(chave)
+            if v is not None:
+                d = pernadas.degrau(v, ref_min)
+                celulas.append({"texto": _duracao(v), "classe": "acima-{}".format(d) if d else ""})
+            elif col["aberta"] and comeco:
+                # a pernada comecou e nao terminou: a hora ainda esta correndo
+                decorrido = _entre(comeco, agora_utc)
+                celulas.append({"texto": _duracao(decorrido) + " \u00b7 correndo", "classe": "curso"})
+            else:
+                celulas.append({"texto": "\u2014", "classe": "vazio"})
+        linhas.append({
+            "chave": chave, "grupo": grupo, "nome": nome, "sub": sub, "celulas": celulas,
+            "ref": _duracao(ref_min) if ref_min is not None else "\u2014",
+            "origem": origem,
+        })
+    return [(g, [l for l in linhas if l["grupo"] == g]) for g in pernadas.GRUPOS]
+
+
+@app.get("/viagens", response_class=HTMLResponse)
+def viagens_por_pernada(request: Request, navio: int = 0):
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    with closing(db.conectar()) as conn:
+        navios = conn.execute(
+            "SELECT id, nome_oficial FROM navio WHERE ativo = 1 ORDER BY id").fetchall()
+        escolhido = next((n for n in navios if n["id"] == navio), navios[0] if navios else None)
+        colunas = _colunas_de_viagens(conn, escolhido["id"]) if escolhido else []
+        orcado = pernadas.premissas(conn)
+    grupos = _linhas_de_pernadas(colunas, orcado, _agora_utc())
+    return templates.TemplateResponse(request, "viagens.html", {
+        "conta": conta, "navios": navios, "navio": escolhido,
+        "colunas": colunas, "grupos": grupos,
+        "encerradas": sum(1 for c in colunas if not c["aberta"]),
+        "tem_orcado": bool(orcado),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Premissas: o orcamento de horas de cada pernada (so admin)
+# ---------------------------------------------------------------------------
+
+def _media_geral(conn) -> dict[str, tuple[str, int]]:
+    """chave -> (media h/min, n) sobre TODAS as viagens encerradas da frota.
+
+    E a dica ao lado do campo: o admin ve o que a frota vem fazendo antes de
+    decidir o que orcar.
+    """
+    ids = [r[0] for r in conn.execute(
+        "SELECT id FROM viagem WHERE status = 'encerrada' ORDER BY id DESC LIMIT 60")]
+    historico = [pernadas.calcular(conn, i) for i in ids]
+    saida = {}
+    for chave in pernadas.CHAVES:
+        ref, _ = pernadas.referencia(chave, {}, historico)
+        n = sum(1 for h in historico if h.get(chave) is not None)
+        saida[chave] = (_duracao(ref) if ref is not None else "", n)
+    return saida
+
+
+def _horas_texto(horas) -> str:
+    return "{:.1f}".format(horas).replace(".", ",") if horas is not None else ""
+
+
+@app.get("/admin/premissas", response_class=HTMLResponse)
+def admin_premissas(request: Request, erro: str = "", ok: str = ""):
+    if not _so_admin(request):
+        return HTMLResponse("<h3>Apenas administradores.</h3>", status_code=403)
+    with closing(db.conectar()) as conn:
+        orcado = pernadas.premissas(conn)
+        media = _media_geral(conn)
+    grupos = []
+    for g in pernadas.GRUPOS:
+        itens = []
+        for chave, grupo, nome, sub, _de, _para in pernadas.PERNADAS:
+            if grupo != g:
+                continue
+            itens.append({"chave": chave, "nome": nome, "sub": sub,
+                          "horas": _horas_texto(orcado.get(chave)),
+                          "media": media[chave][0], "n": media[chave][1]})
+        grupos.append((g, itens))
+    return templates.TemplateResponse(request, "admin_premissas.html", {
+        "conta": request.state.conta, "grupos": grupos, "erro": erro, "ok": ok})
+
+
+@app.post("/admin/premissas")
+async def admin_premissas_salvar(request: Request):
+    if not _so_admin(request):
+        return HTMLResponse("<h3>Apenas administradores.</h3>", status_code=403)
+    form = await request.form()
+    valores = {}
+    erros = []
+    for chave in pernadas.CHAVES:
+        bruto = (form.get("h_" + chave) or "").strip().replace(",", ".")
+        if not bruto:
+            valores[chave] = None            # vazio: volta a valer a media
+            continue
+        try:
+            valores[chave] = float(bruto)
+        except ValueError:
+            erros.append("Horas inv\u00e1lidas em {}: {!r}".format(chave, bruto))
+    if not erros:
+        with closing(db.conectar()) as conn:
+            erros = pernadas.gravar_premissas(conn, valores, por=request.state.conta["login"])
+    destino = "/admin/premissas?" + ("erro=" + quote(" | ".join(erros)) if erros
+                                      else "ok=" + quote("Premissas salvas."))
+    return RedirectResponse(destino, 303)
 
 
 # ---------------------------------------------------------------------------

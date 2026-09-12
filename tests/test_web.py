@@ -1225,3 +1225,121 @@ def test_todo_item_do_menu_tem_icone(cliente):
     assert itens, "menu vazio"
     for item in itens:
         assert "<svg" in item, item.strip()[:60]
+
+
+# ---------------------------------------------------------------------------
+# Viagens: horas por pernada, e as premissas do admin
+# ---------------------------------------------------------------------------
+
+def _admin(cliente):
+    with closing(db.conectar()) as conn:
+        if contas.buscar(conn, "adm") is None:
+            contas.criar_conta(conn, login="adm", senha=SENHA,
+                               nome_exibicao="Administrador", perfil="admin")
+    entrar(cliente, login="adm")
+
+
+def _viagem_fechada_do_pathfinder(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+    cliente.get("/logout")
+
+
+def test_viagens_poe_uma_coluna_por_viagem_e_a_media_como_referencia(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    entrar(cliente, login="vlo")
+    html = cliente.get("/viagens?navio=1").text
+
+    assert "APT26001" in html and "encerrada 08/03" in html
+    assert "APT26002" in html and "em curso" in html       # a que abriu em seguida
+    assert 'data-pernada="sub_nav_alumar_faz"' in html
+    assert "14h35" in html                                 # Sailing Alumar -> Arrival Faz
+    assert "51h25" in html                                 # Juruti -> Alumar (total)
+    assert "<small>média</small>" in html             # sem premissa: media
+    assert "<small>orçado</small>" not in html
+
+
+def test_a_premissa_do_admin_substitui_a_media(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    _admin(cliente)
+
+    r = cliente.post("/admin/premissas", data={"h_sub_nav_alumar_faz": "47,0"},
+                     follow_redirects=False)
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+
+    html = cliente.get("/viagens?navio=1").text
+    linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
+    linha = linha[:linha.index("</div>")]
+    assert "47h00" in linha and "<small>orçado</small>" in linha
+    # 14h35 contra 47h orcadas: bem abaixo, nenhum degrau
+    assert "acima-" not in linha
+    # as outras pernadas continuam na media
+    assert "<small>média</small>" in html
+
+
+def test_o_degrau_acende_contra_a_premissa(cliente):
+    """Orcar 5h para uma navegacao que levou 14h35 e passar de 1,6x: degrau 3."""
+    _viagem_fechada_do_pathfinder(cliente)
+    _admin(cliente)
+    cliente.post("/admin/premissas", data={"h_sub_nav_alumar_faz": "5"})
+    html = cliente.get("/viagens?navio=1").text
+    linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
+    linha = linha[:linha.index("</div>")]
+    assert "acima-3" in linha
+
+
+def test_campo_vazio_apaga_a_premissa_e_volta_a_media(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    _admin(cliente)
+    cliente.post("/admin/premissas", data={"h_jur_operacao": "24,8"})
+    assert "24h48" in cliente.get("/viagens?navio=1").text
+    cliente.post("/admin/premissas", data={"h_jur_operacao": ""})
+    html = cliente.get("/viagens?navio=1").text
+    assert "24h48" not in html
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM premissa_pernada").fetchone()[0] == 0
+
+
+def test_a_tela_de_premissas_mostra_a_media_da_frota_ao_lado_do_campo(cliente):
+    _viagem_fechada_do_pathfinder(cliente)
+    _admin(cliente)
+    html = cliente.get("/admin/premissas").text
+    assert 'name="h_des_espera_mare"' in html
+    assert "7h40" in html and "1 viagem" in html         # a media, e de quantas
+
+
+def test_premissas_sao_so_do_admin(cliente):
+    entrar(cliente, login="vlo")                         # supervisor
+    assert cliente.get("/admin/premissas").status_code == 403
+    assert cliente.post("/admin/premissas", data={"h_jur_operacao": "1"}).status_code == 403
+    assert "/admin/premissas" not in cliente.get("/viagens").text.split("<main")[0]
+
+
+def test_viagens_e_da_supervisao_nao_do_comandante(cliente):
+    entrar(cliente)
+    r = cliente.get("/viagens", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/navio"
+
+    cliente.get("/logout")
+    entrar(cliente, login="bi")                          # analytics: ve, nao grava
+    assert cliente.get("/viagens").status_code == 200
+    assert cliente.post("/admin/premissas", data={}).status_code == 403
+
+
+def test_pernada_em_curso_diz_que_a_hora_esta_correndo(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    alumar = escala_de(cliente, ordem=10)
+    cliente.post("/api/marco", json={
+        "escala_id": alumar, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "cor-1"})
+    cliente.get("/logout")
+
+    entrar(cliente, login="vlo")
+    html = cliente.get("/viagens?navio=1").text
+    linha = html[html.index('data-pernada="sub_nav_alumar_faz"'):]
+    linha = linha[:linha.index("</div>")]
+    assert "correndo" in linha and 'class="h curso"' in linha
+    # a pernada seguinte nem comecou
+    seguinte = html[html.index('data-pernada="sub_espera_faz"'):]
+    assert "correndo" not in seguinte[:seguinte.index("</div>")]

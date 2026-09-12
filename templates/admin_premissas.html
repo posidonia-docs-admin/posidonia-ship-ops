@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Premissas{% endblock %}
+
+{#
+  O orçamento de horas de cada pernada — só admin.
+
+  Uma linha por pernada. Campo preenchido vira a REFERÊNCIA na tela de
+  Viagens; campo vazio deixa valer a média das viagens encerradas. Ao lado de
+  cada campo, a média que a frota vem fazendo: é o que se olha antes de decidir
+  o que orçar.
+#}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Premissas</span>
+  <span class="embarcacao">horas orçadas por pernada · valem para os quatro navios</span>
+  <span class="selo-conta">
+    <span class="quando">{{ conta.nome_exibicao }}</span>
+  </span>
+</div>
+
+{% if erro %}<p class="aviso aviso-erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="aviso">{{ ok }}</p>{% endif %}
+
+<form method="post" action="/admin/premissas">
+  <div class="premissas">
+    {% for grupo, itens in grupos %}
+    <div class="grupo"><span>{{ grupo }}</span></div>
+    {% for p in itens %}
+    <div class="premissa">
+      <span class="var">{{ p.nome }}{% if p.sub %}<small>{{ p.sub }}</small>{% endif %}</span>
+      <span class="campo-horas">
+        <input type="text" inputmode="decimal" name="h_{{ p.chave }}" value="{{ p.horas }}"
+               placeholder="—" autocomplete="off">
+        <span class="unidade">h</span>
+      </span>
+      <span class="media-dica">
+        {% if p.media %}média da frota <b>{{ p.media }}</b> · {{ p.n }} viagem{{ "" if p.n == 1 else "s" }}
+        {% else %}<span class="vazio">sem viagem encerrada ainda</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+    {% endfor %}
+  </div>
+
+  <div class="acoes-premissas">
+    <button type="submit">Salvar premissas</button>
+    <span class="dica">
+      Horas com vírgula, como 47,0. Campo vazio volta a usar a média.
+      Os degraus de alerta (1,15× · 1,3× · 1,6×) valem sobre o que estiver aqui.
+    </span>
+  </div>
+</form>
+{% endblock %}
