@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block titulo %}Análises{% endblock %}
+
+{#
+  Análises — a tabela dinâmica.
+
+  Base, quatro caixas (filtros, linhas, colunas, valores) e a tabela embaixo.
+  Tudo vive no endereço: cada chip é um link que muda a consulta, e um
+  relatório salvo é só um endereço com nome. Funciona sem JavaScript; o
+  analises.js apenas envia o formulário sozinho quando um seletor muda.
+#}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Análises</span>
+  <span class="embarcacao">4 navios · histórico desde nov/2024</span>
+  <span class="selo-conta">
+    <span class="quando">{{ conta.nome_exibicao }}</span>
+  </span>
+</div>
+
+{% if salvos %}
+<div class="relatorios-salvos">
+  <span class="rot">Relatórios salvos</span>
+  {% for r in salvos %}
+    <span class="chip">
+      <a href="{{ r.consulta }}">{{ r.nome }}</a>
+      {% if pode_salvar %}
+      <form method="post" action="/analises/apagar">
+        <input type="hidden" name="id" value="{{ r.id }}">
+        <input type="hidden" name="consulta" value="{{ consulta }}">
+        <button type="submit" class="x" title="apagar este relatório">×</button>
+      </form>
+      {% endif %}
+    </span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form class="construtor" method="get" action="/analises" data-auto>
+  {% for d in q.l %}<input type="hidden" name="l" value="{{ d }}">{% endfor %}
+  {% for d in q.c %}<input type="hidden" name="c" value="{{ d }}">{% endfor %}
+  {% for dim, valores in q.filtros.items() %}
+    {% if valores %}{% for v in valores %}<input type="hidden" name="f_{{ dim }}" value="{{ v }}">{% endfor %}
+    {% else %}<input type="hidden" name="f_{{ dim }}" value="">{% endif %}
+  {% endfor %}
+  <input type="hidden" name="base" value="{{ q.base }}">
+
+  <div class="base-analise">
+    <span class="rot">Base</span>
+    {% for chave, rotulo in bases.items() %}
+      <a class="opcao{{ " ativa" if q.base == chave else "" }}" href="{{ url_base[chave] }}">{{ rotulo }}
+        <small>{% if chave == "viagens" %}uma linha por viagem{% else %}uma linha por pernada{% endif %}</small>
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="caixa" data-caixa="filtros">
+    <span class="rot">Filtros <i>{{ filtros|length }}</i></span>
+    {% for f in filtros %}
+      <div class="filtro-dim">
+        <span class="chips">
+          <span class="chip filtro">{{ f.rotulo }} <a class="x" href="{{ f.remover }}" title="tirar o filtro">×</a></span>
+        </span>
+        <span class="chips">
+          {% for v in f.valores %}
+            <a class="chip filtro{{ "" if v.ligado else " fora" }}" href="{{ v.url }}">{{ v.rotulo }}</a>
+          {% endfor %}
+        </span>
+      </div>
+    {% endfor %}
+    {% if sem_filtro %}
+      <select name="novo_filtro" aria-label="acrescentar filtro" data-envia>
+        <option value="">+ filtro</option>
+        {% for chave, rotulo in sem_filtro %}<option value="{{ chave }}">{{ rotulo }}</option>{% endfor %}
+      </select>
+    {% endif %}
+    {% if not filtros %}<span class="dica-caixa">Sem filtro: entram todas as viagens, inclusive as em curso.</span>{% endif %}
+  </div>
+
+  <div class="caixa" data-caixa="linhas">
+    <span class="rot">Linhas <i>{{ chips_l|length }}</i></span>
+    <span class="chips">
+      {% for ch in chips_l %}
+        <span class="chip">{{ ch.rotulo }}
+          <a class="x" href="{{ ch.mover }}" title="passar para as colunas">→</a>
+          <a class="x" href="{{ ch.remover }}" title="tirar">×</a></span>
+      {% endfor %}
+      {% if livres %}
+        <select name="nova_l" aria-label="acrescentar às linhas" data-envia>
+          <option value="">+ campo</option>
+          {% for chave, rotulo in livres %}<option value="{{ chave }}">{{ rotulo }}</option>{% endfor %}
+        </select>
+      {% endif %}
+    </span>
+  </div>
+
+  <div class="caixa" data-caixa="colunas">
+    <span class="rot">Colunas <i>{{ chips_c|length }}</i></span>
+    <span class="chips">
+      {% for ch in chips_c %}
+        <span class="chip">{{ ch.rotulo }}
+          <a class="x" href="{{ ch.mover }}" title="passar para as linhas">←</a>
+          <a class="x" href="{{ ch.remover }}" title="tirar">×</a></span>
+      {% endfor %}
+      {% if livres %}
+        <select name="nova_c" aria-label="acrescentar às colunas" data-envia>
+          <option value="">+ campo</option>
+          {% for chave, rotulo in livres %}<option value="{{ chave }}">{{ rotulo }}</option>{% endfor %}
+        </select>
+      {% endif %}
+    </span>
+  </div>
+
+  <div class="caixa" data-caixa="valores">
+    <span class="rot">Valores <i>1</i></span>
+    <span class="chips">
+      <span class="chip medida">
+        <select name="v" aria-label="medida" data-envia>
+          {% for chave, rotulo in medidas %}
+            <option value="{{ chave }}"{{ " selected" if chave == q.v else "" }}>{{ rotulo }}</option>
+          {% endfor %}
+        </select>
+        <select name="agg" aria-label="agregação" data-envia>
+          {% for chave, rotulo in agregacoes.items() %}
+            <option value="{{ chave }}"{{ " selected" if chave == q.agg else "" }}>{{ rotulo }}</option>
+          {% endfor %}
+        </select>
+      </span>
+    </span>
+    <span class="dica-caixa">Troque a medida e a agregação aqui.</span>
+    <noscript><button type="submit" class="botao">Aplicar</button></noscript>
+  </div>
+</form>
+
+<div class="titulo-tabela">
+  <span class="nome">{{ nome }}<small>{{ eixos }}{% if resultado.registros != resultado.de %} · {{ resultado.registros }} de {{ resultado.de }} registros{% endif %}</small></span>
+  <span class="risco"></span>
+  <span class="acoes">
+    {% if pode_salvar %}
+    <details class="salvar-relatorio">
+      <summary class="botao">Salvar relatório</summary>
+      <form method="post" action="/analises/salvar">
+        <input type="hidden" name="consulta" value="{{ consulta }}">
+        <input type="text" name="nome" placeholder="nome do relatório" required maxlength="80">
+        <button type="submit" class="botao primario">Salvar</button>
+      </form>
+    </details>
+    {% endif %}
+    <a class="botao primario" href="{{ csv }}" data-exportar>Exportar para Excel</a>
+  </span>
+</div>
+
+{% if not resultado.linhas %}
+  <p class="aviso">Nenhuma viagem passa por estes filtros.</p>
+{% else %}
+<div class="tabela rolagem">
+  <table class="pivot" data-pivot>
+    <thead>
+      <tr>
+        {% for d in q.l %}<th>{{ dimensoes|selectattr(0, "equalto", d)|map(attribute=1)|first }}</th>{% endfor %}
+        {% if not q.l %}<th></th>{% endif %}
+        {% for col in resultado.colunas %}
+          <th class="cab-viagem v">{{ col[0] if col else nome.split(",")[0] }}{% if col|length > 1 %}<small>{{ col[1:]|join(" · ") }}</small>{% endif %}</th>
+        {% endfor %}
+        <th class="v">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in resultado.linhas %}
+      <tr>
+        {% for r in l.rotulos %}<td class="rotulo{{ " sub" if not loop.first else "" }}">{{ r }}</td>{% endfor %}
+        {% if not l.rotulos %}<td class="rotulo">Total</td>{% endif %}
+        {% for v in l.celulas %}<td class="v{{ " vazio" if v is none else "" }}">{{ formatar(v, q.v, q.agg) }}</td>{% endfor %}
+        <td class="v total">{{ formatar(l.total, q.v, q.agg) }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="soma">
+        <td class="rotulo">Total</td>
+        {% for _ in range(q.l|length - 1) %}<td></td>{% endfor %}
+        {% for v in resultado.totais_colunas %}<td class="v">{{ formatar(v, q.v, q.agg) }}</td>{% endfor %}
+        <td class="v total">{{ formatar(resultado.total, q.v, q.agg) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<div class="rodape-grade">
+  {% if regra_mes %}<span>Mês pela data de <b>encerramento</b> da viagem (o Unberth de Alumar). Viagem em curso aparece como "em curso".</span>{% endif %}
+  {% if q.base == "pernadas" %}<span>A média só conta a pernada que existiu inteira, como em Viagens.</span>{% endif %}
+  {% if q.agg == "soma" and q.v in ("duracao", "espera_berco", "atracado", "horas") %}<span>Soma de horas: use a média para comparar navios.</span>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/analises.js?v={{ V }}"></script>
+{% endblock %}

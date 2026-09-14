@@ -1523,3 +1523,68 @@ def test_frota_e_da_supervisao(cliente):
     entrar(cliente)
     r = cliente.get("/painel", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/navio"
+
+
+# ---------------------------------------------------------------------------
+# Análises: a tabela dinâmica
+# ---------------------------------------------------------------------------
+
+def test_analises_e_de_todos_em_terra_menos_o_comandante(cliente):
+    entrar(cliente)
+    r = cliente.get("/analises", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/navio"
+    assert "/analises" not in cliente.get("/navio").text
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/analises").text
+    assert 'href="/analises"' in html and "Descarregado (MT), soma" in html
+    assert "Salvar relatório" in html
+
+
+def test_analises_monta_a_tabela_a_partir_do_endereco(cliente):
+    entrar(cliente)
+    _percorrer(cliente)                                  # APT26001 fecha em 08/03/2026
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+
+    html = cliente.get("/analises?base=viagens&l=navio&c=mes&v=descarregado&agg=soma"
+                       "&f_situacao=encerrada").text
+    assert "mar/2026" in html and "AMAZON PATHFINDER".title() in html
+    assert "57.500" in html                              # a carga descarregada, em MT
+    assert "Mês pela data de <b>encerramento</b>" in html
+
+    # linhas e colunas trocadas, media de horas por pernada
+    html = cliente.get("/analises?base=pernadas&l=grupo&l=pernada&c=navio&v=horas&agg=media").text
+    assert "Horas (h), média" in html and "Navegação Alumar → Fazendinha" in html
+    assert "14,6" in html                                # 18:40 -> 09:15 do dia seguinte
+
+    # sem JavaScript: "+ campo" e "+ filtro" chegam como nova_l / novo_filtro
+    html = cliente.get("/analises?base=viagens&l=navio&v=viagens&agg=soma&nova_c=ano&novo_filtro=situacao").text
+    assert 'name="c" value="ano"' in html and 'name="f_situacao" value=""' in html
+    assert "em curso" in html                            # o filtro nasce com os valores a ligar
+
+
+def test_analises_exporta_csv_que_o_excel_abre(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    r = cliente.get("/analises?base=viagens&l=navio&c=ano&v=descarregado&agg=soma&formato=csv")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.text.startswith("\ufeffNavio;2026;em curso;Total")
+    assert "Amazon Pathfinder;57500;;57500" in r.text
+
+
+def test_analises_salva_e_apaga_relatorio(cliente):
+    entrar(cliente, login="vlo")
+    consulta = "/analises?base=viagens&l=navio&c=mes&v=carregado&agg=soma"
+    r = cliente.post("/analises/salvar", data={"nome": "Carga por mês", "consulta": consulta},
+                     follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == consulta
+    html = cliente.get("/analises").text
+    assert "Carga por mês" in html and consulta.replace("&", "&amp;") in html
+    with closing(db.conectar()) as conn:
+        rid = conn.execute("SELECT id FROM relatorio_salvo").fetchone()[0]
+    cliente.post("/analises/apagar", data={"id": rid, "consulta": "/analises"}, follow_redirects=False)
+    assert "Carga por mês" not in cliente.get("/analises").text

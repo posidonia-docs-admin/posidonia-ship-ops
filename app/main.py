@@ -5,14 +5,14 @@ import hashlib
 from contextlib import asynccontextmanager, closing
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import auth, bunker, config, contas, db, dominio, frota, pernadas, viagens
+from . import analises, auth, bunker, config, contas, db, dominio, frota, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -50,10 +50,15 @@ templates.env.globals["V"] = versao_estaticos()
 # o acesso dele e so lancar escala.
 MENU = {
     "navio": ((("/navio"), "Painel"), (("/navio/encerradas"), "Encerradas")),
-    "supervisor": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker")),
-    "analytics": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker")),
+    # Analises e de todos em terra — supervisao, analytics e admin. So o
+    # comandante nao ve: o acesso dele e lancar escala.
+    "supervisor": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker"),
+                   (("/analises"), "Análises")),
+    "analytics": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker"),
+                  (("/analises"), "Análises")),
     # A visao do admin e a da supervisao mais a administracao — e so isso.
     "admin": ((("/painel"), "Frota"), (("/viagens"), "Viagens"), (("/bunker"), "Bunker"),
+              (("/analises"), "Análises"),
               (("/admin/contas"), "Contas"), (("/admin/premissas"), "Premissas")),
 }
 templates.env.globals["MENU"] = MENU
@@ -1164,3 +1169,155 @@ def admin_trocar_senha(request: Request, login: str = Form(...), senha: str = Fo
         "erro=" + quote(" | ".join(erros)) if erros
         else "ok=" + quote("Senha de {} trocada.".format(login)))
     return RedirectResponse(destino, 303)
+
+
+# ---------------------------------------------------------------------------
+# Analises: a tabela dinamica
+#
+# Base (viagens ou pernadas), dimensoes nas linhas e nas colunas, uma medida
+# agregada nas celulas, filtros por dimensao. Tudo vive na query string —
+# e por isso que um relatorio salvo e so um endereco com nome.
+# ---------------------------------------------------------------------------
+
+PADRAO_ANALISE = {"base": "viagens", "l": ["navio"], "c": ["mes"], "v": "descarregado",
+                  "agg": "soma"}
+
+
+def _ler_consulta(params) -> dict:
+    """A consulta a partir da query string, ja validada contra o catalogo."""
+    base = params.get("base") if params.get("base") in analises.BASES else "viagens"
+    dims = {k for k, _r in analises.dimensoes_da(base)}
+    meds = [k for k, _r in analises.medidas_da(base)]
+    if not [k for k in params if k != "formato"]:
+        q = dict(PADRAO_ANALISE)
+        q["filtros"] = {"ano": {db.agora()[:4]}, "situacao": {"encerrada"}}
+        return q
+    linhas = [d for d in params.getlist("l") if d in dims]
+    colunas = [d for d in params.getlist("c") if d in dims and d not in linhas]
+    # Os seletores "+ campo" e "+ filtro" sem JavaScript: o servidor tambem entende.
+    if params.get("nova_l") in dims and params.get("nova_l") not in linhas + colunas:
+        linhas.append(params.get("nova_l"))
+    if params.get("nova_c") in dims and params.get("nova_c") not in linhas + colunas:
+        colunas.append(params.get("nova_c"))
+    filtros = {}
+    if params.get("novo_filtro") in dims:
+        filtros[params.get("novo_filtro")] = set()
+    for chave, valor in params.multi_items():
+        if chave.startswith("f_") and chave[2:] in dims:
+            filtros.setdefault(chave[2:], set())
+            if valor:
+                filtros[chave[2:]].add(valor)
+    return {
+        "base": base, "l": linhas, "c": colunas,
+        "v": params.get("v") if params.get("v") in meds else meds[0],
+        "agg": params.get("agg") if params.get("agg") in analises.AGREGACOES else "soma",
+        "filtros": filtros,
+    }
+
+
+def _consulta_para_url(q: dict, **mudancas) -> str:
+    """A query string de uma consulta, com alteracoes opcionais (para os links)."""
+    q = {**q, **mudancas}
+    partes = [("base", q["base"])] + [("l", d) for d in q["l"]] + [("c", d) for d in q["c"]]
+    partes += [("v", q["v"]), ("agg", q["agg"])]
+    for dim, valores in sorted(q["filtros"].items()):
+        if valores:
+            partes += [("f_" + dim, v) for v in sorted(valores)]
+        else:
+            partes.append(("f_" + dim, ""))
+    return "/analises?" + urlencode(partes)
+
+
+@app.get("/analises", response_class=HTMLResponse)
+def analises_tela(request: Request, formato: str = ""):
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    q = _ler_consulta(request.query_params)
+
+    with closing(db.conectar()) as conn:
+        linhas = analises.carregar(conn, q["base"])
+        salvos = conn.execute(
+            "SELECT id, nome, consulta FROM relatorio_salvo ORDER BY nome").fetchall()
+    resultado = analises.pivotar(linhas, q["l"], q["c"], q["v"], q["agg"], q["filtros"])
+
+    if formato == "csv":
+        return Response(
+            analises.csv(resultado, q["l"], q["v"], q["agg"]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="analise-corsair.csv"'})
+
+    disponiveis = analises.valores_disponiveis(linhas, q["base"])
+    nome, eixos = analises.titulo(q["v"], q["agg"], q["l"], q["c"])
+    usadas = set(q["l"]) | set(q["c"])
+
+    def tira_de(lista, d):
+        return [x for x in lista if x != d]
+
+    # Cada chip carrega o endereco que o remove (ou move); cada filtro, o que
+    # liga e desliga cada valor. Sem JavaScript obrigatorio: sao links.
+    chips_l = [{"chave": d, "rotulo": analises.DIMENSOES[d][0],
+                "remover": _consulta_para_url(q, l=tira_de(q["l"], d)),
+                "mover": _consulta_para_url(q, l=tira_de(q["l"], d), c=q["c"] + [d])}
+               for d in q["l"]]
+    chips_c = [{"chave": d, "rotulo": analises.DIMENSOES[d][0],
+                "remover": _consulta_para_url(q, c=tira_de(q["c"], d)),
+                "mover": _consulta_para_url(q, c=tira_de(q["c"], d), l=q["l"] + [d])}
+               for d in q["c"]]
+    filtros = []
+    for dim, ligados in q["filtros"].items():
+        sem = {k: v for k, v in q["filtros"].items() if k != dim}
+        filtros.append({
+            "chave": dim, "rotulo": analises.DIMENSOES[dim][0],
+            "remover": _consulta_para_url(q, filtros=sem),
+            "valores": [{
+                "rotulo": v, "ligado": v in ligados,
+                "url": _consulta_para_url(q, filtros={
+                    **sem, dim: (ligados - {v}) if v in ligados else (ligados | {v})}),
+            } for v in disponiveis.get(dim, [])],
+        })
+    return templates.TemplateResponse(request, "analises.html", {
+        "conta": conta, "q": q, "resultado": resultado, "nome": nome, "eixos": eixos,
+        "bases": analises.BASES, "agregacoes": analises.AGREGACOES,
+        "dimensoes": analises.dimensoes_da(q["base"]),
+        "medidas": analises.medidas_da(q["base"]),
+        "livres": [(k, r) for k, r in analises.dimensoes_da(q["base"]) if k not in usadas],
+        "sem_filtro": [(k, r) for k, r in analises.dimensoes_da(q["base"]) if k not in q["filtros"]],
+        "chips_l": chips_l, "chips_c": chips_c, "filtros": filtros,
+        "url_base": {b: _consulta_para_url(dict(PADRAO_ANALISE, filtros=q["filtros"]), base=b,
+                                            l=["navio"], c=["mes"] if b == "viagens" else ["navio"],
+                                            v="descarregado" if b == "viagens" else "horas",
+                                            agg="soma" if b == "viagens" else "media")
+                     for b in analises.BASES},
+        "consulta": _consulta_para_url(q), "csv": _consulta_para_url(q) + "&formato=csv",
+        "salvos": salvos, "formatar": analises.formatar,
+        "pode_salvar": conta["perfil"] not in contas.PERFIS_SOMENTE_LEITURA,
+        "regra_mes": "mes" in q["l"] + q["c"] or "trimestre" in q["l"] + q["c"] or "ano" in q["l"] + q["c"],
+    })
+
+
+@app.post("/analises/salvar")
+def analises_salvar(request: Request, nome: str = Form(...), consulta: str = Form(...)):
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    nome = nome.strip()[:80]
+    consulta = consulta if consulta.startswith("/analises?") else "/analises"
+    if nome:
+        with closing(db.conectar()) as conn:
+            conn.execute(
+                "INSERT INTO relatorio_salvo (nome, consulta, criado_por, criado_em) "
+                "VALUES (?, ?, ?, ?)", (nome, consulta, conta["login"], db.agora()))
+            conn.commit()
+    return RedirectResponse(consulta, 303)
+
+
+@app.post("/analises/apagar")
+def analises_apagar(request: Request, id: int = Form(...), consulta: str = Form("/analises")):
+    conta = request.state.conta
+    if conta["perfil"] == "navio":
+        return RedirectResponse("/navio", 303)
+    with closing(db.conectar()) as conn:
+        conn.execute("DELETE FROM relatorio_salvo WHERE id = ?", (id,))
+        conn.commit()
+    return RedirectResponse(consulta if consulta.startswith("/analises") else "/analises", 303)

@@ -232,6 +232,12 @@ _TABELAS_POSTERIORES = (
     "  horas REAL NOT NULL CHECK (horas >= 0),"
     "  atualizado_por TEXT,"
     "  atualizado_em TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS relatorio_salvo ("
+    "  id INTEGER PRIMARY KEY,"
+    "  nome TEXT NOT NULL,"
+    "  consulta TEXT NOT NULL,"
+    "  criado_por TEXT,"
+    "  criado_em TEXT NOT NULL)",
 )
 
 

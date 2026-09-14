@@ -17,6 +17,7 @@ proprio navio. A tela diz qual das duas esta usando.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 
 from .db import agora
@@ -151,7 +152,31 @@ def calcular(conn, viagem_id: int) -> dict:
     Pernada sem os dois marcos vem como None: ainda nao aconteceu, ou faltou
     lancamento. Quem chama decide como mostrar.
     """
-    escalas, marcos = _marcos_da_viagem(conn, viagem_id)
+    return _calcular(*_marcos_da_viagem(conn, viagem_id))
+
+
+def calcular_em_lote(conn) -> dict[int, dict]:
+    """viagem_id -> o mesmo que `calcular`, para TODAS as viagens, em duas consultas.
+
+    A tela de Analises precisa das pernadas de 150+ viagens de uma vez. Uma
+    consulta por viagem sao centenas de idas ao Turso; aqui sao duas.
+    """
+    escalas = conn.execute(
+        "SELECT id, viagem_id, ordem, codigo_porto, tipo_escala, sentido, motivo, origem "
+        "  FROM escala WHERE status <> 'cancelada' ORDER BY viagem_id, ordem").fetchall()
+    marcos = defaultdict(dict)
+    for r in conn.execute(
+            "SELECT ev.escala_id, ev.tipo, ev.hora_utc FROM evento_vigente ev "
+            "  JOIN escala e ON e.id = ev.escala_id WHERE e.status <> 'cancelada'"):
+        marcos[r["escala_id"]][r["tipo"]] = r["hora_utc"]
+    por_viagem = defaultdict(list)
+    for e in escalas:
+        por_viagem[e["viagem_id"]].append(e)
+    return {vid: _calcular(escs, {e["id"]: marcos.get(e["id"], {}) for e in escs})
+            for vid, escs in por_viagem.items()}
+
+
+def _calcular(escalas, marcos) -> dict:
     saida = {}
     # O instante em que cada pernada COMECOU. E o que deixa a tela dizer
     # "10h55 e correndo" numa pernada que ainda nao terminou.

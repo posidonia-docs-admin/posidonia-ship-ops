@@ -306,4 +306,18 @@ CREATE TABLE IF NOT EXISTS premissa_pernada (
     atualizado_em  TEXT NOT NULL
 );
 
+-- ---------------------------------------------------------------------------
+-- relatorio_salvo — uma combinacao da tela de Analises guardada com nome.
+--
+-- `consulta` e a query string da tela (base, linhas, colunas, valor, filtros):
+-- reabrir e so montar o endereco. Tabela nova: nao precisa de migracao.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS relatorio_salvo (
+    id         INTEGER PRIMARY KEY,
+    nome       TEXT NOT NULL,
+    consulta   TEXT NOT NULL,
+    criado_por TEXT,
+    criado_em  TEXT NOT NULL
+);
+
 PRAGMA user_version = 1;
