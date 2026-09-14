@@ -1138,6 +1138,32 @@ def test_zero_nunca_aparece_com_sinal_de_menos(cliente):
     assert formato_mt(None) == "\u2014"
 
 
+def test_encerradas_mostra_so_as_ultimas_cinco(cliente):
+    """Com o histórico importado cada navio tem dezenas de viagens, e cada uma
+    carrega as paradas e os marcos: a página passava de 700 KB. Ficam as cinco
+    últimas; o resto atrás de 'ver todas'."""
+    entrar(cliente)
+    for i in range(6):
+        _percorrer(cliente, prefixo="v{}".format(i))
+
+    html = cliente.get("/navio/encerradas").text
+    assert "APT26006" in html and "APT26002" in html
+    assert "APT26001" not in html                          # a sexta ficou atrás do link
+    assert "<b>5</b> de <b>6</b>" in html
+    assert 'data-encerradas="todas"' in html and "Ver todas as 6 viagens" in html
+
+    todas = cliente.get("/navio/encerradas?todas=1").text
+    assert "APT26001" in todas and "APT26006" in todas
+    assert "<b>6</b>\n    viagens encerradas" in todas.replace("\r\n", "\n")
+    assert 'data-encerradas="ultimas"' in todas and "Ver só as últimas 5" in todas
+
+    # a busca filtra ANTES do corte, e o link carrega o filtro junto
+    busca = cliente.get("/navio/encerradas?busca=26001").text
+    assert "APT26001" in busca and 'data-encerradas' not in busca
+    juruti = cliente.get("/navio/encerradas?busca=juruti").text
+    assert "<b>5</b> de <b>6</b>" in juruti and "todas=1&amp;busca=juruti" in juruti
+
+
 def test_o_plural_de_viagem(cliente):
     entrar(cliente)
     assert "Nenhuma viagem encerrada ainda" in cliente.get("/navio/encerradas").text

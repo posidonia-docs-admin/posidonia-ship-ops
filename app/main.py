@@ -647,17 +647,30 @@ async def api_carga(request: Request):
     return {"ok": True}
 
 
-def _encerradas(conta, busca: str = "", ano: str = "") -> dict:
+# Quantas viagens encerradas a tela mostra por padrao. Com o historico
+# importado sao dezenas por navio, e cada uma vem com as paradas e os marcos:
+# a pagina inteira passava de 700 KB num celular a bordo. O resto fica atras
+# de "ver todas".
+LIMITE_ENCERRADAS = 5
+
+
+def _encerradas(conta, busca: str = "", ano: str = "", todas: bool = False) -> dict:
     """As viagens ja fechadas deste navio, para consulta e correcao.
 
     A carga e a soma do DESCARREGADO: e ela que diz o que a viagem entregou.
     O carregado ja aparece na parada de Juruti, dentro da propria viagem.
+
+    O filtro (ano, busca por codigo ou porto) e aplicado ANTES de carregar as
+    paradas, e so as viagens que vao aparecer sao montadas por inteiro.
     """
     with closing(db.conectar()) as conn:
         linhas = conn.execute(
             "SELECT vg.id, vg.numero, "
             "       ab.hora_local AS saida, ab.hora_utc AS saida_utc, "
             "       en.hora_local AS chegada, en.hora_utc AS chegada_utc, "
+            "       (SELECT GROUP_CONCAT(p.nome, ' ') FROM escala e "
+            "          JOIN porto p ON p.codigo = e.codigo_porto "
+            "         WHERE e.viagem_id = vg.id AND e.status <> 'cancelada') AS portos, "
             "       (SELECT COUNT(*) FROM escala e "
             "         WHERE e.viagem_id = vg.id AND e.status <> 'cancelada') AS paradas, "
             "       (SELECT COUNT(*) FROM escala e "
@@ -674,12 +687,22 @@ def _encerradas(conta, busca: str = "", ano: str = "") -> dict:
             " WHERE vg.navio_id = ? AND vg.status = 'encerrada' "
             " ORDER BY vg.id DESC", (conta["navio_id"],)).fetchall()
 
+        anos = sorted({(v["saida"] or "")[:4] for v in linhas if v["saida"]}, reverse=True)
+        procurado = (busca or "").strip().lower()
+        filtradas = [
+            v for v in linhas
+            if (not ano or (v["saida"] or "")[:4] == ano)
+            and (not procurado
+                 or procurado in (v["numero"] or "").lower()
+                 or procurado in (v["portos"] or "").lower())
+        ]
+        total = len(filtradas)
+        if not todas:
+            filtradas = filtradas[:LIMITE_ENCERRADAS]
+
         viagens_lista = []
-        anos = set()
-        for viagem in linhas:
+        for viagem in filtradas:
             ano_da = (viagem["saida"] or "")[:4]
-            if ano_da:
-                anos.add(ano_da)
             blocos = _escalas_com_marcos(conn, viagem["id"])
             for bloco in blocos:
                 lancados = sum(1 for m in bloco["marcos"] if m["lancado"])
@@ -719,30 +742,22 @@ def _encerradas(conta, busca: str = "", ano: str = "") -> dict:
                 "atracado": _duracao(atracado) if atracado else "",
                 "consumo_vlsfo": consumo[0] if consumo else None,
                 "consumo_mgo": consumo[1] if consumo else None,
-                "portos": " ".join(b["escala"]["porto_nome"] for b in blocos),
             })
 
-    # O filtro e depois da montagem de proposito: a busca varre tambem os PORTOS
-    # da viagem, e isso exige as escalas ja carregadas.
-    procurado = (busca or "").strip().lower()
-    visiveis = [
-        v for v in viagens_lista
-        if (not ano or v["ano"] == ano)
-        and (not procurado
-             or procurado in (v["viagem"]["numero"] or "").lower()
-             or procurado in v["portos"].lower())
-    ]
     return {
-        "encerradas": visiveis,
-        "anos": sorted(anos, reverse=True),
+        "encerradas": viagens_lista,
+        "total": total,
+        "todas": todas,
+        "limite": LIMITE_ENCERRADAS,
+        "anos": anos,
         "ano": ano,
         "busca": busca or "",
-        "com_pendencia": sum(1 for v in visiveis if v["viagem"]["faltantes"]),
+        "com_pendencia": sum(1 for v in viagens_lista if v["viagem"]["faltantes"]),
     }
 
 
 @app.get("/navio/encerradas", response_class=HTMLResponse)
-def navio_encerradas(request: Request, busca: str = "", ano: str = ""):
+def navio_encerradas(request: Request, busca: str = "", ano: str = "", todas: str = ""):
     """Consulta e correcao do que ja passou.
 
     Tela separada porque o painel responde "o que lanco agora" e esta responde
@@ -752,7 +767,7 @@ def navio_encerradas(request: Request, busca: str = "", ano: str = ""):
     if conta["perfil"] != "navio":
         return RedirectResponse("/painel", 303)
     contexto = {"conta": conta}
-    contexto.update(_encerradas(conta, busca=busca, ano=ano))
+    contexto.update(_encerradas(conta, busca=busca, ano=ano, todas=todas == "1"))
     return templates.TemplateResponse(request, "encerradas.html", contexto)
 
 

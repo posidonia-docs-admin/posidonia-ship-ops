@@ -53,9 +53,12 @@
   {% endfor %}
   <button type="submit" name="ano" value=""
           class="filtro{{ " ativo" if not ano else "" }}">Todas</button>
+  {# Quando ha mais do que se mostra, o link "ver todas" fica no rodape da lista. #}
+  {% if todas %}<input type="hidden" name="todas" value="1">{% endif %}
   <span class="resumo-consulta">
-    <b>{{ encerradas|length }}</b>
-    {{ "viagem encerrada" if encerradas|length == 1 else "viagens encerradas" }}{%
+    {% if total > encerradas|length %}<b>{{ encerradas|length }}</b> de <b>{{ total }}</b>
+    viagens encerradas{% else %}<b>{{ encerradas|length }}</b>
+    {{ "viagem encerrada" if encerradas|length == 1 else "viagens encerradas" }}{% endif %}{%
       if ano %} em {{ ano }}{% endif %}{%
       if com_pendencia %} · <b>{{ com_pendencia }}</b>
       com marco faltando{% endif %}
@@ -210,6 +213,19 @@
   </details>
   {% endfor %}
 </div>
+
+{#
+  Só as últimas ficam à mão: com o histórico importado, cada navio tem dezenas
+  de viagens, e cada uma pesa. Quem precisa de uma antiga usa a busca ou o ano;
+  quem quer tudo, pede.
+#}
+{% if total > encerradas|length %}
+  <a class="ver-mais" href="/navio/encerradas?todas=1{% if busca %}&amp;busca={{ busca|urlencode }}{% endif %}{% if ano %}&amp;ano={{ ano }}{% endif %}"
+     data-encerradas="todas">Ver todas as {{ total }} viagens</a>
+{% elif todas and total > limite %}
+  <a class="ver-mais" href="/navio/encerradas{% if busca or ano %}?{% endif %}{% if busca %}busca={{ busca|urlencode }}{% endif %}{% if busca and ano %}&amp;{% endif %}{% if ano %}ano={{ ano }}{% endif %}"
+     data-encerradas="ultimas">Ver só as últimas {{ limite }}</a>
+{% endif %}
 {% endif %}
 {% endblock %}
 
