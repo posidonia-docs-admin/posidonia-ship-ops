@@ -95,6 +95,11 @@ RE_NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
 AJUSTES = (
     ("AMAZON PATHFINDER", 68, "F", dt.datetime(2024, 1, 3), dt.datetime(2025, 1, 3),
      "APT24003, Sailing de Juruti: ano digitado como 2024"),
+    # As duas datas de Fazendinha estavam trocadas (Vinicius, 14/09/2026).
+    ("AMAZON PIONEER", 120, "F", dt.datetime(2025, 2, 4), dt.datetime(2025, 2, 3),
+     "APN25002, Arrival em Fazendinha: 03/02 e nao 04/02"),
+    ("AMAZON PIONEER", 123, "F", dt.datetime(2025, 2, 3), dt.datetime(2025, 2, 4),
+     "APN25002, Sailing de Fazendinha: 04/02 e nao 03/02"),
 )
 
 # Marcos que a planilha registra fora de qualquer celula que o leitor entenda.

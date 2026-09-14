@@ -3,6 +3,7 @@
 
     python -X utf8 -m ferramentas.importar_historico relatorio
     python -X utf8 -m ferramentas.importar_historico importar --apagar-existente
+    python -X utf8 -m ferramentas.importar_historico importar --apagar-existente --env .env
 
 `relatorio` so le e valida: imprime o inventario e todos os problemas, sem tocar
 o banco. `importar` grava — e se recusa enquanto houver problema de nivel
@@ -19,11 +20,32 @@ documentado em ferramentas/historico_planilha.py.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from contextlib import closing
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+
+def carregar_env(caminho: str) -> None:
+    """Poe no ambiente as variaveis de um .env ("CHAVE=valor" ou "CHAVE: valor").
+
+    Tem de rodar ANTES de importar app.config, que le o ambiente no import. So o
+    importador faz isto — o app em si nunca le .env, e continua nao lendo.
+    """
+    for linha in Path(caminho).read_text(encoding="utf-8").splitlines():
+        linha = linha.strip()
+        if not linha or linha.startswith("#"):
+            continue
+        sep = "=" if "=" in linha and (":" not in linha or linha.index("=") < linha.index(":")) else ":"
+        chave, _, valor = linha.partition(sep)
+        os.environ[chave.strip()] = valor.strip().strip('"').strip("'")
+
+
+if "--env" in sys.argv:
+    carregar_env(sys.argv[sys.argv.index("--env") + 1])
+os.environ.setdefault("SHIPOPS_SECRET_KEY", "sem-uso-no-importador")
 
 from app import db, dominio, viagens as servico  # noqa: E402
 from ferramentas import historico_planilha as hp  # noqa: E402
@@ -214,6 +236,7 @@ def main(argv=None) -> int:
     parser.add_argument("--apagar-existente", action="store_true")
     parser.add_argument("--mesmo-com-erros", action="store_true",
                         help="grava mesmo com erros de validação (só para ensaio local)")
+    parser.add_argument("--env", help="arquivo .env com TURSO_DATABASE_URL e TURSO_AUTH_TOKEN")
     args = parser.parse_args(argv)
 
     viagens_por_navio, problemas = hp.ler(args.planilha)
@@ -225,12 +248,18 @@ def main(argv=None) -> int:
         return 1
 
     from app import config
-    destino = "Turso ({})".format(config.TURSO_URL) if config.usando_turso() else \
+    destino = "Turso ({})".format(config.TURSO_URL.split("//")[-1]) if config.usando_turso() else \
         "SQLite local ({})".format(config.CAMINHO_BANCO)
     print("\nGravando em {} ...".format(destino))
     with closing(db.conectar()) as conn:
         db.inicializar(conn)
         resultado = importar(conn, viagens_por_navio, apagar=args.apagar_existente)
+        print("Conferência no destino: {} viagens, {} marcos, {} na fila de conferência, abertas: {}".format(
+            conn.execute("SELECT COUNT(*) FROM viagem").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM evento").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM escalas_a_conferir").fetchone()[0],
+            ", ".join(r[0] for r in conn.execute(
+                "SELECT numero FROM viagem WHERE status = 'aberta' ORDER BY navio_id"))))
     if resultado["apagado"]:
         print("Apagado antes: " + ", ".join("{} {}".format(v, k) for k, v in resultado["apagado"].items()))
     print("Gravadas {} viagens.".format(resultado["viagens"]))
