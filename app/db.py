@@ -217,11 +217,14 @@ def _rodar_script(conn, sql: str) -> None:
 # Colunas acrescentadas DEPOIS que o banco de producao ja existia. O
 # `CREATE TABLE IF NOT EXISTS` nao as adiciona a uma tabela que ja esta la.
 _COLUNAS_NOVAS = (
-    ("navio", "prefixo", "TEXT"),
-    ("escala", "condicao", "TEXT"),
-    ("rota_etapa", "condicao", "TEXT"),
-    ("evento", "rob_vlsfo", "REAL"),
-    ("evento", "rob_mgo", "REAL"),
+   ("navio", "prefixo", "TEXT"),
+   ("escala", "condicao", "TEXT"),
+   ("rota_etapa", "condicao", "TEXT"),
+   ("evento", "rob_vlsfo", "REAL"),
+   ("evento", "rob_mgo", "REAL"),
+   ("evento", "fw", "REAL"),             # Agua doce a bordo (MT)
+   ("evento", "lixo", "TEXT"),           # Registro de lixo (Solido/Liquido)
+   ("evento", "comentarios", "TEXT"),    # Ocorrencias e notas do marco
 )
 
 
