@@ -920,3 +920,286 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
    font-size: 15px;
  }
 }
+
+/* ==========================================================================
+   PAINEL OPERACIONAL LADO A LADO (ESTRUTURA INTEGRADA POSIDONIA)
+   ========================================================================== */
+
+.hud-viagem {
+  background: var(--painel);
+  border: 1px solid var(--campo-borda);
+  border-radius: var(--r-cartao);
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hud-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-info .separador {
+  color: var(--tenue);
+}
+
+.rota-etiqueta {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--teal-fundo);
+  background: rgba(18, 167, 201, 0.1);
+  padding: 3px 10px;
+  border-radius: var(--r-chip);
+}
+
+.hud-acoes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.botao-sm {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+/* Grade Lado a Lado: 480px formulário, restante para a tabela */
+.grade-dashboard {
+  display: grid;
+  grid-template-columns: 460px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .grade-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cartao {
+  background: var(--painel);
+  border: 1px solid var(--campo-borda);
+  border-radius: var(--r-cartao);
+  padding: 20px 22px;
+  box-shadow: var(--sombra);
+}
+
+.cabecalho-bloco {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--linha);
+}
+
+.titulo-bloco {
+  margin: 2px 0 0;
+  font-size: 17px;
+  color: var(--navy);
+  letter-spacing: -.01em;
+}
+
+.botao-link {
+  background: transparent;
+  border: 0;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.botao-link:hover {
+  text-decoration: underline;
+}
+
+/* Assistente de Etapa da Rota */
+.caixa-assistente-etapa {
+  background: #f0f7fb;
+  border: 1px dashed var(--teal);
+  border-radius: var(--r-campo);
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+
+.assistente-info strong {
+  display: block;
+  font-size: 13px;
+  color: var(--navy);
+  margin-top: 2px;
+}
+
+/* Grid do Formulário de Entrada */
+.form-grid-operacional {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.campo-span-2 {
+  grid-column: 1 / -1;
+}
+
+.campo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.campo-item label.req::after {
+  content: " *";
+  color: var(--erro);
+}
+
+.campo-item input,
+.campo-item select {
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+
+.botao-destaque {
+  background: var(--teal);
+  color: #fff;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* Tabela em Tempo Real à Direita */
+.tabela-container-scroll {
+  overflow-x: auto;
+  max-height: 680px;
+  border: 1px solid var(--campo-borda);
+  border-radius: var(--r-campo);
+}
+
+.tabela-logbook {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tabela-logbook th {
+  background: var(--campo);
+  color: var(--suave);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  border-bottom: 1px solid var(--campo-borda);
+  white-space: nowrap;
+}
+
+.tabela-logbook td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linha);
+  white-space: nowrap;
+}
+
+.tabela-logbook tr:hover td {
+  background: #f7fafc;
+}
+
+.btn-mini-acao {
+  background: rgba(18, 167, 201, 0.12);
+  border: 1px solid var(--teal);
+  color: var(--teal-fundo);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tag-retificado {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--alerta);
+  background: rgba(154, 91, 0, 0.12);
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+/* Menu de Contexto (Clique Direito) */
+.menu-flutuante {
+  display: none;
+  position: absolute;
+  background: var(--painel);
+  border: 1px solid var(--teal);
+  border-radius: var(--r-campo);
+  box-shadow: var(--sombra-forte);
+  z-index: 2500;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.item-menu-flutuante {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--tinta);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.item-menu-flutuante:hover {
+  background: var(--campo);
+  color: var(--teal-fundo);
+}
+
+/* Modais */
+.fundo-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 37, 64, 0.6);
+  z-index: 3000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.caixa-modal {
+  background: var(--painel);
+  border-radius: var(--r-painel);
+  max-width: 620px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: var(--sombra-forte);
+}
+
+.topo-modal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--linha);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.botao-fechar {
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+  color: var(--suave);
+  cursor: pointer;
+}
