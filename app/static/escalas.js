@@ -283,3 +283,189 @@
     else if (form.classList.contains("carregar")) movimentarCarga(form, evento);
   });
 })();
+
+/* Integração do Painel Lado a Lado com o Backend Corsair */
+(function () {
+  "use strict";
+
+  var ETAPAS_ROTA = [
+    { loc: "Alumar - MA", acao: "sailing", prop: "Laden", desc: "1. Alumar — Início de Singradura p/ Fazendinha" },
+    { loc: "Barra Norte", acao: "arrival", prop: "Laden", desc: "2. Barra Norte — Entrada no Canal / Espera Prático" },
+    { loc: "Fazendinha", acao: "arrival", prop: "Laden", desc: "3. Fazendinha — Embarque Praticagem Macapá" },
+    { loc: "Fazendinha", acao: "sailing", prop: "Laden", desc: "4. Fazendinha — Singradura Rio Amazonas p/ Juruti" },
+    { loc: "Juruti", acao: "arrival", prop: "Loading", desc: "5. Juruti — Chegada na Barra / Fundeado" },
+    { loc: "Juruti", acao: "berth", prop: "Loading", desc: "6. Juruti — Atracação Terminal Fluvial" },
+    { loc: "Juruti", acao: "Fueling", prop: "Loading", desc: "7. Juruti — Operação de Carga / Bauxita" },
+    { loc: "Juruti", acao: "unberth", prop: "Laden", desc: "8. Juruti — Término Carga & Desatracação" },
+    { loc: "Juruti", acao: "sailing", prop: "Laden", desc: "9. Juruti — Singradura Descendo Rio Amazonas" },
+    { loc: "Fazendinha", acao: "arrival", prop: "Laden", desc: "10. Fazendinha — Desembarque Praticagem" },
+    { loc: "Fazendinha", acao: "sailing", prop: "Laden", desc: "11. Fazendinha — Saída Barra Norte Rumo Alumar" },
+    { loc: "Alumar - MA", acao: "arrival", prop: "Discharging", desc: "12. Alumar — Chegada Barra São Marcos / Fundeado" },
+    { loc: "Alumar - MA", acao: "berth", prop: "Discharging", desc: "13. Alumar — Atracação Terminal Alumar" },
+    { loc: "Alumar - MA", acao: "Standby", prop: "Discharging", desc: "14. Alumar — Operação de Descarga Bauxita" },
+    { loc: "Alumar - MA", acao: "unberth", prop: "Laden", desc: "15. Alumar — Término Descarga & Conclusão Ciclo" }
+  ];
+
+  var historicoOcorrencias = [];
+  var idSelecionadoCtx = null;
+
+  function sincronizarRelogio() {
+    var agora = new Date();
+    var campoData = document.getElementById("campo-data");
+    var campoHora = document.getElementById("campo-hora");
+    if (campoData && campoHora) {
+      campoData.value = agora.toISOString().slice(0, 10);
+      campoHora.value = agora.toISOString().slice(11, 16);
+    }
+  }
+
+  function atualizarSugerido() {
+    var label = document.getElementById("texto-etapa-sugerida");
+    if (!label) return;
+    var idx = historicoOcorrencias.length;
+    if (idx < ETAPAS_ROTA.length) {
+      label.textContent = ETAPAS_ROTA[idx].desc;
+    } else {
+      label.textContent = "Etapas padrão concluídas. Registros extras livres.";
+    }
+  }
+
+  // Preencher etapa assistida
+  var btnEtapa = document.getElementById("btn-aplicar-etapa");
+  if (btnEtapa) {
+    btnEtapa.addEventListener("click", function () {
+      var idx = historicoOcorrencias.length;
+      if (idx < ETAPAS_ROTA.length) {
+        var item = ETAPAS_ROTA[idx];
+        document.getElementById("campo-local").value = item.loc;
+        document.getElementById("campo-acao").value = item.acao;
+        document.getElementById("campo-proposito").value = item.prop;
+      }
+    });
+  }
+
+  var btnRelogio = document.getElementById("btn-sync-relogio");
+  if (btnRelogio) btnRelogio.addEventListener("click", sincronizarRelogio);
+
+  // Renderizar Tabela à Direita
+  function renderizarTabela() {
+    var corpo = document.getElementById("corpo-tabela-logbook");
+    if (!corpo) return;
+    corpo.innerHTML = "";
+
+    for (var i = historicoOcorrencias.length - 1; i >= 0; i--) {
+      var r = historicoOcorrencias[i];
+      var tr = document.createElement("tr");
+      var seloRetificado = r.isEdited ? '<span class="tag-retificado" title="' + (r.motivo || '') + '">RETIFICADO</span>' : '';
+
+      tr.innerHTML =
+        '<td><button type="button" class="btn-mini-acao" data-id="' + r.id + '">✏️ Editar</button></td>' +
+        '<td><strong>#' + r.id + '</strong>' + seloRetificado + '</td>' +
+        '<td class="num">' + r.data.split("-").reverse().join("/") + ' ' + r.hora + '</td>' +
+        '<td>' + r.local + '</td>' +
+        '<td><span class="selo">' + r.acao + '</span></td>' +
+        '<td>' + r.proposito + '</td>' +
+        '<td class="num">' + (r.vlsfo || '—') + '</td>' +
+        '<td class="num">' + (r.mgo || '—') + '</td>' +
+        '<td class="num">' + (r.fw ? r.fw + 't' : '—') + '</td>' +
+        '<td>' + (r.lixo || '—') + '</td>' +
+        '<td>' + (r.comentarios || '—') + '</td>';
+
+      (function (registro) {
+        tr.addEventListener("contextmenu", function (e) {
+          e.preventDefault();
+          idSelecionadoCtx = registro.id;
+          var menu = document.getElementById("menu-contexto-logbook");
+          if (menu) {
+            menu.style.display = "block";
+            menu.style.left = e.pageX + "px";
+            menu.style.top = e.pageY + "px";
+          }
+        });
+      })(r);
+
+      corpo.appendChild(tr);
+    }
+  }
+
+  // Interceptar Envio do Formulário Principal
+  var formPrincipal = document.getElementById("form-registro-principal");
+  if (formPrincipal) {
+    formPrincipal.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      var novoItem = {
+        id: historicoOcorrencias.length + 1,
+        data: document.getElementById("campo-data").value,
+        hora: document.getElementById("campo-hora").value,
+        agente: document.getElementById("campo-agente").value,
+        local: document.getElementById("campo-local").value,
+        proposito: document.getElementById("campo-proposito").value,
+        acao: document.getElementById("campo-acao").value,
+        vlsfo: document.getElementById("campo-vlsfo").value,
+        mgo: document.getElementById("campo-mgo").value,
+        fw: document.getElementById("campo-fw").value,
+        lixo: document.getElementById("campo-lixo").value,
+        comentarios: document.getElementById("campo-comentarios").value,
+        isEdited: false
+      };
+
+      historicoOcorrencias.push(novoItem);
+
+      // Despacha para a API e fila offline nativa do Corsair
+      var escalaId = Number(document.getElementById("campo-escala-id").value) || 1;
+      if (window.Fila && window.Fila.enfileirar) {
+        window.Fila.enfileirar({
+          escala_id: escalaId,
+          tipo: novoItem.acao.toLowerCase(),
+          hora_local: novoItem.data + "T" + novoItem.hora,
+          offset: "-03:00",
+          nome_responsavel: (localStorage.getItem("shipops.responsavel") || "Comandante"),
+          rob_vlsfo: novoItem.vlsfo || null,
+          rob_mgo: novoItem.mgo || null,
+          fw: novoItem.fw || null,
+          lixo: novoItem.lixo || null,
+          comentarios: novoItem.comentarios || null
+        }, "/api/marco");
+      }
+
+      renderizarTabela();
+      atualizarSugerido();
+
+      // Limpa combustíveis e notas mantendo o relógio atualizado
+      document.getElementById("campo-vlsfo").value = "";
+      document.getElementById("campo-mgo").value = "";
+      document.getElementById("campo-fw").value = "";
+      document.getElementById("campo-lixo").value = "";
+      document.getElementById("campo-comentarios").value = "";
+      sincronizarRelogio();
+    });
+  }
+
+  // Exportar JSON direto
+  var btnExport = document.getElementById("btn-exportar-json");
+  if (btnExport) {
+    btnExport.addEventListener("click", function () {
+      if (!historicoOcorrencias.length) {
+        alert("Nenhum lançamento registrado para exportar.");
+        return;
+      }
+      var blob = new Blob([JSON.stringify(historicoOcorrencias, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "ELB_Viagem_" + Date.now() + ".json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // Fechar menu de clique direito
+  window.addEventListener("click", function () {
+    var menu = document.getElementById("menu-contexto-logbook");
+    if (menu) menu.style.display = "none";
+  });
+
+  sincronizarRelogio();
+  atualizarSugerido();
+})();
