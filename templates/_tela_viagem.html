@@ -4,35 +4,34 @@
 <!-- TOP HUD: PARÂMETROS DA VIAGEM -->
 <div class="hud-superior">
   <div class="hud-marca">
-    <span class="codigo">{{ v.viagem.numero }}</span>
+    <span class="codigo" id="hud-viagem-id">{{ v.viagem.numero }}</span>
     <span class="separador">·</span>
     <span class="embarcacao">{{ conta.navio_nome }}</span>
     <span class="separador">·</span>
     <span class="rota-etiqueta" id="hud-route">Alumar ⇄ Juruti</span>
   </div>
   <div class="hud-meta-tags">
+    <div>COMANDANTE: <strong id="hud-operator">—</strong></div>
     <div>REGISTROS: <strong id="hud-count">0</strong></div>
   </div>
   <div class="hud-acoes">
-    <span class="selo selo-ok">Auditável (SHA-256)</span>
-    <button class="btn btn-secondary btn-sm" id="btn-abrir-arquivo" type="button">📂 Arquivo</button>
-    <button class="btn btn-secondary btn-sm" id="btn-export-json" type="button">Exportar (.json)</button>
+    <span class="selo selo-ok">Auditável</span>
     <button class="btn btn-danger btn-sm" id="btn-encerrar-viagem" type="button">Encerrar Viagem</button>
   </div>
 </div>
 
-<!-- TELA 1: SETUP INICIAL DOS PARÂMETROS DA VIAGEM -->
+<!-- TELA 1: SETUP INICIAL DA VIAGEM -->
 <div id="setup-section" class="cartao" style="display: none;">
   <div class="cabecalho-bloco">
     <div>
       <span class="rot">Inicialização da Singradura</span>
-      <h2 class="titulo-bloco">Parâmetros da Viagem e do Operador</h2>
+      <h2 class="titulo-bloco">Parâmetros da Viagem</h2>
     </div>
-    <button class="btn btn-preset" id="btn-load-preset" type="button">⚡ Carregar Rota Base Padrão</button>
+    <button class="btn btn-preset" id="btn-load-preset" type="button">⚡ Carregar Rota Padrão</button>
   </div>
   
   <p style="color: var(--suave); font-size: 12.5px; margin-bottom: 10px;">
-    Defina os parâmetros operacionais da viagem. Uma vez travados, eles ficam vinculados à cadeia criptográfica.
+    Confira os dados da viagem antes de iniciar os lançamentos.
   </p>
 
   <div class="grid-setup">
@@ -41,12 +40,12 @@
       <input type="number" id="meta-target-count" value="15" min="1" required style="max-width: 130px;">
     </div>
     <div class="campo-grupo">
-      <label for="meta-vessel" class="rot req">Embarcação</label>
-      <input type="text" id="meta-vessel" value="{{ conta.navio_nome }}" required>
+      <label for="meta-viagem-id" class="rot req">ID Viagem</label>
+      <input type="text" id="meta-viagem-id" value="{{ v.viagem.numero }}" required readonly>
     </div>
     <div class="campo-grupo">
-      <label for="meta-operator" class="rot req">Operador / Comandante</label>
-      <input type="text" id="meta-operator" placeholder="Ex: Cap. Silveira" required>
+      <label for="meta-comandante" class="rot req">Comandante</label>
+      <input type="text" id="meta-comandante" placeholder="Ex: Cap. Silveira" required>
     </div>
     <div class="campo-grupo full-width">
       <label for="meta-notes" class="rot">Comentários da Rota</label>
@@ -55,11 +54,11 @@
   </div>
 
   <button class="btn btn-primary" id="btn-iniciar-viagem" type="button" style="width: 100%; margin-top: 14px; min-height: 40px;">
-    Iniciar Viagem & Travar Parâmetros
+    Iniciar Lançamentos
   </button>
 </div>
 
-<!-- TELA 2: DASHBOARD LADO A LADO -->
+<!-- TELA 2: OPERACIONAL LADO A LADO -->
 <div class="dashboard-grid" id="dashboard-section" style="display: none;">
 
   <!-- ESQUERDA: FORMULÁRIO -->
@@ -182,11 +181,11 @@
     </form>
   </div>
 
-  <!-- DIREITA: TABELA EM TEMPO REAL -->
+  <!-- DIREITA: TABELA EM TEMPO REAL (SEM HASH) -->
   <div class="cartao painel-direita">
     <div class="cabecalho-bloco">
       <div>
-        <span class="rot">Linha do Tempo Auditável</span>
+        <span class="rot">Linha do Tempo</span>
         <h2 class="titulo-bloco">Logbook Operacional</h2>
       </div>
       <span style="font-size: 11px; color: var(--suave);">💡 Dica: Clique direito ou use ✏️ para retificar</span>
@@ -207,7 +206,6 @@
             <th>FW (t)</th>
             <th>Lixo</th>
             <th>Comentários</th>
-            <th>Hash SHA-256</th>
           </tr>
         </thead>
         <tbody id="tabela-corpo"></tbody>
@@ -224,7 +222,7 @@
   </div>
 </div>
 
-<!-- MODAL: RETIFICAR OCORRÊNCIA -->
+<!-- MODAL: RETIFICAR OCORRÊNCIA (SEM HASH) -->
 <div class="modal-overlay" id="modal-edicao">
   <div class="modal-box">
     <div class="modal-topo">
@@ -232,7 +230,7 @@
       <button class="btn btn-secondary" id="btn-fechar-modal-edicao" type="button" style="padding: 2px 8px;">✕</button>
     </div>
     <p style="color: var(--suave); font-size: 12px; margin-bottom: 10px;">
-      A alteração recalculará toda a cadeia criptográfica SHA-256 para manter a integridade perante auditorias.
+      A alteração atualizará os registros do banco de dados mantendo a versão anterior no histórico de auditoria.
     </p>
 
     <form id="form-edicao" class="form-grid">
@@ -331,34 +329,9 @@
 
       <div class="full-width" style="margin-top: 4px;">
         <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
-          Salvar Retificação e Recalcular Hash
+          Salvar Retificação
         </button>
       </div>
     </form>
-  </div>
-</div>
-
-<!-- MODAL: HISTÓRICO ARQUIVADO -->
-<div class="modal-overlay" id="modal-arquivo">
-  <div class="modal-box">
-    <div class="modal-topo">
-      <h3 style="color: var(--navy); font-size: 15px;">📂 Histórico de Viagens Arquivadas</h3>
-      <button class="btn btn-secondary" id="btn-fechar-modal-arquivo" type="button" style="padding: 2px 8px;">✕</button>
-    </div>
-    <div class="tabela-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Data Arquivamento</th>
-            <th>Embarcação</th>
-            <th>Comandante</th>
-            <th>Obs.</th>
-            <th>Último Hash SHA-256</th>
-            <th>Ação</th>
-          </tr>
-        </thead>
-        <tbody id="corpo-tabela-arquivo"></tbody>
-      </table>
-    </div>
   </div>
 </div>
