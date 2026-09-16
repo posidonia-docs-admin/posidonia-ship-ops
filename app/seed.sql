@@ -31,29 +31,29 @@ INSERT OR IGNORE INTO navio_alias (alias, navio_id) VALUES
 -- Toda a rota fica em UTC-3 (PA, AP e MA).
 -- ---------------------------------------------------------------------------
 INSERT OR IGNORE INTO porto (codigo, nome, un_locode, uf, pais, offset_padrao, ativo, observacao) VALUES
-    ('ALUMAR',      'Alumar',      NULL, 'MA', 'BR', '-03:00', 1,
-     'Terminal da refinaria, Sao Luis. Descarga de bauxita. Abre e fecha a viagem.'),
-    ('JURUTI',      'Juruti',      NULL, 'PA', 'BR', '-03:00', 1,
-     'Mina, rio Amazonas. Carrega bauxita.'),
-    ('FAZENDINHA',  'Fazendinha',  NULL, 'AP', 'BR', '-03:00', 1,
-     'Passagem no trecho fluvial. Nao atraca. Aparece duas vezes por viagem. '
-     || 'Tambem chamada de Macapa — mesma parada, ver porto_alias.'),
-    ('BARRA_NORTE', 'Barra Norte', NULL, 'AP', 'BR', '-03:00', 1,
-     'Parada por conta da mare. Nao atraca.'),
-    ('ICOARACI',    'Icoaraci',    NULL, 'PA', 'BR', '-03:00', 1,
-     'Eventual, para bunker. Entrada por Mosqueiro. FUNDEIA — nao atraca (confirmado 10/set/2026).'),
-    ('ITAQUI',      'Itaqui',      NULL, 'MA', 'BR', '-03:00', 1,
-     'Eventual, fundeio para bunker. Terminal distinto de Alumar — confirmar com a operacao.');
+   ('ALUMAR',      'Alumar',      NULL, 'MA', 'BR', '-03:00', 1,
+    'Terminal da refinaria, Sao Luis. Descarga de bauxita. Abre e fecha a viagem.'),
+   ('JURUTI',      'Juruti',      NULL, 'PA', 'BR', '-03:00', 1,
+    'Mina, rio Amazonas. Carrega bauxita.'),
+   ('FAZENDINHA',  'Fazendinha',  NULL, 'AP', 'BR', '-03:00', 1,
+    'Passagem no trecho fluvial. Nao atraca. Aparece duas vezes por viagem.'),
+   ('BARRA_NORTE', 'Barra Norte', NULL, 'AP', 'BR', '-03:00', 1,
+    'Parada por conta da mare. Nao atraca.'),
+   ('ICOARACI',    'Icoaraci',    NULL, 'PA', 'BR', '-03:00', 1,
+    'Eventual, para bunker. Entrada por Mosqueiro. FUNDEIA — nao atraca.'),
+   ('ITAQUI',      'Itaqui',      NULL, 'MA', 'BR', '-03:00', 1,
+    'Eventual, fundeio para bunker.'),
+   ('AJB',         'Águas Jurisdicionais Brasileiras', NULL, 'NA', 'BR', '-03:00', 1,
+    'Navegação em mar aberto / AJB.');
 
 INSERT OR IGNORE INTO porto_alias (alias, codigo_porto) VALUES
-    ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'), ('SAO LUIS - ALUMAR', 'ALUMAR'),
-    ('JURUTI', 'JURUTI'), ('PORTO DE JURUTI', 'JURUTI'),
-    -- Macapa e a mesma parada que Fazendinha (confirmado 10/set/2026): um porto so,
-    -- com as duas grafias resolvendo para ele. Cadastrar dois duplicaria a escala.
-    ('FAZENDINHA', 'FAZENDINHA'), ('MACAPA', 'FAZENDINHA'), ('MACAPA/AP', 'FAZENDINHA'),
-    ('BARRA NORTE', 'BARRA_NORTE'), ('BARRA-NORTE', 'BARRA_NORTE'),
-    ('ICOARACI', 'ICOARACI'),
-    ('ITAQUI', 'ITAQUI'), ('ITQ', 'ITAQUI'), ('IQI', 'ITAQUI'), ('PORTO DO ITAQUI', 'ITAQUI');
+   ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'),
+   ('JURUTI', 'JURUTI'), ('PORTO DE JURUTI', 'JURUTI'),
+   ('FAZENDINHA', 'FAZENDINHA'), ('MACAPA', 'FAZENDINHA'),
+   ('BARRA NORTE', 'BARRA_NORTE'),
+   ('ICOARACI', 'ICOARACI'),
+   ('ITAQUI', 'ITAQUI'),
+   ('AJB', 'AJB'), ('AGUAS JURISDICIONAIS BRASILEIRAS', 'AJB');
 
 -- ---------------------------------------------------------------------------
 -- Quais marcos cada tipo de escala pede.
