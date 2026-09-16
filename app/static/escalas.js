@@ -1,471 +1,466 @@
-/* Lancamento no lugar — a pagina NUNCA recarrega.
- *
- * Antes, todo lancamento do cartao "proximo lancamento" terminava em
- * `location.reload()`. Numa maquina que dormiu no Render isso e a tela em
- * branco por 20 a 50 segundos logo depois do clique em Salvar: parece
- * travamento, e o formulario reaparece preenchido como se nada tivesse sido
- * gravado. Foi exatamente o que o Vinicius descreveu.
- *
- * Agora sao dois movimentos:
- *   1. O formulario vira REGISTRO na hora, com o que ele acabou de digitar.
- *   2. Em segundo plano, `GET /navio/tela` traz so o miolo da tela e a caixa
- *      e trocada — o cartao avanca para o marco seguinte, a trilha e a
- *      contagem se atualizam, e a pagina nao pisca.
- *
- * Sem conexao o passo 2 nao acontece: o registro fica marcado como "na fila",
- * porque o lancamento ESTA salvo no aparelho e sai sozinho depois.
- */
+/* Diário de Bordo Eletrônico (ELB) — Corsair Posidonia */
 (function () {
   "use strict";
 
-  var CHAVE_NOME = "shipops.responsavel";
-  var campoNome = document.getElementById("responsavel");
-  var caixaTela = document.getElementById("tela-viagem");
+  const STORAGE_KEY = "SHIP_ELB_ALUMAR_CIRCUIT_V1";
+  const ARCHIVE_KEY = "SHIP_ELB_ARCHIVE_HISTORY_V1";
 
-  // Ele digita o nome uma vez; nas proximas ja vem preenchido.
-  if (campoNome) {
-    try {
-      var guardado = localStorage.getItem(CHAVE_NOME);
-      if (guardado && !campoNome.value) campoNome.value = guardado;
-    } catch (e) { /* storage bloqueado: segue sem lembrar */ }
-    campoNome.addEventListener("change", function () {
-      try { localStorage.setItem(CHAVE_NOME, campoNome.value.trim()); } catch (e) {}
-    });
-  }
-
-  function estado(bloco, classe, texto) {
-    var alvo = bloco.querySelector("[data-estado]");
-    if (!alvo) return;
-    alvo.className = "estado " + classe;
-    alvo.textContent = texto;
-  }
-
-  function quemPreenche(bloco) {
-    var nome = campoNome ? campoNome.value.trim() : "";
-    if (!nome) {
-      estado(bloco, "erro", "informe quem preenche");
-      if (campoNome) {
-        campoNome.focus();
-        campoNome.scrollIntoView({ block: "center" });
-      }
-      return "";
-    }
-    try { localStorage.setItem(CHAVE_NOME, nome); } catch (e) {}
-    return nome;
-  }
-
-  /* ---- o formulario vira registro -------------------------------------- */
-
-  function texto(pai, classe, valor) {
-    if (!valor) return;
-    var el = document.createElement("span");
-    el.className = classe;
-    el.textContent = valor;
-    pai.appendChild(el);
-  }
-
-  /* Troca o formulario por uma linha gravada. E o "fixar como se fosse um
-   * registro" que o Vinicius pediu: o campo editavel some, e o que ficou na
-   * tela e o que foi salvo — nao ha mais como duvidar se pegou. */
-  function virarRegistro(bloco, form, dados) {
-    var caixa = document.createElement("div");
-    caixa.className = "gravado";
-    texto(caixa, "marco-nome", dados.nome ||
-          (bloco.querySelector(".marco-nome") || {}).textContent || "");
-    texto(caixa, "valor", dados.valor);
-    texto(caixa, "rob", dados.detalhe);
-    texto(caixa, "por", dados.por);
-
-    var marca = document.createElement("span");
-    marca.className = "estado " + (dados.pendente ? "pendente" : "salvo");
-    marca.textContent = dados.pendente ? "na fila — será enviado" : "salvo";
-    marca.setAttribute("data-estado", "");
-    caixa.appendChild(marca);
-
-    var container = form.closest("details") || form;
-    container.replaceWith(caixa);
-    if (!bloco.contains(caixa)) bloco.appendChild(caixa);
-    return caixa;
-  }
-
-  /* ---- troca so o miolo da tela ---------------------------------------- */
-
-  /* Que paradas estavam abertas. Trocar o miolo fecharia todas, e fechar na
-   * cara de quem estava lendo e o tipo de detalhe que faz a tela parecer que
-   * "pulou" — o mesmo incomodo do reload, em miniatura. */
-  function abertas() {
-    var ids = [];
-    Array.prototype.forEach.call(
-      document.querySelectorAll(".parada[open][data-escala]"),
-      function (d) { ids.push(d.dataset.escala); });
-    return ids;
-  }
-
-  function reabrir(ids) {
-    if (!ids.length) return;
-    Array.prototype.forEach.call(
-      document.querySelectorAll(".parada[data-escala]"),
-      function (d) { if (ids.indexOf(d.dataset.escala) >= 0) d.open = true; });
-  }
-
-  var trocando = false;
-
-  function trocarTela() {
-    if (!caixaTela || trocando) return Promise.resolve();
-    trocando = true;
-    caixaTela.classList.add("atualizando");
-    var reabrirDepois = abertas();
-
-    return fetch("/navio/tela", {
-      credentials: "same-origin",
-      headers: { "X-Requested-With": "fetch" }
-    }).then(function (r) {
-      // 409: a viagem acabou e outra comecou — a pagina inteira mudou de forma.
-      // 401/403 ou redirect para o login: a sessao caiu. Nos dois casos so o
-      // recarregamento resolve, e ai ele e o certo, nao o atalho.
-      if (r.status === 409 || r.status === 401 || r.status === 403 || r.redirected) {
-        window.location.reload();
-        return null;
-      }
-      if (!r.ok) throw new Error("fragmento indisponivel");
-      return r.text();
-    }).then(function (html) {
-      if (html === null) return;
-      caixaTela.innerHTML = html;
-      reabrir(reabrirDepois);
-      if (window.Fila && window.Fila.pintar) window.Fila.pintar();
-    }).catch(function () {
-      // O registro otimista continua na tela; nada se perde. A tela alcanca o
-      // servidor no proximo lancamento ou quando o comandante abrir de novo.
-    }).then(function () {
-      trocando = false;
-      caixaTela.classList.remove("atualizando");
-    });
-  }
-
-  /* ---- os tres lancamentos --------------------------------------------- */
-
-  function despachar(form, bloco, payload, url, registro) {
-    var botao = form.querySelector("button[type=submit]");
-    if (botao) botao.disabled = true;
-    estado(bloco, "pendente", "salvando...");
-
-    return window.Fila.enfileirar(payload, url).then(function (r) {
-      if (r && r.erros && r.erros.length) {
-        estado(bloco, "erro", r.erros.join(" "));
-        if (botao) botao.disabled = false;
-        return;
-      }
-      virarRegistro(bloco, form, registro);
-      // Em viagens encerradas nao ha miolo a trocar, e a correcao mexe no
-      // RESUMO da viagem la em cima — duracao, espera, atracado. Deixar so a
-      // linha atualizada faria a tela mostrar a hora nova com a duracao velha.
-      if (form.dataset.recarrega === "1") {
-        window.location.reload();
-        return;
-      }
-      return trocarTela();
-    }).catch(function () {
-      // Ficou na fila local e sera reenviado sozinho. Vira registro do mesmo
-      // jeito: reabrir o formulario so convidaria a digitar duas vezes.
-      registro.pendente = true;
-      virarRegistro(bloco, form, registro);
-    });
-  }
-
- function enviar(form, evento) {
-   evento.preventDefault();
-   if (!form.reportValidity()) return;
-
-   var bloco = form.closest("[data-escala][data-tipo]");
-   if (!bloco) return;
-   var nome = quemPreenche(bloco);
-   if (!nome) return;
-
-   var dados = new FormData(form);
-   var data = (dados.get("data") || "").trim();
-   var hora = (dados.get("hora") || "").trim();
-   if (!data || !hora) return;
-
-   var vlsfo = (dados.get("rob_vlsfo") || "").trim();
-   var mgo = (dados.get("rob_mgo") || "").trim();
-   var fw = (dados.get("fw") || "").trim();
-   var lixo = (dados.get("lixo") || "").trim();
-   var comentarios = (dados.get("comentarios") || "").trim();
-
-   var detalhes = [];
-   if (vlsfo) detalhes.push("VLSFO " + vlsfo);
-   if (mgo) detalhes.push("MGO " + mgo);
-   if (fw) detalhes.push("FW " + fw + "t");
-   if (lixo) detalhes.push("Lixo: " + lixo);
-
-   despachar(form, bloco, {
-     escala_id: Number(bloco.dataset.escala),
-     tipo: bloco.dataset.tipo,
-     hora_local: data + "T" + hora,
-     offset: form.dataset.offset,
-     nome_responsavel: nome,
-     motivo_correcao: (dados.get("motivo_correcao") || "").trim(),
-     rob_vlsfo: vlsfo || null,
-     rob_mgo: mgo || null,
-     fw: fw || null,
-     lixo: lixo || null,
-     comentarios: comentarios || null
-   }, "/api/marco", {
-     nome: form.dataset.nome,
-     valor: data.split("-").reverse().join("/") + " " + hora,
-     detalhe: detalhes.join(" · "),
-     por: nome
-   });
- }
-
-  function abastecer(form, evento) {
-    evento.preventDefault();
-    var bloco = form.closest("[data-escala][data-tipo]");
-    if (!bloco) return;
-    var nome = quemPreenche(bloco);
-    if (!nome) return;
-
-    var dados = new FormData(form);
-    var vlsfo = (dados.get("vlsfo") || "").trim();
-    var mgo = (dados.get("mgo") || "").trim();
-    if (!vlsfo && !mgo) {
-      estado(bloco, "erro", "informe VLSFO ou MGO");
-      return;
-    }
-
-    despachar(form, bloco, {
-      escala_id: Number(bloco.dataset.escala),
-      tipo: bloco.dataset.tipo,
-      vlsfo: vlsfo || null,
-      mgo: mgo || null,
-      nome_responsavel: nome
-    }, "/api/abastecimento", {
-      nome: form.dataset.nome || "Abastecido",
-      valor: "VLSFO " + (vlsfo || "—") + " · MGO " + (mgo || "—"),
-      por: nome
-    });
-  }
-
-  function movimentarCarga(form, evento) {
-    evento.preventDefault();
-    var bloco = form.closest("[data-escala][data-tipo]");
-    if (!bloco) return;
-    var nome = quemPreenche(bloco);
-    if (!nome) return;
-
-    var quantidade = (new FormData(form).get("quantidade") || "").trim();
-    if (!quantidade) {
-      estado(bloco, "erro", "informe a quantidade em MT");
-      return;
-    }
-
-    // A direcao (carrega ou descarrega) vem da condicao da escala, no servidor.
-    despachar(form, bloco, {
-      escala_id: Number(bloco.dataset.escala),
-      tipo: bloco.dataset.tipo,
-      quantidade: quantidade,
-      nome_responsavel: nome
-    }, "/api/carga", {
-      nome: form.dataset.nome || "Carga",
-      valor: quantidade + " MT",
-      por: nome
-    });
-  }
-
-  // Delegado no documento: vale tambem para os formularios que chegam na troca
-  // do miolo, sem precisar religar nada depois.
-  document.addEventListener("submit", function (evento) {
-    var form = evento.target;
-    if (!form.classList) return;
-    if (form.classList.contains("lancar")) enviar(form, evento);
-    else if (form.classList.contains("abastecer")) abastecer(form, evento);
-    else if (form.classList.contains("carregar")) movimentarCarga(form, evento);
-  });
-})();
-
-/* Integração do Painel Lado a Lado com o Backend Corsair */
-(function () {
-  "use strict";
-
-  var ETAPAS_ROTA = [
-    { loc: "Alumar - MA", acao: "sailing", prop: "Laden", desc: "1. Alumar — Início de Singradura p/ Fazendinha" },
-    { loc: "Barra Norte", acao: "arrival", prop: "Laden", desc: "2. Barra Norte — Entrada no Canal / Espera Prático" },
-    { loc: "Fazendinha", acao: "arrival", prop: "Laden", desc: "3. Fazendinha — Embarque Praticagem Macapá" },
-    { loc: "Fazendinha", acao: "sailing", prop: "Laden", desc: "4. Fazendinha — Singradura Rio Amazonas p/ Juruti" },
-    { loc: "Juruti", acao: "arrival", prop: "Loading", desc: "5. Juruti — Chegada na Barra / Fundeado" },
-    { loc: "Juruti", acao: "berth", prop: "Loading", desc: "6. Juruti — Atracação Terminal Fluvial" },
-    { loc: "Juruti", acao: "Fueling", prop: "Loading", desc: "7. Juruti — Operação de Carga / Bauxita" },
-    { loc: "Juruti", acao: "unberth", prop: "Laden", desc: "8. Juruti — Término Carga & Desatracação" },
-    { loc: "Juruti", acao: "sailing", prop: "Laden", desc: "9. Juruti — Singradura Descendo Rio Amazonas" },
-    { loc: "Fazendinha", acao: "arrival", prop: "Laden", desc: "10. Fazendinha — Desembarque Praticagem" },
-    { loc: "Fazendinha", acao: "sailing", prop: "Laden", desc: "11. Fazendinha — Saída Barra Norte Rumo Alumar" },
-    { loc: "Alumar - MA", acao: "arrival", prop: "Discharging", desc: "12. Alumar — Chegada Barra São Marcos / Fundeado" },
-    { loc: "Alumar - MA", acao: "berth", prop: "Discharging", desc: "13. Alumar — Atracação Terminal Alumar" },
-    { loc: "Alumar - MA", acao: "Standby", prop: "Discharging", desc: "14. Alumar — Operação de Descarga Bauxita" },
-    { loc: "Alumar - MA", acao: "unberth", prop: "Laden", desc: "15. Alumar — Término Descarga & Conclusão Ciclo" }
+  const BASE_ROUTE_STAGES = [
+    { loc: "Alumar - MA", action: "sailing", purpose: "Laden", desc: "1. Alumar — Início de Singradura p/ Fazendinha" },
+    { loc: "Barra Norte", action: "arrival", purpose: "Laden", desc: "2. Barra Norte — Entrada no Canal / Espera Prático" },
+    { loc: "Fazendinha", action: "arrival", purpose: "Laden", desc: "3. Fazendinha — Embarque Praticagem Macapá" },
+    { loc: "Fazendinha", action: "sailing", purpose: "Laden", desc: "4. Fazendinha — Singradura Rio Amazonas p/ Juruti" },
+    { loc: "Juruti", action: "arrival", purpose: "Loading", desc: "5. Juruti — Chegada na Barra / Fundeado" },
+    { loc: "Juruti", action: "berth", purpose: "Loading", desc: "6. Juruti — Atracação Terminal Fluvial" },
+    { loc: "Juruti", action: "Fueling", purpose: "Loading", desc: "7. Juruti — Operação de Carga / Bauxita" },
+    { loc: "Juruti", action: "unberth", purpose: "Laden", desc: "8. Juruti — Término Carga & Desatracação" },
+    { loc: "Juruti", action: "sailing", purpose: "Laden", desc: "9. Juruti — Singradura Descendo Rio Amazonas" },
+    { loc: "Fazendinha", action: "arrival", purpose: "Laden", desc: "10. Fazendinha — Desembarque Praticagem" },
+    { loc: "Fazendinha", action: "sailing", purpose: "Laden", desc: "11. Fazendinha — Saída Barra Norte Rumo Alumar" },
+    { loc: "Alumar - MA", action: "arrival", purpose: "Discharging", desc: "12. Alumar — Chegada Barra São Marcos / Fundeado" },
+    { loc: "Alumar - MA", action: "berth", purpose: "Discharging", desc: "13. Alumar — Atracação Terminal Alumar" },
+    { loc: "Alumar - MA", action: "Standby", purpose: "Discharging", desc: "14. Alumar — Operação de Descarga Bauxita" },
+    { loc: "Alumar - MA", action: "unberth", purpose: "Laden", desc: "15. Alumar — Término Descarga & Conclusão Ciclo" }
   ];
 
-  var historicoOcorrencias = [];
-  var idSelecionadoCtx = null;
+  let targetCount = 15;
+  let records = [];
+  let sessionMeta = { vessel: '', operator: '', notes: '' };
+  let previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
+  let idCtxSelecionado = null;
 
-  function sincronizarRelogio() {
-    var agora = new Date();
-    var campoData = document.getElementById("campo-data");
-    var campoHora = document.getElementById("campo-hora");
-    if (campoData && campoHora) {
-      campoData.value = agora.toISOString().slice(0, 10);
-      campoHora.value = agora.toISOString().slice(11, 16);
-    }
+  function obterDataHoraLocal() {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = String(agora.getMonth() + 1).padStart(2, '0');
+    const dia = String(agora.getDate()).padStart(2, '0');
+    const horas = String(agora.getHours()).padStart(2, '0');
+    const minutos = String(agora.getMinutes()).padStart(2, '0');
+    return {
+      data: `${ano}-${mes}-${dia}`,
+      hora: `${horas}:${minutos}`
+    };
   }
 
-  function atualizarSugerido() {
-    var label = document.getElementById("texto-etapa-sugerida");
-    if (!label) return;
-    var idx = historicoOcorrencias.length;
-    if (idx < ETAPAS_ROTA.length) {
-      label.textContent = ETAPAS_ROTA[idx].desc;
-    } else {
-      label.textContent = "Etapas padrão concluídas. Registros extras livres.";
-    }
+  function aplicarHoraLocalNoFormulario() {
+    const local = obterDataHoraLocal();
+    const fDate = document.getElementById("f_date");
+    const fTime = document.getElementById("f_time");
+    if (fDate) fDate.value = local.data;
+    if (fTime) fTime.value = local.hora;
   }
 
-  // Preencher etapa assistida
-  var btnEtapa = document.getElementById("btn-aplicar-etapa");
-  if (btnEtapa) {
-    btnEtapa.addEventListener("click", function () {
-      var idx = historicoOcorrencias.length;
-      if (idx < ETAPAS_ROTA.length) {
-        var item = ETAPAS_ROTA[idx];
-        document.getElementById("campo-local").value = item.loc;
-        document.getElementById("campo-acao").value = item.acao;
-        document.getElementById("campo-proposito").value = item.prop;
+  async function calcularSHA256(texto) {
+    const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function recalcularCadeiaHashes() {
+    let prev = "0000000000000000000000000000000000000000000000000000000000000000";
+    for (let i = 0; i < records.length; i++) {
+      records[i].prevHash = prev;
+      const clone = { ...records[i] };
+      delete clone.hash;
+      records[i].hash = await calcularSHA256(JSON.stringify(clone));
+      prev = records[i].hash;
+    }
+    previousHash = prev;
+  }
+
+  function salvarEstado() {
+    const payload = { targetCount, sessionMeta, previousHash, records };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function carregarEstado() {
+    const setupSection = document.getElementById("setup-section");
+    const dashboardSection = document.getElementById("dashboard-section");
+    if (!setupSection || !dashboardSection) return;
+
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      setupSection.style.display = "block";
+      dashboardSection.style.display = "none";
+      return;
+    }
+    try {
+      const data = JSON.parse(raw);
+      if (!data.sessionMeta || !data.sessionMeta.vessel) {
+        setupSection.style.display = "block";
+        dashboardSection.style.display = "none";
+        return;
       }
-    });
+      targetCount = data.targetCount || 15;
+      sessionMeta = data.sessionMeta;
+      previousHash = data.previousHash || previousHash;
+      records = data.records || [];
+
+      atualizarHUD();
+      setupSection.style.display = "none";
+      dashboardSection.style.display = "grid";
+
+      renderizarTabela();
+      atualizarAssistenteEtapa();
+      aplicarHoraLocalNoFormulario();
+    } catch (e) {
+      localStorage.removeItem(STORAGE_KEY);
+      setupSection.style.display = "block";
+      dashboardSection.style.display = "none";
+    }
   }
 
-  var btnRelogio = document.getElementById("btn-sync-relogio");
-  if (btnRelogio) btnRelogio.addEventListener("click", sincronizarRelogio);
+  function atualizarHUD() {
+    const hudRoute = document.getElementById("hud-route");
+    const hudCount = document.getElementById("hud-count");
+    const indicador = document.getElementById("indicador-contador");
 
-  // Renderizar Tabela à Direita
+    if (hudRoute) hudRoute.textContent = sessionMeta.notes ? sessionMeta.notes.slice(0, 24) : "Alumar ⇄ Juruti";
+    if (hudCount) hudCount.textContent = records.length;
+
+    if (indicador) {
+      const prox = records.length + 1;
+      indicador.textContent = prox <= targetCount ? `Observação ${prox} de ${targetCount}` : `Observação ${prox} (Extra além de ${targetCount})`;
+    }
+  }
+
+  function atualizarAssistenteEtapa() {
+    const texto = document.getElementById("texto-etapa-sugerida");
+    if (!texto) return;
+    const idx = records.length;
+    texto.textContent = idx < BASE_ROUTE_STAGES.length ? BASE_ROUTE_STAGES[idx].desc : "Etapas padrão concluídas. Registros extras livres.";
+  }
+
   function renderizarTabela() {
-    var corpo = document.getElementById("corpo-tabela-logbook");
+    const corpo = document.getElementById("tabela-corpo");
     if (!corpo) return;
     corpo.innerHTML = "";
 
-    for (var i = historicoOcorrencias.length - 1; i >= 0; i--) {
-      var r = historicoOcorrencias[i];
-      var tr = document.createElement("tr");
-      var seloRetificado = r.isEdited ? '<span class="tag-retificado" title="' + (r.motivo || '') + '">RETIFICADO</span>' : '';
+    for (let i = records.length - 1; i >= 0; i--) {
+      const r = records[i];
+      const tr = document.createElement("tr");
+      tr.dataset.id = r.id;
 
-      tr.innerHTML =
-        '<td><button type="button" class="btn-mini-acao" data-id="' + r.id + '">✏️ Editar</button></td>' +
-        '<td><strong>#' + r.id + '</strong>' + seloRetificado + '</td>' +
-        '<td class="num">' + r.data.split("-").reverse().join("/") + ' ' + r.hora + '</td>' +
-        '<td>' + r.local + '</td>' +
-        '<td><span class="selo">' + r.acao + '</span></td>' +
-        '<td>' + r.proposito + '</td>' +
-        '<td class="num">' + (r.vlsfo || '—') + '</td>' +
-        '<td class="num">' + (r.mgo || '—') + '</td>' +
-        '<td class="num">' + (r.fw ? r.fw + 't' : '—') + '</td>' +
-        '<td>' + (r.lixo || '—') + '</td>' +
-        '<td>' + (r.comentarios || '—') + '</td>';
+      const badgeRetificado = r.isEdited ? `<span class="tag-retificado" title="${r.editReason || ''}">RETIFICADO</span>` : '';
 
-      (function (registro) {
-        tr.addEventListener("contextmenu", function (e) {
-          e.preventDefault();
-          idSelecionadoCtx = registro.id;
-          var menu = document.getElementById("menu-contexto-logbook");
-          if (menu) {
-            menu.style.display = "block";
-            menu.style.left = e.pageX + "px";
-            menu.style.top = e.pageY + "px";
-          }
-        });
-      })(r);
+      tr.innerHTML = `
+        <td><button type="button" class="btn-row-edit" data-id="${r.id}">✏️ Editar</button></td>
+        <td><strong>#${r.id}</strong>${badgeRetificado}</td>
+        <td class="num">${r.data.split("-").reverse().join("/")} ${r.hora}</td>
+        <td>${r.local}</td>
+        <td><span class="selo selo-acao">${r.acao}</span></td>
+        <td>${r.proposito}</td>
+        <td class="num">${r.vlsfo}</td>
+        <td class="num">${r.mgo}</td>
+        <td class="num">${r.fw ? r.fw + 't' : '—'}</td>
+        <td>${r.lixo}</td>
+        <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.comentarios}">${r.comentarios}</td>
+        <td><span class="hash-badge" title="${r.hash}">${(r.hash || '').substring(0, 8)}…</span></td>
+      `;
+
+      tr.querySelector(".btn-row-edit").addEventListener("click", () => abrirModalEdicao(r.id));
+
+      tr.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        idCtxSelecionado = r.id;
+        document.querySelectorAll("#tabela-logbook tr").forEach(el => el.classList.remove("linha-selecionada"));
+        tr.classList.add("linha-selecionada");
+        const menu = document.getElementById("menu-contexto");
+        if (menu) {
+          menu.style.display = "block";
+          menu.style.left = `${e.pageX}px`;
+          menu.style.top = `${e.pageY}px`;
+        }
+      });
 
       corpo.appendChild(tr);
     }
   }
 
-  // Interceptar Envio do Formulário Principal
-  var formPrincipal = document.getElementById("form-registro-principal");
-  if (formPrincipal) {
-    formPrincipal.addEventListener("submit", function (e) {
-      e.preventDefault();
+  function abrirModalEdicao(id) {
+    const item = records.find(r => r.id === id);
+    if (!item) return;
 
-      var novoItem = {
-        id: historicoOcorrencias.length + 1,
-        data: document.getElementById("campo-data").value,
-        hora: document.getElementById("campo-hora").value,
-        agente: document.getElementById("campo-agente").value,
-        local: document.getElementById("campo-local").value,
-        proposito: document.getElementById("campo-proposito").value,
-        acao: document.getElementById("campo-acao").value,
-        vlsfo: document.getElementById("campo-vlsfo").value,
-        mgo: document.getElementById("campo-mgo").value,
-        fw: document.getElementById("campo-fw").value,
-        lixo: document.getElementById("campo-lixo").value,
-        comentarios: document.getElementById("campo-comentarios").value,
-        isEdited: false
-      };
+    document.getElementById("edit-id").value = item.id;
+    document.getElementById("modal-edicao-titulo").textContent = `✏️ Retificar Ocorrência #${item.id}`;
+    document.getElementById("edit_date").value = item.data;
+    document.getElementById("edit_time").value = item.hora;
+    document.getElementById("edit_mc_1").value = item.agente;
+    document.getElementById("edit_mc_2").value = item.local;
+    document.getElementById("edit_mc_3").value = item.proposito;
+    document.getElementById("edit_mc_4").value = item.acao;
+    document.getElementById("edit_num_1").value = item.vlsfo;
+    document.getElementById("edit_num_2").value = item.mgo;
+    document.getElementById("edit_num_5").value = item.fw || '';
+    document.getElementById("edit_trash").value = item.lixo === 'N/A' ? '' : item.lixo;
+    document.getElementById("edit_comments").value = item.comentarios === '—' ? '' : item.comentarios;
+    document.getElementById("edit_reason").value = item.editReason || '';
 
-      historicoOcorrencias.push(novoItem);
-
-      // Despacha para a API e fila offline nativa do Corsair
-      var escalaId = Number(document.getElementById("campo-escala-id").value) || 1;
-      if (window.Fila && window.Fila.enfileirar) {
-        window.Fila.enfileirar({
-          escala_id: escalaId,
-          tipo: novoItem.acao.toLowerCase(),
-          hora_local: novoItem.data + "T" + novoItem.hora,
-          offset: "-03:00",
-          nome_responsavel: (localStorage.getItem("shipops.responsavel") || "Comandante"),
-          rob_vlsfo: novoItem.vlsfo || null,
-          rob_mgo: novoItem.mgo || null,
-          fw: novoItem.fw || null,
-          lixo: novoItem.lixo || null,
-          comentarios: novoItem.comentarios || null
-        }, "/api/marco");
-      }
-
-      renderizarTabela();
-      atualizarSugerido();
-
-      // Limpa combustíveis e notas mantendo o relógio atualizado
-      document.getElementById("campo-vlsfo").value = "";
-      document.getElementById("campo-mgo").value = "";
-      document.getElementById("campo-fw").value = "";
-      document.getElementById("campo-lixo").value = "";
-      document.getElementById("campo-comentarios").value = "";
-      sincronizarRelogio();
-    });
+    const modal = document.getElementById("modal-edicao");
+    if (modal) modal.style.display = "flex";
   }
 
-  // Exportar JSON direto
-  var btnExport = document.getElementById("btn-exportar-json");
-  if (btnExport) {
-    btnExport.addEventListener("click", function () {
-      if (!historicoOcorrencias.length) {
-        alert("Nenhum lançamento registrado para exportar.");
-        return;
-      }
-      var blob = new Blob([JSON.stringify(historicoOcorrencias, null, 2)], { type: "application/json" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "ELB_Viagem_" + Date.now() + ".json";
-      a.click();
-      URL.revokeObjectURL(url);
-    });
+  function dispararDownloadJSON(objeto, nomeArquivo) {
+    const blob = new Blob([JSON.stringify(objeto, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
-  // Fechar menu de clique direito
-  window.addEventListener("click", function () {
-    var menu = document.getElementById("menu-contexto-logbook");
-    if (menu) menu.style.display = "none";
+  function arquivarViagemAtiva(motivo) {
+    if (!records.length) return;
+    const pacote = {
+      dataArquivamento: new Date().toISOString(),
+      motivo: motivo,
+      sessionMeta: { ...sessionMeta },
+      totalObservacoes: records.length,
+      finalHash: previousHash,
+      records: [...records]
+    };
+
+    let historico = [];
+    try { historico = JSON.parse(localStorage.getItem(ARCHIVE_KEY)) || []; } catch(e) { historico = []; }
+    historico.unshift(pacote);
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(historico));
+
+    dispararDownloadJSON(pacote, `ELB_ARQUIVO_${(sessionMeta.vessel || 'Navio').replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.json`);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  // Registros de Eventos
+  document.addEventListener("DOMContentLoaded", function () {
+    const btnSync = document.getElementById("btn-sync-local-time");
+    if (btnSync) btnSync.addEventListener("click", aplicarHoraLocalNoFormulario);
+
+    const btnPreset = document.getElementById("btn-load-preset");
+    if (btnPreset) {
+      btnPreset.addEventListener("click", function () {
+        document.getElementById("meta-target-count").value = 15;
+        document.getElementById("meta-operator").value = "Comandante Operacional";
+        document.getElementById("meta-notes").value = "Alumar ➔ Fazendinha ➔ Juruti ➔ Alumar (15 Etapas Padrão)";
+      });
+    }
+
+    const btnIniciar = document.getElementById("btn-iniciar-viagem");
+    if (btnIniciar) {
+      btnIniciar.addEventListener("click", function () {
+        const vessel = document.getElementById("meta-vessel").value.trim();
+        const operator = document.getElementById("meta-operator").value.trim();
+        const count = parseInt(document.getElementById("meta-target-count").value, 10);
+
+        if (!vessel || !operator) {
+          alert("Embarcação e Operador são obrigatórios.");
+          return;
+        }
+
+        targetCount = count > 0 ? count : 15;
+        sessionMeta = {
+          vessel: vessel,
+          operator: operator,
+          notes: document.getElementById("meta-notes").value.trim() || "Alumar ⇄ Juruti"
+        };
+
+        atualizarHUD();
+        document.getElementById("setup-section").style.display = "none";
+        document.getElementById("dashboard-section").style.display = "grid";
+
+        aplicarHoraLocalNoFormulario();
+        salvarEstado();
+        atualizarAssistenteEtapa();
+      });
+    }
+
+    const btnEtapa = document.getElementById("btn-aplicar-etapa");
+    if (btnEtapa) {
+      btnEtapa.addEventListener("click", function () {
+        const idx = records.length;
+        if (idx < BASE_ROUTE_STAGES.length) {
+          const item = BASE_ROUTE_STAGES[idx];
+          document.getElementById("f_mc_2").value = item.loc;
+          document.getElementById("f_mc_4").value = item.action;
+          document.getElementById("f_mc_3").value = item.purpose;
+        }
+      });
+    }
+
+    const formRegistro = document.getElementById("form-registro");
+    if (formRegistro) {
+      formRegistro.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        const novoRegistro = {
+          id: records.length + 1,
+          prevHash: previousHash,
+          vessel: sessionMeta.vessel,
+          operator: sessionMeta.operator,
+          data: document.getElementById("f_date").value,
+          hora: document.getElementById("f_time").value,
+          agente: document.getElementById("f_mc_1").value,
+          local: document.getElementById("f_mc_2").value,
+          proposito: document.getElementById("f_mc_3").value,
+          acao: document.getElementById("f_mc_4").value,
+          vlsfo: document.getElementById("f_num_1").value,
+          mgo: document.getElementById("f_num_2").value,
+          fw: document.getElementById("f_num_5").value || '',
+          lixo: document.getElementById("f_trash").value || 'N/A',
+          comentarios: document.getElementById("f_comments").value.trim() || '—',
+          isEdited: false
+        };
+
+        novoRegistro.hash = await calcularSHA256(JSON.stringify(novoRegistro));
+        previousHash = novoRegistro.hash;
+
+        records.push(novoRegistro);
+        salvarEstado();
+        renderizarTabela();
+        atualizarHUD();
+        atualizarAssistenteEtapa();
+
+        // Envia para o backend FastAPI e para a fila local offline (IndexedDB)
+        const escalaId = Number(document.getElementById("f_escala_id").value) || 1;
+        if (window.Fila && window.Fila.enfileirar) {
+          window.Fila.enfileirar({
+            escala_id: escalaId,
+            tipo: novoRegistro.acao.toLowerCase(),
+            hora_local: novoRegistro.data + "T" + novoRegistro.hora,
+            offset: "-03:00",
+            nome_responsavel: sessionMeta.operator,
+            rob_vlsfo: novoRegistro.vlsfo || null,
+            rob_mgo: novoRegistro.mgo || null,
+            fw: novoRegistro.fw || null,
+            lixo: novoRegistro.lixo || null,
+            comentarios: novoRegistro.comentarios || null
+          }, "/api/marco");
+        }
+
+        document.getElementById("f_num_1").value = "";
+        document.getElementById("f_num_2").value = "";
+        document.getElementById("f_num_5").value = "";
+        document.getElementById("f_trash").value = "";
+        document.getElementById("f_comments").value = "";
+        aplicarHoraLocalNoFormulario();
+      });
+    }
+
+    const formEdicao = document.getElementById("form-edicao");
+    if (formEdicao) {
+      formEdicao.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const idAlvo = parseInt(document.getElementById("edit-id").value, 10);
+        const idx = records.findIndex(r => r.id === idAlvo);
+        if (idx === -1) return;
+
+        records[idx].data = document.getElementById("edit_date").value;
+        records[idx].hora = document.getElementById("edit_time").value;
+        records[idx].agente = document.getElementById("edit_mc_1").value;
+        records[idx].local = document.getElementById("edit_mc_2").value;
+        records[idx].proposito = document.getElementById("edit_mc_3").value;
+        records[idx].acao = document.getElementById("edit_mc_4").value;
+        records[idx].vlsfo = document.getElementById("edit_num_1").value;
+        records[idx].mgo = document.getElementById("edit_num_2").value;
+        records[idx].fw = document.getElementById("edit_num_5").value;
+        records[idx].lixo = document.getElementById("edit_trash").value || 'N/A';
+        records[idx].comentarios = document.getElementById("edit_comments").value.trim() || '—';
+        records[idx].isEdited = true;
+        records[idx].editReason = document.getElementById("edit_reason").value.trim();
+
+        await recalcularCadeiaHashes();
+        salvarEstado();
+        renderizarTabela();
+        document.getElementById("modal-edicao").style.display = "none";
+      });
+    }
+
+    const btnFecharEdit = document.getElementById("btn-fechar-modal-edicao");
+    if (btnFecharEdit) {
+      btnFecharEdit.addEventListener("click", () => document.getElementById("modal-edicao").style.display = "none");
+    }
+
+    const btnExport = document.getElementById("btn-export-json");
+    if (btnExport) {
+      btnExport.addEventListener("click", function () {
+        if (!records.length) {
+          alert("Nenhum lançamento registrado para exportar.");
+          return;
+        }
+        dispararDownloadJSON({ sessionMeta, targetCount, records, finalHash: previousHash }, `ELB_MANUAL_${Date.now()}.json`);
+      });
+    }
+
+    const btnEncerrar = document.getElementById("btn-encerrar-viagem");
+    if (btnEncerrar) {
+      btnEncerrar.addEventListener("click", function () {
+        if (!records.length) {
+          if (confirm("Nenhum dado lançado. Deseja reiniciar?")) {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+          }
+          return;
+        }
+        if (confirm("Deseja arquivar esta viagem permanentemente, baixar o arquivo JSON e iniciar uma nova?")) {
+          arquivarViagemAtiva("Encerrada Manualmente pelo Comandante");
+          location.reload();
+        }
+      });
+    }
+
+    const btnArquivo = document.getElementById("btn-abrir-arquivo");
+    if (btnArquivo) {
+      btnArquivo.addEventListener("click", function () {
+        let historico = [];
+        try { historico = JSON.parse(localStorage.getItem(ARCHIVE_KEY)) || []; } catch(e) { historico = []; }
+        const corpo = document.getElementById("corpo-tabela-arquivo");
+        if (!corpo) return;
+        corpo.innerHTML = "";
+
+        if (!historico.length) {
+          corpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--suave); padding:12px;">Nenhuma viagem arquivada ainda.</td></tr>`;
+        } else {
+          historico.forEach((item, idx) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td class="num">${new Date(item.dataArquivamento).toLocaleString('pt-BR')}</td>
+              <td><strong>${item.sessionMeta.vessel || '—'}</strong></td>
+              <td>${item.sessionMeta.operator || '—'}</td>
+              <td class="num">${item.totalObservacoes}</td>
+              <td><span class="hash-badge">${(item.finalHash || '').substring(0, 8)}…</span></td>
+              <td><button class="btn btn-secondary" style="font-size:10px; padding:2px 6px;" onclick="baixarArquivoHistorico(${idx})">Baixar JSON</button></td>
+            `;
+            corpo.appendChild(tr);
+          });
+        }
+        document.getElementById("modal-arquivo").style.display = "flex";
+      });
+    }
+
+    const btnFecharArq = document.getElementById("btn-fechar-modal-arquivo");
+    if (btnFecharArq) {
+      btnFecharArq.addEventListener("click", () => document.getElementById("modal-arquivo").style.display = "none");
+    }
+
+    window.addEventListener("click", function () {
+      const menu = document.getElementById("menu-contexto");
+      if (menu) menu.style.display = "none";
+      document.querySelectorAll("#tabela-logbook tr").forEach(el => el.classList.remove("linha-selecionada"));
+    });
+
+    const ctxEdit = document.getElementById("ctx-item-editar");
+    if (ctxEdit) {
+      ctxEdit.addEventListener("click", function () {
+        if (idCtxSelecionado !== null) abrirModalEdicao(idCtxSelecionado);
+      });
+    }
+
+    window.baixarArquivoHistorico = function (index) {
+      const historico = JSON.parse(localStorage.getItem(ARCHIVE_KEY)) || [];
+      const item = historico[index];
+      if (item) dispararDownloadJSON(item, `ELB_HISTORICO_${Date.now()}.json`);
+    };
+
+    carregarEstado();
   });
-
-  sincronizarRelogio();
-  atualizarSugerido();
 })();
