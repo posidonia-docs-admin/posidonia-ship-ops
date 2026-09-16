@@ -173,38 +173,38 @@ CREATE INDEX IF NOT EXISTS ix_escala_porto ON escala (codigo_porto);
 -- fila local inofensivo: tocar duas vezes nao cria evento duplicado.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS evento (
-    id                  INTEGER PRIMARY KEY,
-    id_cliente          TEXT NOT NULL UNIQUE,
-    escala_id           INTEGER NOT NULL REFERENCES escala(id),
-    tipo                TEXT NOT NULL CHECK (tipo IN ('arrival', 'berth', 'unberth', 'sailing')),
+   id                  INTEGER PRIMARY KEY,
+   id_cliente          TEXT NOT NULL UNIQUE,
+   escala_id           INTEGER NOT NULL REFERENCES escala(id),
+   tipo                TEXT NOT NULL CHECK (tipo IN ('arrival', 'berth', 'unberth', 'sailing')),
 
-    hora_local          TEXT,                   -- ISO 8601 sem fuso, como o comandante digitou
-    offset_utc          TEXT,                   -- '-03:00'
-    hora_utc            TEXT,                   -- calculada; e por ela que se mede duracao
-    precisao            TEXT NOT NULL DEFAULT 'exata'
-                        CHECK (precisao IN ('exata', 'periodo_am', 'periodo_pm',
-                                            'apenas_data', 'tbc')),
+   hora_local          TEXT,
+   offset_utc          TEXT,
+   hora_utc            TEXT,
+   precisao            TEXT NOT NULL DEFAULT 'exata'
+                       CHECK (precisao IN ('exata', 'periodo_am', 'periodo_pm',
+                                           'apenas_data', 'tbc')),
 
-    -- Combustivel a bordo NO MOMENTO deste marco, em toneladas. E a serie que
-    -- permite calcular consumo: ROB anterior + abastecido - ROB atual.
-    rob_vlsfo           REAL,
-    rob_mgo             REAL,
+   -- Combustivel e suprimentos a bordo NO MOMENTO deste marco
+   rob_vlsfo           REAL,
+   rob_mgo             REAL,
+   fw                  REAL,                   -- Agua doce (MT)
+   lixo                TEXT,                   -- Solido, Liquido ou N/A
+   comentarios         TEXT,                   -- Ocorrencias da escala
 
-    registrado_por      TEXT NOT NULL,          -- login da conta (do navio)
-    registrado_em       TEXT NOT NULL,
-    nome_responsavel    TEXT NOT NULL,          -- quem preencheu; devolve o rastro individual
-    observacao          TEXT,
+   registrado_por      TEXT NOT NULL,
+   registrado_em       TEXT NOT NULL,
+   nome_responsavel    TEXT NOT NULL,
+   observacao          TEXT,
 
-    versao              INTEGER NOT NULL DEFAULT 1,
-    vigente             INTEGER NOT NULL DEFAULT 1 CHECK (vigente IN (0, 1)),
-    substitui_evento_id INTEGER REFERENCES evento(id),
-    motivo_correcao     TEXT,
+   versao              INTEGER NOT NULL DEFAULT 1,
+   vigente             INTEGER NOT NULL DEFAULT 1 CHECK (vigente IN (0, 1)),
+   substitui_evento_id INTEGER REFERENCES evento(id),
+   motivo_correcao     TEXT,
 
-    -- correcao sem motivo apaga a razao da correcao, que e metade do valor dela
-    CHECK (versao = 1 OR motivo_correcao IS NOT NULL),
-    -- so `tbc` pode vir sem horario
-    CHECK (precisao = 'tbc' OR hora_local IS NOT NULL),
-    CHECK (hora_local IS NULL OR (offset_utc IS NOT NULL AND hora_utc IS NOT NULL))
+   CHECK (versao = 1 OR motivo_correcao IS NOT NULL),
+   CHECK (precisao = 'tbc' OR hora_local IS NOT NULL),
+   CHECK (hora_local IS NULL OR (offset_utc IS NOT NULL AND hora_utc IS NOT NULL))
 );
 
 -- um unico marco vigente de cada tipo por escala
