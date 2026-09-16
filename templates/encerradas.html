@@ -11,13 +11,48 @@
 #}
 
 {% macro campos_correcao(marco) %}
-  <input type="date" name="data" value="{{ marco.lancado.hora_local[:10] }}" required>
-  <input type="time" name="hora" value="{{ marco.lancado.hora_local[11:16] }}" required>
-  <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t"
-         value="{{ marco.lancado.rob_vlsfo if marco.lancado.rob_vlsfo is not none else "" }}">
-  <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t"
-         value="{{ marco.lancado.rob_mgo if marco.lancado.rob_mgo is not none else "" }}">
-  <input type="text" name="motivo_correcao" required placeholder="motivo da correção">
+ <div class="grade-formulario-marco">
+   <div class="grupo-campo">
+     <span class="rot">Data</span>
+     <input type="date" name="data" value="{{ marco.lancado.hora_local[:10] }}" required>
+   </div>
+   <div class="grupo-campo">
+     <span class="rot">Hora</span>
+     <input type="time" name="hora" value="{{ marco.lancado.hora_local[11:16] }}" required>
+   </div>
+   <div class="grupo-campo">
+     <span class="rot">VLSFO (t)</span>
+     <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="VLSFO t"
+            value="{{ marco.lancado.rob_vlsfo if marco.lancado.rob_vlsfo is not none else "" }}">
+   </div>
+   <div class="grupo-campo">
+     <span class="rot">MGO (t)</span>
+     <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="MGO t"
+            value="{{ marco.lancado.rob_mgo if marco.lancado.rob_mgo is not none else "" }}">
+   </div>
+   <div class="grupo-campo">
+     <span class="rot">FW Água (t)</span>
+     <input type="number" step="0.1" min="0" name="fw" placeholder="FW a bordo"
+            value="{{ marco.lancado.fw if marco.lancado.fw is not none else "" }}">
+   </div>
+   <div class="grupo-campo">
+     <span class="rot">Lixo</span>
+     <select name="lixo">
+       <option value="">—</option>
+       <option value="Solido" {{ "selected" if marco.lancado.lixo == "Solido" else "" }}>Sólido</option>
+       <option value="Liquido" {{ "selected" if marco.lancado.lixo == "Liquido" else "" }}>Líquido</option>
+     </select>
+   </div>
+   <div class="grupo-campo campo-obs">
+     <span class="rot">Comentários / Ocorrências</span>
+     <input type="text" name="comentarios" placeholder="Ocorrências registradas..."
+            value="{{ marco.lancado.comentarios if marco.lancado.comentarios else "" }}">
+   </div>
+   <div class="grupo-campo campo-obs">
+     <span class="rot rot-alerta">Motivo da Correção (Obrigatório)</span>
+     <input type="text" name="motivo_correcao" required placeholder="Motivo da retificação da viagem encerrada">
+   </div>
+ </div>
 {% endmacro %}
 
 {% block lateral_rodape %}
