@@ -1,65 +1,105 @@
 {# Painel Operacional de Bordo — Estrutura Lado a Lado (Posidonia Corsair) #}
 {% set v = corrente %}
 
-<!-- TOP HUD: Parâmetros da Viagem Ativa -->
-<div class="hud-viagem">
-  <div class="hud-info">
+<!-- TOP HUD: PARÂMETROS DA VIAGEM -->
+<div class="hud-superior">
+  <div class="hud-marca">
     <span class="codigo">{{ v.viagem.numero }}</span>
     <span class="separador">·</span>
     <span class="embarcacao">{{ conta.navio_nome }}</span>
     <span class="separador">·</span>
-    <span class="rota-etiqueta">Alumar ⇄ Juruti</span>
+    <span class="rota-etiqueta" id="hud-route">Alumar ⇄ Juruti</span>
   </div>
-
+  <div class="hud-meta-tags">
+    <div>REGISTROS: <strong id="hud-count">0</strong></div>
+  </div>
   <div class="hud-acoes">
-    <span class="selo selo-ok">Auditável & Encadeado</span>
-    <button class="botao botao-fraco botao-sm" id="btn-exportar-json" type="button">Exportar (.json)</button>
-    <button class="botao botao-perigo botao-sm" id="btn-encerrar-viagem" type="button">Encerrar Viagem</button>
+    <span class="selo selo-ok">Auditável (SHA-256)</span>
+    <button class="btn btn-secondary btn-sm" id="btn-abrir-arquivo" type="button">📂 Arquivo</button>
+    <button class="btn btn-secondary btn-sm" id="btn-export-json" type="button">Exportar (.json)</button>
+    <button class="btn btn-danger btn-sm" id="btn-encerrar-viagem" type="button">Encerrar Viagem</button>
   </div>
 </div>
 
-<!-- DASHBOARD LADO A LADO -->
-<div class="grade-dashboard">
+<!-- TELA 1: SETUP INICIAL DOS PARÂMETROS DA VIAGEM -->
+<div id="setup-section" class="cartao" style="display: none;">
+  <div class="cabecalho-bloco">
+    <div>
+      <span class="rot">Inicialização da Singradura</span>
+      <h2 class="titulo-bloco">Parâmetros da Viagem e do Operador</h2>
+    </div>
+    <button class="btn btn-preset" id="btn-load-preset" type="button">⚡ Carregar Rota Base Padrão</button>
+  </div>
+  
+  <p style="color: var(--suave); font-size: 12.5px; margin-bottom: 10px;">
+    Defina os parâmetros operacionais da viagem. Uma vez travados, eles ficam vinculados à cadeia criptográfica.
+  </p>
 
-  <!-- COLUNA DA ESQUERDA: FORMULÁRIO DE LANÇAMENTO -->
-  <div class="cartao painel-lancamento">
+  <div class="grid-setup">
+    <div class="campo-grupo full-width">
+      <label for="meta-target-count" class="rot req">Meta de Observações (X)</label>
+      <input type="number" id="meta-target-count" value="15" min="1" required style="max-width: 130px;">
+    </div>
+    <div class="campo-grupo">
+      <label for="meta-vessel" class="rot req">Embarcação</label>
+      <input type="text" id="meta-vessel" value="{{ conta.navio_nome }}" required>
+    </div>
+    <div class="campo-grupo">
+      <label for="meta-operator" class="rot req">Operador / Comandante</label>
+      <input type="text" id="meta-operator" placeholder="Ex: Cap. Silveira" required>
+    </div>
+    <div class="campo-grupo full-width">
+      <label for="meta-notes" class="rot">Comentários da Rota</label>
+      <textarea id="meta-notes" rows="2" placeholder="Instruções de viagem, rota planejada..."></textarea>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="btn-iniciar-viagem" type="button" style="width: 100%; margin-top: 14px; min-height: 40px;">
+    Iniciar Viagem & Travar Parâmetros
+  </button>
+</div>
+
+<!-- TELA 2: DASHBOARD LADO A LADO -->
+<div class="dashboard-grid" id="dashboard-section" style="display: none;">
+
+  <!-- ESQUERDA: FORMULÁRIO -->
+  <div class="cartao painel-esquerda">
     <div class="cabecalho-bloco">
       <div>
-        <span class="rot">Novo Registro</span>
+        <span class="rot" id="indicador-contador">Observação 1 de 15</span>
         <h2 class="titulo-bloco">Lançamento de Ocorrência</h2>
       </div>
-      <button class="botao-link" id="btn-sync-relogio" type="button" title="Sincronizar data e hora atuais">
-        Sincronizar Relógio
+      <button class="btn btn-secondary" id="btn-sync-local-time" type="button" style="font-size: 10.5px; padding: 3px 8px;">
+        🕒 Sincronizar Relógio
       </button>
     </div>
 
     <!-- Assistente de Rota Padrão -->
-    <div class="caixa-assistente-etapa">
-      <div class="assistente-info">
-        <span class="rot">Etapa Sugerida da Rota</span>
-        <strong id="texto-etapa-sugerida">Alumar — Início de Singradura p/ Fazendinha</strong>
+    <div class="caixa-assistente">
+      <div style="min-width: 0;">
+        <span class="rot">Etapa Sugerida</span>
+        <strong id="texto-etapa-sugerida">1. Alumar — Início de Singradura p/ Fazendinha</strong>
       </div>
-      <button class="botao botao-fraco botao-sm" id="btn-aplicar-etapa" type="button">
-        ⚡ Preencher Etapa
+      <button class="btn btn-preset" id="btn-aplicar-etapa" type="button" style="font-size: 10.5px; padding: 4px 8px;">
+        ⚡ Preencher
       </button>
     </div>
 
-    <form id="form-registro-principal" class="form-grid-operacional">
-      <input type="hidden" id="campo-escala-id" value="{{ v.blocos[0].escala.id if v.blocos else '' }}">
+    <form id="form-registro" class="form-grid">
+      <input type="hidden" id="f_escala_id" value="{{ v.blocos[0].escala.id if v.blocos else '' }}">
 
-      <div class="campo-item">
-        <label for="campo-data" class="rot req">Data</label>
-        <input type="date" id="campo-data" required>
+      <div class="campo-grupo">
+        <label for="f_date" class="rot req">Data (Local)</label>
+        <input type="date" id="f_date" required>
+      </div>
+      <div class="campo-grupo">
+        <label for="f_time" class="rot req">Hora (Local)</label>
+        <input type="time" id="f_time" required>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-hora" class="rot req">Hora (Local)</label>
-        <input type="time" id="campo-hora" required>
-      </div>
-
-      <div class="campo-item">
-        <label for="campo-agente" class="rot req">Agente</label>
-        <select id="campo-agente" required>
+      <div class="campo-grupo">
+        <label for="f_mc_1" class="rot req">Agente</label>
+        <select id="f_mc_1" required>
           <option value="Orion" selected>Orion</option>
           <option value="Williams">Williams</option>
           <option value="LBH">LBH</option>
@@ -67,9 +107,9 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-local" class="rot req">Localidade</label>
-        <select id="campo-local" required>
+      <div class="campo-grupo">
+        <label for="f_mc_2" class="rot req">Localidade</label>
+        <select id="f_mc_2" required>
           <option value="Alumar - MA">Alumar - MA</option>
           <option value="Fazendinha">Fazendinha</option>
           <option value="Juruti">Juruti</option>
@@ -82,9 +122,9 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-proposito" class="rot req">Propósito</label>
-        <select id="campo-proposito" required>
+      <div class="campo-grupo">
+        <label for="f_mc_3" class="rot req">Propósito</label>
+        <select id="f_mc_3" required>
           <option value="Laden">Laden</option>
           <option value="Loading">Loading</option>
           <option value="Discharging">Discharging</option>
@@ -92,9 +132,9 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-acao" class="rot req">Ação / Marco</label>
-        <select id="campo-acao" required>
+      <div class="campo-grupo">
+        <label for="f_mc_4" class="rot req">Ação / Marco</label>
+        <select id="f_mc_4" required>
           <option value="sailing">Sailing (Saída)</option>
           <option value="arrival">Arrival (Chegada)</option>
           <option value="berth">Berth (Atracação)</option>
@@ -105,55 +145,55 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-vlsfo" class="rot req">VLSFO on Tank (t)</label>
-        <input type="number" step="0.001" min="0" id="campo-vlsfo" placeholder="0.000" required>
+      <div class="campo-grupo">
+        <label for="f_num_1" class="rot req">VLSFO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="f_num_1" placeholder="0.000" required>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-mgo" class="rot req">MGO on Tank (t)</label>
-        <input type="number" step="0.001" min="0" id="campo-mgo" placeholder="0.000" required>
+      <div class="campo-grupo">
+        <label for="f_num_2" class="rot req">MGO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="f_num_2" placeholder="0.000" required>
       </div>
 
-      <div class="campo-item">
-        <label for="campo-fw" class="rot">FW Água (t)</label>
-        <input type="number" step="0.1" min="0" id="campo-fw" placeholder="0.0">
+      <div class="campo-grupo">
+        <label for="f_num_5" class="rot">FW Água (t)</label>
+        <input type="number" step="0.1" min="0" id="f_num_5" placeholder="0.0">
       </div>
 
-      <div class="campo-item">
-        <label for="campo-lixo" class="rot">Lixo</label>
-        <select id="campo-lixo">
+      <div class="campo-grupo">
+        <label for="f_trash" class="rot">Lixo</label>
+        <select id="f_trash">
           <option value="">—</option>
           <option value="Solido">Sólido</option>
           <option value="Liquido">Líquido</option>
         </select>
       </div>
 
-      <div class="campo-item campo-span-2">
-        <label for="campo-comentarios" class="rot">Comentários Adicionais / Ocorrências</label>
-        <input type="text" id="campo-comentarios" placeholder="Ex: Manobra de atracação, espera de praticagem, maré...">
+      <div class="campo-grupo full-width">
+        <label for="f_comments" class="rot">Comentários Adicionais / Ocorrências</label>
+        <input type="text" id="f_comments" placeholder="Praticagem, manobra, condições climáticas...">
       </div>
 
-      <div class="campo-span-2">
-        <button type="submit" class="botao botao-largo botao-destaque">
+      <div class="full-width" style="margin-top: 4px;">
+        <button type="submit" class="btn btn-primary" id="btn-gravar-registro" style="width: 100%; min-height: 40px;">
           Gravar Registro e Avançar
         </button>
       </div>
     </form>
   </div>
 
-  <!-- COLUNA DA DIREITA: LOGBOOK EM TEMPO REAL -->
-  <div class="cartao painel-logbook">
+  <!-- DIREITA: TABELA EM TEMPO REAL -->
+  <div class="cartao painel-direita">
     <div class="cabecalho-bloco">
       <div>
-        <span class="rot">Linha do Tempo</span>
-        <h2 class="titulo-bloco">Logbook Operacional da Viagem</h2>
+        <span class="rot">Linha do Tempo Auditável</span>
+        <h2 class="titulo-bloco">Logbook Operacional</h2>
       </div>
-      <span class="dica-tabela">💡 Clique direito ou use ✏️ para retificar</span>
+      <span style="font-size: 11px; color: var(--suave);">💡 Dica: Clique direito ou use ✏️ para retificar</span>
     </div>
 
-    <div class="tabela-container-scroll">
-      <table class="tabela-logbook" id="tabela-ocorrencias">
+    <div class="tabela-container">
+      <table id="tabela-logbook">
         <thead>
           <tr>
             <th>Ação</th>
@@ -167,11 +207,10 @@
             <th>FW (t)</th>
             <th>Lixo</th>
             <th>Comentários</th>
+            <th>Hash SHA-256</th>
           </tr>
         </thead>
-        <tbody id="corpo-tabela-logbook">
-          <!-- Linhas renderizadas dinamicamente (mais recentes no topo) -->
-        </tbody>
+        <tbody id="tabela-corpo"></tbody>
       </table>
     </div>
   </div>
@@ -179,40 +218,48 @@
 </div>
 
 <!-- MENU DE CONTEXTO (CLIQUE DIREITO) -->
-<div id="menu-contexto-logbook" class="menu-flutuante">
-  <div class="item-menu-flutuante" id="acao-ctx-editar">
+<div id="menu-contexto">
+  <div class="item-contexto" id="ctx-item-editar">
     <span>✏️</span> <strong>Retificar Lançamento</strong>
   </div>
 </div>
 
-<!-- MODAL: RETIFICAR REGISTRO -->
-<div class="fundo-modal" id="modal-edicao">
-  <div class="caixa-modal">
-    <div class="topo-modal">
-      <h3 id="titulo-modal-edicao">✏️ Retificar Ocorrência</h3>
-      <button class="botao-fechar" id="btn-fechar-modal-edicao" type="button">✕</button>
+<!-- MODAL: RETIFICAR OCORRÊNCIA -->
+<div class="modal-overlay" id="modal-edicao">
+  <div class="modal-box">
+    <div class="modal-topo">
+      <h3 id="modal-edicao-titulo" style="color: var(--navy); font-size: 15px;">✏️ Retificar Ocorrência</h3>
+      <button class="btn btn-secondary" id="btn-fechar-modal-edicao" type="button" style="padding: 2px 8px;">✕</button>
     </div>
-    
-    <p class="legenda-modal">
-      A retificação preserva a trilha de auditoria: o registro anterior é arquivado e o novo gera uma versão corrigida.
+    <p style="color: var(--suave); font-size: 12px; margin-bottom: 10px;">
+      A alteração recalculará toda a cadeia criptográfica SHA-256 para manter a integridade perante auditorias.
     </p>
 
-    <form id="form-modal-edicao" class="form-grid-operacional">
-      <input type="hidden" id="edit-id-registro">
+    <form id="form-edicao" class="form-grid">
+      <input type="hidden" id="edit-id">
 
-      <div class="campo-item">
-        <label for="edit-data" class="rot req">Data</label>
-        <input type="date" id="edit-data" required>
+      <div class="campo-grupo">
+        <label for="edit_date" class="rot req">Data (Local)</label>
+        <input type="date" id="edit_date" required>
+      </div>
+      <div class="campo-grupo">
+        <label for="edit_time" class="rot req">Hora (Local)</label>
+        <input type="time" id="edit_time" required>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-hora" class="rot req">Hora</label>
-        <input type="time" id="edit-hora" required>
+      <div class="campo-grupo">
+        <label for="edit_mc_1" class="rot req">Agente</label>
+        <select id="edit_mc_1" required>
+          <option value="Orion">Orion</option>
+          <option value="Williams">Williams</option>
+          <option value="LBH">LBH</option>
+          <option value="Amaggi">Amaggi</option>
+        </select>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-local" class="rot req">Localidade</label>
-        <select id="edit-local" required>
+      <div class="campo-grupo">
+        <label for="edit_mc_2" class="rot req">Localidade</label>
+        <select id="edit_mc_2" required>
           <option value="Alumar - MA">Alumar - MA</option>
           <option value="Fazendinha">Fazendinha</option>
           <option value="Juruti">Juruti</option>
@@ -225,9 +272,19 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-acao" class="rot req">Ação</label>
-        <select id="edit-acao" required>
+      <div class="campo-grupo">
+        <label for="edit_mc_3" class="rot req">Propósito</label>
+        <select id="edit_mc_3" required>
+          <option value="Laden">Laden</option>
+          <option value="Loading">Loading</option>
+          <option value="Discharging">Discharging</option>
+          <option value="Bunkering">Bunkering</option>
+        </select>
+      </div>
+
+      <div class="campo-grupo">
+        <label for="edit_mc_4" class="rot req">Ação</label>
+        <select id="edit_mc_4" required>
           <option value="sailing">Sailing (Saída)</option>
           <option value="arrival">Arrival (Chegada)</option>
           <option value="berth">Berth (Atracação)</option>
@@ -238,45 +295,70 @@
         </select>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-vlsfo" class="rot req">VLSFO on Tank (t)</label>
-        <input type="number" step="0.001" min="0" id="edit-vlsfo" required>
+      <div class="campo-grupo">
+        <label for="edit_num_1" class="rot req">VLSFO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="edit_num_1" required>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-mgo" class="rot req">MGO on Tank (t)</label>
-        <input type="number" step="0.001" min="0" id="edit-mgo" required>
+      <div class="campo-grupo">
+        <label for="edit_num_2" class="rot req">MGO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="edit_num_2" required>
       </div>
 
-      <div class="campo-item">
-        <label for="edit-fw" class="rot">FW Água (t)</label>
-        <input type="number" step="0.1" min="0" id="edit-fw">
+      <div class="campo-grupo">
+        <label for="edit_num_5" class="rot">FW Água (t)</label>
+        <input type="number" step="0.1" min="0" id="edit_num_5">
       </div>
 
-      <div class="campo-item">
-        <label for="edit-lixo" class="rot">Lixo</label>
-        <select id="edit-lixo">
+      <div class="campo-grupo">
+        <label for="edit_trash" class="rot">Lixo</label>
+        <select id="edit_trash">
           <option value="">—</option>
           <option value="Solido">Sólido</option>
           <option value="Liquido">Líquido</option>
         </select>
       </div>
 
-      <div class="campo-item campo-span-2">
-        <label for="edit-comentarios" class="rot">Comentários / Ocorrências</label>
-        <input type="text" id="edit-comentarios">
+      <div class="campo-grupo full-width">
+        <label for="edit_comments" class="rot">Comentários / Ocorrências</label>
+        <input type="text" id="edit_comments">
       </div>
 
-      <div class="campo-item campo-span-2">
-        <label for="edit-motivo" class="rot rot-alerta req">Motivo da Retificação (Obrigatório)</label>
-        <input type="text" id="edit-motivo" placeholder="Ex: Correção de sondagem após conferência das réguas" required>
+      <div class="campo-grupo full-width">
+        <label for="edit_reason" class="rot req" style="color: var(--erro);">Motivo da Retificação (Obrigatório)</label>
+        <input type="text" id="edit_reason" placeholder="Ex: Correção de sondagem após aferição" required>
       </div>
 
-      <div class="campo-span-2">
-        <button type="submit" class="botao botao-largo botao-destaque">
-          Salvar Retificação
+      <div class="full-width" style="margin-top: 4px;">
+        <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+          Salvar Retificação e Recalcular Hash
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- MODAL: HISTÓRICO ARQUIVADO -->
+<div class="modal-overlay" id="modal-arquivo">
+  <div class="modal-box">
+    <div class="modal-topo">
+      <h3 style="color: var(--navy); font-size: 15px;">📂 Histórico de Viagens Arquivadas</h3>
+      <button class="btn btn-secondary" id="btn-fechar-modal-arquivo" type="button" style="padding: 2px 8px;">✕</button>
+    </div>
+    <div class="tabela-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Data Arquivamento</th>
+            <th>Embarcação</th>
+            <th>Comandante</th>
+            <th>Obs.</th>
+            <th>Último Hash SHA-256</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody id="corpo-tabela-arquivo"></tbody>
+      </table>
+    </div>
   </div>
 </div>
