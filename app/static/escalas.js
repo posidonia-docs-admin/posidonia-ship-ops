@@ -173,43 +173,51 @@
     });
   }
 
-  function enviar(form, evento) {
-    evento.preventDefault();
-    if (!form.reportValidity()) return;
+ function enviar(form, evento) {
+   evento.preventDefault();
+   if (!form.reportValidity()) return;
 
-    var bloco = form.closest("[data-escala][data-tipo]");
-    if (!bloco) return;
-    var nome = quemPreenche(bloco);
-    if (!nome) return;
+   var bloco = form.closest("[data-escala][data-tipo]");
+   if (!bloco) return;
+   var nome = quemPreenche(bloco);
+   if (!nome) return;
 
-    var dados = new FormData(form);
-    var data = (dados.get("data") || "").trim();
-    var hora = (dados.get("hora") || "").trim();
-    if (!data || !hora) return;
+   var dados = new FormData(form);
+   var data = (dados.get("data") || "").trim();
+   var hora = (dados.get("hora") || "").trim();
+   if (!data || !hora) return;
 
-    var vlsfo = (dados.get("rob_vlsfo") || "").trim();
-    var mgo = (dados.get("rob_mgo") || "").trim();
-    var rob = "";
-    if (vlsfo || mgo) rob = "VLSFO " + (vlsfo || "—") + " · MGO " + (mgo || "—");
+   var vlsfo = (dados.get("rob_vlsfo") || "").trim();
+   var mgo = (dados.get("rob_mgo") || "").trim();
+   var fw = (dados.get("fw") || "").trim();
+   var lixo = (dados.get("lixo") || "").trim();
+   var comentarios = (dados.get("comentarios") || "").trim();
 
-    despachar(form, bloco, {
-      escala_id: Number(bloco.dataset.escala),
-      tipo: bloco.dataset.tipo,
-      hora_local: data + "T" + hora,
-      offset: form.dataset.offset,
-      nome_responsavel: nome,
-      motivo_correcao: (dados.get("motivo_correcao") || "").trim(),
-      // Combustivel a bordo NESTE instante. Opcional: campo vazio nao segura o
-      // marco — perder a hora por causa do ROB seria trocar o certo pelo util.
-      rob_vlsfo: vlsfo || null,
-      rob_mgo: mgo || null
-    }, "/api/marco", {
-      nome: form.dataset.nome,
-      valor: data.split("-").reverse().join("/") + " " + hora,
-      detalhe: rob,
-      por: nome
-    });
-  }
+   var detalhes = [];
+   if (vlsfo) detalhes.push("VLSFO " + vlsfo);
+   if (mgo) detalhes.push("MGO " + mgo);
+   if (fw) detalhes.push("FW " + fw + "t");
+   if (lixo) detalhes.push("Lixo: " + lixo);
+
+   despachar(form, bloco, {
+     escala_id: Number(bloco.dataset.escala),
+     tipo: bloco.dataset.tipo,
+     hora_local: data + "T" + hora,
+     offset: form.dataset.offset,
+     nome_responsavel: nome,
+     motivo_correcao: (dados.get("motivo_correcao") || "").trim(),
+     rob_vlsfo: vlsfo || null,
+     rob_mgo: mgo || null,
+     fw: fw || null,
+     lixo: lixo || null,
+     comentarios: comentarios || null
+   }, "/api/marco", {
+     nome: form.dataset.nome,
+     valor: data.split("-").reverse().join("/") + " " + hora,
+     detalhe: detalhes.join(" · "),
+     por: nome
+   });
+ }
 
   function abastecer(form, evento) {
     evento.preventDefault();
