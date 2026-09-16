@@ -922,223 +922,167 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 }
 
 /* ==========================================================================
-   PAINEL OPERACIONAL LADO A LADO (ESTRUTURA INTEGRADA POSIDONIA)
+   PAINEL OPERACIONAL LADO A LADO COM TRAVA DE OVERFLOW (MIN-WIDTH: 0)
    ========================================================================== */
 
-.hud-viagem {
+.hud-superior {
   background: var(--painel);
   border: 1px solid var(--campo-borda);
   border-radius: var(--r-cartao);
-  padding: 14px 20px;
+  padding: 12px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  box-shadow: var(--sombra);
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.hud-info {
-  display: flex;
-  align-items: center;
   gap: 10px;
 }
 
-.hud-info .separador {
-  color: var(--tenue);
-}
-
+.hud-marca { display: flex; align-items: center; gap: 10px; }
+.hud-marca .separador { color: var(--tenue); }
 .rota-etiqueta {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--teal-fundo);
   background: rgba(18, 167, 201, 0.1);
-  padding: 3px 10px;
+  padding: 3px 8px;
   border-radius: var(--r-chip);
 }
 
-.hud-acoes {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.hud-meta-tags { display: flex; gap: 10px; font-size: 12.5px; align-items: center; }
+.hud-meta-tags strong { color: var(--navy); font-family: var(--mono); }
+.hud-acoes { display: flex; gap: 6px; align-items: center; }
 
-.botao-sm {
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 13px;
-}
+/* Botões utilitários */
+.btn-sm { min-height: 34px; padding: 0 12px; font-size: 12px; }
 
-/* Grade Lado a Lado: 480px formulário, restante para a tabela */
-.grade-dashboard {
+/* Grade principal travada contra vazamento */
+.dashboard-grid {
   display: grid;
-  grid-template-columns: 460px 1fr;
-  gap: 20px;
+  grid-template-columns: 460px minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
+  width: 100%;
 }
 
-@media (max-width: 1100px) {
-  .grade-dashboard {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 1050px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
 }
 
-.cartao {
-  background: var(--painel);
-  border: 1px solid var(--campo-borda);
-  border-radius: var(--r-cartao);
-  padding: 20px 22px;
-  box-shadow: var(--sombra);
+.painel-esquerda, .painel-direita {
+  min-width: 0;
+  width: 100%;
 }
 
-.cabecalho-bloco {
+/* Trava definitiva nos campos para não empurrarem a borda */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  width: 100%;
+}
+
+.grid-setup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.campo-grupo {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--linha);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
 }
 
-.titulo-bloco {
-  margin: 2px 0 0;
-  font-size: 17px;
-  color: var(--navy);
-  letter-spacing: -.01em;
+.campo-grupo input,
+.campo-grupo select,
+.campo-grupo textarea {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  text-overflow: ellipsis;
 }
 
-.botao-link {
-  background: transparent;
-  border: 0;
-  color: var(--teal);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-.botao-link:hover {
-  text-decoration: underline;
+.full-width {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
 }
 
-/* Assistente de Etapa da Rota */
-.caixa-assistente-etapa {
+.caixa-assistente {
   background: #f0f7fb;
   border: 1px dashed var(--teal);
   border-radius: var(--r-campo);
-  padding: 12px 14px;
+  padding: 8px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  gap: 10px;
+  margin-bottom: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.assistente-info strong {
+.caixa-assistente strong {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--navy);
-  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 270px;
 }
 
-/* Grid do Formulário de Entrada */
-.form-grid-operacional {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.campo-span-2 {
-  grid-column: 1 / -1;
-}
-
-.campo-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.campo-item label.req::after {
-  content: " *";
-  color: var(--erro);
-}
-
-.campo-item input,
-.campo-item select {
-  min-height: 42px;
-  padding: 8px 12px;
-  font-size: 13.5px;
-}
-
-.botao-destaque {
-  background: var(--teal);
-  color: #fff;
-  font-weight: 600;
-  margin-top: 6px;
-}
-
-/* Tabela em Tempo Real à Direita */
-.tabela-container-scroll {
+/* Tabela e Linhas */
+.tabela-container {
   overflow-x: auto;
   max-height: 680px;
   border: 1px solid var(--campo-borda);
   border-radius: var(--r-campo);
+  min-width: 0;
 }
 
-.tabela-logbook {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.tabela-logbook th {
-  background: var(--campo);
-  color: var(--suave);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .08em;
-  padding: 10px 12px;
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  border-bottom: 1px solid var(--campo-borda);
-  white-space: nowrap;
-}
-
-.tabela-logbook td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--linha);
-  white-space: nowrap;
-}
-
-.tabela-logbook tr:hover td {
-  background: #f7fafc;
-}
-
-.btn-mini-acao {
-  background: rgba(18, 167, 201, 0.12);
+.btn-row-edit {
+  background: rgba(18, 167, 201, 0.1);
   border: 1px solid var(--teal);
   color: var(--teal-fundo);
+  padding: 2px 6px;
   border-radius: 4px;
-  padding: 2px 7px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .tag-retificado {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 700;
   color: var(--alerta);
-  background: rgba(154, 91, 0, 0.12);
-  padding: 2px 6px;
+  background: rgba(154, 91, 0, 0.14);
+  padding: 2px 5px;
   border-radius: 3px;
   margin-left: 4px;
 }
 
-/* Menu de Contexto (Clique Direito) */
-.menu-flutuante {
+.hash-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--navy);
+  background: var(--campo);
+  border: 1px solid var(--campo-borda);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Menu de Contexto */
+#menu-contexto {
   display: none;
   position: absolute;
   background: var(--painel);
@@ -1146,26 +1090,22 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
   border-radius: var(--r-campo);
   box-shadow: var(--sombra-forte);
   z-index: 2500;
-  min-width: 180px;
-  padding: 4px 0;
+  min-width: 160px;
+  padding: 3px 0;
 }
 
-.item-menu-flutuante {
-  padding: 8px 14px;
-  font-size: 13px;
+.item-contexto {
+  padding: 7px 12px;
+  font-size: 12.5px;
   cursor: pointer;
-  color: var(--tinta);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
-.item-menu-flutuante:hover {
-  background: var(--campo);
-  color: var(--teal-fundo);
-}
+.item-contexto:hover { background: var(--campo); color: var(--teal); }
 
 /* Modais */
-.fundo-modal {
+.modal-overlay {
   display: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -1173,33 +1113,25 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
   z-index: 3000;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 14px;
 }
 
-.caixa-modal {
+.modal-box {
   background: var(--painel);
-  border-radius: var(--r-painel);
+  border-radius: var(--r-cartao);
   max-width: 620px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px 22px;
   box-shadow: var(--sombra-forte);
 }
 
-.topo-modal {
+.modal-topo {
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--linha);
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-}
-
-.botao-fechar {
-  background: transparent;
-  border: 0;
-  font-size: 16px;
-  color: var(--suave);
-  cursor: pointer;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
 }
