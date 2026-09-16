@@ -357,9 +357,9 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "SELECT tipo_evento FROM marco_exigido WHERE tipo_escala = ? ORDER BY ordem",
             (escala["tipo_escala"],))]
         lancados = {r["tipo"]: r for r in conn.execute(
-            "SELECT tipo, hora_local, hora_utc, offset_utc, nome_responsavel, versao, "
-            "       observacao, rob_vlsfo, rob_mgo "
-            "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
+           "SELECT tipo, hora_local, hora_utc, offset_utc, nome_responsavel, versao, "
+           "       observacao, rob_vlsfo, rob_mgo, fw, lixo, comentarios "
+           "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
         bunker = conn.execute(
             "SELECT vlsfo, mgo, nome_responsavel FROM abastecimento WHERE escala_id = ?",
             (escala["id"],)).fetchone()
@@ -543,50 +543,44 @@ def navio_tela(request: Request):
 
 @app.post("/api/marco")
 async def api_marco(request: Request):
-    """Recebe o lancamento da fila local. Sempre JSON, nunca redirect.
+   corpo = await request.json()
+   conta = request.state.conta
 
-    A fila do celular repete o envio quando o servidor demora a acordar; e o
-    `id_cliente` que torna isso inofensivo.
-    """
-    corpo = await request.json()
-    conta = request.state.conta
+   with closing(db.conectar()) as conn:
+       escala = conn.execute(
+           "SELECT e.id, vg.navio_id FROM escala e "
+           "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
+           (corpo.get("escala_id"),)).fetchone()
+       if escala is None:
+           return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
+       if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
+           return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
 
-    with closing(db.conectar()) as conn:
-        escala = conn.execute(
-            "SELECT e.id, vg.navio_id FROM escala e "
-            "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
-            (corpo.get("escala_id"),)).fetchone()
-        if escala is None:
-            return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
-        if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
-            return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+       evento_id, erros = viagens.lancar_marco(
+           conn, escala["id"],
+           tipo=corpo.get("tipo"),
+           hora_local=corpo.get("hora_local"),
+           offset=corpo.get("offset"),
+           nome_responsavel=corpo.get("nome_responsavel", ""),
+           registrado_por=conta["login"],
+           id_cliente=corpo.get("id_cliente"),
+           observacao=(corpo.get("observacao") or "").strip() or None,
+           motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
+           rob_vlsfo=corpo.get("rob_vlsfo"),
+           rob_mgo=corpo.get("rob_mgo"),
+           fw=corpo.get("fw"),
+           lixo=corpo.get("lixo"),
+           comentarios=corpo.get("comentarios"),
+       )
 
-        evento_id, erros = viagens.lancar_marco(
-            conn, escala["id"],
-            tipo=corpo.get("tipo"),
-            hora_local=corpo.get("hora_local"),
-            offset=corpo.get("offset"),
-            nome_responsavel=corpo.get("nome_responsavel", ""),
-            registrado_por=conta["login"],
-            id_cliente=corpo.get("id_cliente"),
-            observacao=(corpo.get("observacao") or "").strip() or None,
-            motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
-            rob_vlsfo=corpo.get("rob_vlsfo"),
-            rob_mgo=corpo.get("rob_mgo"),
-        )
+   if erros:
+       return JSONResponse({"ok": False, "erros": erros}, status_code=422)
 
-    if erros:
-        # 422: o dado esta errado e reenviar nao vai adiantar. A fila precisa
-        # distinguir isto de "servidor fora do ar", ou fica repetindo para sempre.
-        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
-
-    # O sailing de Alumar encerra a viagem e abre a seguinte. A tela precisa
-    # saber disso para recarregar — o conteudo inteiro mudou.
-    with closing(db.conectar()) as conn:
-        ainda_aberta = conn.execute(
-            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
-            " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
-    return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
+   with closing(db.conectar()) as conn:
+       ainda_aberta = conn.execute(
+           "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+           " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
+   return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
 
 
 @app.post("/api/abastecimento")
