@@ -1,371 +1,225 @@
-/* Diário de Bordo Eletrônico (ELB) — Corsair Posidonia */
+/* Lançamento Integrado Corsair com Fila Offline e Atualização Fluida */
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "SHIP_ELB_ALUMAR_CIRCUIT_V1";
+  const CHAVE_RESPONSAVEL = "shipops.responsavel";
+  const caixaTela = document.getElementById("tela-viagem");
 
-  const BASE_ROUTE_STAGES = [
-    { loc: "Alumar - MA", action: "sailing", purpose: "Laden", desc: "1. Alumar — Início de Singradura p/ Fazendinha" },
-    { loc: "Barra Norte", action: "arrival", purpose: "Laden", desc: "2. Barra Norte — Entrada no Canal / Espera Prático" },
-    { loc: "Fazendinha", action: "arrival", purpose: "Laden", desc: "3. Fazendinha — Embarque Praticagem Macapá" },
-    { loc: "Fazendinha", action: "sailing", purpose: "Laden", desc: "4. Fazendinha — Singradura Rio Amazonas p/ Juruti" },
-    { loc: "Juruti", action: "arrival", purpose: "Loading", desc: "5. Juruti — Chegada na Barra / Fundeado" },
-    { loc: "Juruti", action: "berth", purpose: "Loading", desc: "6. Juruti — Atracação Terminal Fluvial" },
-    { loc: "Juruti", action: "Fueling", purpose: "Loading", desc: "7. Juruti — Operação de Carga / Bauxita" },
-    { loc: "Juruti", action: "unberth", purpose: "Laden", desc: "8. Juruti — Término Carga & Desatracação" },
-    { loc: "Juruti", action: "sailing", purpose: "Laden", desc: "9. Juruti — Singradura Descendo Rio Amazonas" },
-    { loc: "Fazendinha", action: "arrival", purpose: "Laden", desc: "10. Fazendinha — Desembarque Praticagem" },
-    { loc: "Fazendinha", action: "sailing", purpose: "Laden", desc: "11. Fazendinha — Saída Barra Norte Rumo Alumar" },
-    { loc: "Alumar - MA", action: "arrival", purpose: "Discharging", desc: "12. Alumar — Chegada Barra São Marcos / Fundeado" },
-    { loc: "Alumar - MA", action: "berth", purpose: "Discharging", desc: "13. Alumar — Atracação Terminal Alumar" },
-    { loc: "Alumar - MA", action: "Standby", purpose: "Discharging", desc: "14. Alumar — Operação de Descarga Bauxita" },
-    { loc: "Alumar - MA", action: "unberth", purpose: "Laden", desc: "15. Alumar — Término Descarga & Conclusão Ciclo" }
-  ];
-
-  let targetCount = 15;
-  let records = [];
-  let sessionMeta = { viagemId: '', comandante: '', notes: '' };
-  let idCtxSelecionado = null;
-
-  function obterDataHoraLocal() {
+  function sincronizarDataHoraLocal() {
     const agora = new Date();
     const ano = agora.getFullYear();
     const mes = String(agora.getMonth() + 1).padStart(2, '0');
     const dia = String(agora.getDate()).padStart(2, '0');
     const horas = String(agora.getHours()).padStart(2, '0');
     const minutos = String(agora.getMinutes()).padStart(2, '0');
-    return {
-      data: `${ano}-${mes}-${dia}`,
-      hora: `${horas}:${minutos}`
-    };
-  }
 
-  function aplicarHoraLocalNoFormulario() {
-    const local = obterDataHoraLocal();
     const fDate = document.getElementById("f_date");
     const fTime = document.getElementById("f_time");
-    if (fDate) fDate.value = local.data;
-    if (fTime) fTime.value = local.hora;
+    if (fDate && !fDate.value) fDate.value = `${ano}-${mes}-${dia}`;
+    if (fTime && !fTime.value) fTime.value = `${horas}:${minutos}`;
   }
 
-  function salvarEstado() {
-    const payload = { targetCount, sessionMeta, records };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  function inicializarResponsavel() {
+    let salvo = "";
+    try {
+      salvo = localStorage.getItem(CHAVE_RESPONSAVEL) || "";
+    } catch (e) {}
+
+    const campoPrincipal = document.getElementById("campo-responsavel");
+    if (campoPrincipal && !campoPrincipal.value && salvo) {
+      campoPrincipal.value = salvo;
+    }
+
+    document.querySelectorAll(".campo-responsavel-sec").forEach(el => {
+      if (!el.value && salvo) el.value = salvo;
+    });
   }
 
-  function carregarEstado() {
-    const setupSection = document.getElementById("setup-section");
-    const dashboardSection = document.getElementById("dashboard-section");
-    if (!setupSection || !dashboardSection) return;
+  function estado(bloco, classe, texto) {
+    const alvo = bloco.querySelector("[data-estado]");
+    if (!alvo) return;
+    alvo.className = "estado " + classe;
+    alvo.textContent = texto;
+  }
 
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      setupSection.style.display = "block";
-      dashboardSection.style.display = "none";
+  let trocando = false;
+  function trocarTela() {
+    if (!caixaTela || trocando) return Promise.resolve();
+    trocando = true;
+    caixaTela.classList.add("atualizando");
+
+    return fetch("/navio/tela", {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "fetch" }
+    }).then(function (r) {
+      if (r.status === 409 || r.status === 401 || r.status === 403 || r.redirected) {
+        window.location.reload();
+        return null;
+      }
+      if (!r.ok) throw new Error("Fragmento indisponível");
+      return r.text();
+    }).then(function (html) {
+      if (html === null) return;
+      caixaTela.innerHTML = html;
+      sincronizarDataHoraLocal();
+      inicializarResponsavel();
+      if (window.Fila && window.Fila.pintar) window.Fila.pintar();
+    }).catch(function () {
+      // Offline: o dado fica na fila e o status visual reflete 'na fila'
+    }).then(function () {
+      trocando = false;
+      caixaTela.classList.remove("atualizando");
+    });
+  }
+
+  function despachar(form, bloco, payload, url) {
+    const botao = form.querySelector("button[type=submit]");
+    if (botao) botao.disabled = true;
+    estado(bloco, "pendente", "enviando...");
+
+    return window.Fila.enfileirar(payload, url).then(function (r) {
+      if (r && r.erros && r.erros.length) {
+        estado(bloco, "erro", r.erros.join(" "));
+        if (botao) botao.disabled = false;
+        return;
+      }
+      // Se a viagem fechou (meta atingida) ou o form pediu recarga, recarrega a janela
+      if (r && r.viagemMudou) {
+        window.location.reload();
+        return;
+      }
+      if (form.dataset.recarrega === "1") {
+        window.location.reload();
+        return;
+      }
+      return trocarTela();
+    }).catch(function () {
+      estado(bloco, "pendente", "na fila offline");
+    });
+  }
+
+  function enviarMarco(form, evento) {
+    evento.preventDefault();
+    if (!form.reportValidity()) return;
+
+    const bloco = form.closest("[data-escala][data-tipo]") || form;
+    const dados = new FormData(form);
+
+    const responsavel = (dados.get("nome_responsavel") || "").trim();
+    if (!responsavel) {
+      estado(bloco, "erro", "Informe quem preenche.");
       return;
     }
     try {
-      const data = JSON.parse(raw);
-      if (!data.sessionMeta || !data.sessionMeta.comandante) {
-        setupSection.style.display = "block";
-        dashboardSection.style.display = "none";
-        return;
-      }
-      targetCount = data.targetCount || 15;
-      sessionMeta = data.sessionMeta;
-      records = data.records || [];
+      localStorage.setItem(CHAVE_RESPONSAVEL, responsavel);
+    } catch (e) {}
 
-      atualizarHUD();
-      setupSection.style.display = "none";
-      dashboardSection.style.display = "grid";
+    const data = (dados.get("data") || "").trim();
+    const hora = (dados.get("hora") || "").trim();
+    const escalaId = Number(dados.get("escala_id") || form.dataset.escala);
+    const tipo = (dados.get("tipo") || form.dataset.tipo);
+    const offset = (dados.get("offset") || form.dataset.offset || "-03:00");
 
-      renderizarTabela();
-      atualizarAssistenteEtapa();
-      aplicarHoraLocalNoFormulario();
-    } catch (e) {
-      localStorage.removeItem(STORAGE_KEY);
-      setupSection.style.display = "block";
-      dashboardSection.style.display = "none";
-    }
+    despachar(form, bloco, {
+      escala_id: escalaId,
+      tipo: tipo,
+      hora_local: data + "T" + hora,
+      offset: offset,
+      nome_responsavel: responsavel,
+      motivo_correcao: (dados.get("motivo_correcao") || "").trim() || null,
+      rob_vlsfo: (dados.get("rob_vlsfo") || "").trim() || null,
+      rob_mgo: (dados.get("rob_mgo") || "").trim() || null,
+      fw: (dados.get("fw") || "").trim() || null,
+      lixo: (dados.get("lixo") || "").trim() || null,
+      comentarios: (dados.get("comentarios") || "").trim() || null
+    }, "/api/marco");
   }
 
-  function atualizarHUD() {
-    const hudViagemId = document.getElementById("hud-viagem-id");
-    const hudOperator = document.getElementById("hud-operator");
-    const hudRoute = document.getElementById("hud-route");
-    const hudCount = document.getElementById("hud-count");
-    const indicador = document.getElementById("indicador-contador");
+  function enviarCarga(form, evento) {
+    evento.preventDefault();
+    const dados = new FormData(form);
+    const responsavel = (dados.get("nome_responsavel") || "").trim();
+    const bloco = form.closest("[data-escala]") || form;
 
-    if (hudViagemId) hudViagemId.textContent = sessionMeta.viagemId || "—";
-    if (hudOperator) hudOperator.textContent = sessionMeta.comandante || "—";
-    if (hudRoute) hudRoute.textContent = sessionMeta.notes ? sessionMeta.notes.slice(0, 24) : "Alumar ⇄ Juruti";
-    if (hudCount) hudCount.textContent = records.length;
-
-    if (indicador) {
-      const prox = records.length + 1;
-      indicador.textContent = prox <= targetCount ? `Observação ${prox} de ${targetCount}` : `Observação ${prox} (Extra além de ${targetCount})`;
-    }
+    despachar(form, bloco, {
+      escala_id: Number(dados.get("escala_id")),
+      quantidade: (dados.get("quantidade") || "").trim(),
+      nome_responsavel: responsavel
+    }, "/api/carga");
   }
 
-  function atualizarAssistenteEtapa() {
-    const texto = document.getElementById("texto-etapa-sugerida");
-    if (!texto) return;
-    const idx = records.length;
-    texto.textContent = idx < BASE_ROUTE_STAGES.length ? BASE_ROUTE_STAGES[idx].desc : "Etapas padrão concluídas. Registros extras livres.";
+  function enviarAbastecimento(form, evento) {
+    evento.preventDefault();
+    const dados = new FormData(form);
+    const responsavel = (dados.get("nome_responsavel") || "").trim();
+    const bloco = form.closest("[data-escala]") || form;
+
+    despachar(form, bloco, {
+      escala_id: Number(dados.get("escala_id")),
+      vlsfo: (dados.get("vlsfo") || "").trim() || null,
+      mgo: (dados.get("mgo") || "").trim() || null,
+      nome_responsavel: responsavel
+    }, "/api/abastecimento");
   }
 
-  function renderizarTabela() {
-    const corpo = document.getElementById("tabela-corpo");
-    if (!corpo) return;
-    corpo.innerHTML = "";
-
-    for (let i = records.length - 1; i >= 0; i--) {
-      const r = records[i];
-      const tr = document.createElement("tr");
-      tr.dataset.id = r.id;
-
-      const badgeRetificado = r.isEdited ? `<span class="tag-retificado" title="${r.editReason || ''}">RETIFICADO</span>` : '';
-
-      tr.innerHTML = `
-        <td><button type="button" class="btn-row-edit" data-id="${r.id}">✏️ Editar</button></td>
-        <td><strong>#${r.id}</strong>${badgeRetificado}</td>
-        <td class="num">${r.data.split("-").reverse().join("/")} ${r.hora}</td>
-        <td>${r.local}</td>
-        <td><span class="selo selo-acao">${r.acao}</span></td>
-        <td>${r.proposito}</td>
-        <td class="num">${r.vlsfo}</td>
-        <td class="num">${r.mgo}</td>
-        <td class="num">${r.fw ? r.fw + 't' : '—'}</td>
-        <td>${r.lixo}</td>
-        <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.comentarios}">${r.comentarios}</td>
-      `;
-
-      tr.querySelector(".btn-row-edit").addEventListener("click", () => abrirModalEdicao(r.id));
-
-      tr.addEventListener("contextmenu", function (e) {
-        e.preventDefault();
-        idCtxSelecionado = r.id;
-        document.querySelectorAll("#tabela-logbook tr").forEach(el => el.classList.remove("linha-selecionada"));
-        tr.classList.add("linha-selecionada");
-        const menu = document.getElementById("menu-contexto");
-        if (menu) {
-          menu.style.display = "block";
-          menu.style.left = `${e.pageX}px`;
-          menu.style.top = `${e.pageY}px`;
-        }
-      });
-
-      corpo.appendChild(tr);
-    }
-  }
-
-  function abrirModalEdicao(id) {
-    const item = records.find(r => r.id === id);
-    if (!item) return;
-
-    document.getElementById("edit-id").value = item.id;
-    document.getElementById("modal-edicao-titulo").textContent = `✏️ Retificar Ocorrência #${item.id}`;
-    document.getElementById("edit_date").value = item.data;
-    document.getElementById("edit_time").value = item.hora;
-    document.getElementById("edit_mc_1").value = item.agente;
-    document.getElementById("edit_mc_2").value = item.local;
-    document.getElementById("edit_mc_3").value = item.proposito;
-    document.getElementById("edit_mc_4").value = item.acao;
-    document.getElementById("edit_num_1").value = item.vlsfo;
-    document.getElementById("edit_num_2").value = item.mgo;
-    document.getElementById("edit_num_5").value = item.fw || '';
-    document.getElementById("edit_trash").value = item.lixo === 'N/A' ? '' : item.lixo;
-    document.getElementById("edit_comments").value = item.comentarios === '—' ? '' : item.comentarios;
-    document.getElementById("edit_reason").value = item.editReason || '';
+  window.abrirModalEdicaoMarco = function (escalaId, tipo, horaLocal, offset, vlsfo, mgo, fw, lixo, comentarios, responsavel) {
+    document.getElementById("edit-escala-id").value = escalaId;
+    document.getElementById("edit-tipo").value = tipo;
+    document.getElementById("edit-offset").value = offset;
+    document.getElementById("edit-date").value = (horaLocal || "").slice(0, 10);
+    document.getElementById("edit-time").value = (horaLocal || "").slice(11, 16);
+    document.getElementById("edit-vlsfo").value = vlsfo || "";
+    document.getElementById("edit-mgo").value = mgo || "";
+    document.getElementById("edit-fw").value = fw || "";
+    document.getElementById("edit-lixo").value = lixo || "";
+    document.getElementById("edit-comments").value = comentarios === "—" ? "" : comentarios;
+    document.getElementById("edit-responsavel").value = responsavel || "";
+    document.getElementById("edit-reason").value = "";
 
     const modal = document.getElementById("modal-edicao");
     if (modal) modal.style.display = "flex";
-  }
+  };
 
   document.addEventListener("DOMContentLoaded", function () {
+    sincronizarDataHoraLocal();
+    inicializarResponsavel();
+
     const btnSync = document.getElementById("btn-sync-local-time");
-    if (btnSync) btnSync.addEventListener("click", aplicarHoraLocalNoFormulario);
-
-    const btnPreset = document.getElementById("btn-load-preset");
-    if (btnPreset) {
-      btnPreset.addEventListener("click", function () {
-        document.getElementById("meta-target-count").value = 15;
-        document.getElementById("meta-comandante").value = "Cap. Silveira";
-        document.getElementById("meta-notes").value = "Alumar ➔ Fazendinha ➔ Juruti ➔ Alumar (15 Etapas Padrão)";
+    if (btnSync) {
+      btnSync.addEventListener("click", function () {
+        const agora = new Date();
+        const ano = agora.getFullYear();
+        const mes = String(agora.getMonth() + 1).padStart(2, '0');
+        const dia = String(agora.getDate()).padStart(2, '0');
+        const horas = String(agora.getHours()).padStart(2, '0');
+        const minutos = String(agora.getMinutes()).padStart(2, '0');
+        document.getElementById("f_date").value = `${ano}-${mes}-${dia}`;
+        document.getElementById("f_time").value = `${horas}:${minutos}`;
       });
     }
 
-    const btnIniciar = document.getElementById("btn-iniciar-viagem");
-    if (btnIniciar) {
-      btnIniciar.addEventListener("click", function () {
-        const comandante = document.getElementById("meta-comandante").value.trim();
-        const count = parseInt(document.getElementById("meta-target-count").value, 10);
-        const viagemId = document.getElementById("meta-viagem-id").value.trim();
-
-        if (!comandante) {
-          alert("O nome do Comandante é obrigatório.");
-          return;
-        }
-
-        targetCount = count > 0 ? count : 15;
-        sessionMeta = {
-          viagemId: viagemId,
-          comandante: comandante,
-          notes: document.getElementById("meta-notes").value.trim() || "Alumar ⇄ Juruti"
-        };
-
-        atualizarHUD();
-        document.getElementById("setup-section").style.display = "none";
-        document.getElementById("dashboard-section").style.display = "grid";
-
-        aplicarHoraLocalNoFormulario();
-        salvarEstado();
-        atualizarAssistenteEtapa();
-      });
-    }
-
-    const btnEtapa = document.getElementById("btn-aplicar-etapa");
-    if (btnEtapa) {
-      btnEtapa.addEventListener("click", function () {
-        const idx = records.length;
-        if (idx < BASE_ROUTE_STAGES.length) {
-          const item = BASE_ROUTE_STAGES[idx];
-          document.getElementById("f_mc_2").value = item.loc;
-          document.getElementById("f_mc_4").value = item.action;
-          document.getElementById("f_mc_3").value = item.purpose;
-        }
-      });
-    }
-
-    const formRegistro = document.getElementById("form-registro");
-    if (formRegistro) {
-      formRegistro.addEventListener("submit", function (e) {
-        e.preventDefault();
-
-        const novoRegistro = {
-          id: records.length + 1,
-          viagemId: sessionMeta.viagemId,
-          comandante: sessionMeta.comandante,
-          data: document.getElementById("f_date").value,
-          hora: document.getElementById("f_time").value,
-          agente: document.getElementById("f_mc_1").value,
-          local: document.getElementById("f_mc_2").value,
-          proposito: document.getElementById("f_mc_3").value,
-          acao: document.getElementById("f_mc_4").value,
-          vlsfo: document.getElementById("f_num_1").value,
-          mgo: document.getElementById("f_num_2").value,
-          fw: document.getElementById("f_num_5").value || '',
-          lixo: document.getElementById("f_trash").value || 'N/A',
-          comentarios: document.getElementById("f_comments").value.trim() || '—',
-          isEdited: false
-        };
-
-        records.push(novoRegistro);
-        salvarEstado();
-        renderizarTabela();
-        atualizarHUD();
-        atualizarAssistenteEtapa();
-
-        // Envia para o banco de dados via fila IndexedDB (/api/marco)
-        const escalaId = Number(document.getElementById("f_escala_id").value) || 1;
-        if (window.Fila && window.Fila.enfileirar) {
-          window.Fila.enfileirar({
-            escala_id: escalaId,
-            tipo: novoRegistro.acao.toLowerCase(),
-            hora_local: novoRegistro.data + "T" + novoRegistro.hora,
-            offset: "-03:00",
-            nome_responsavel: sessionMeta.comandante,
-            rob_vlsfo: novoRegistro.vlsfo || null,
-            rob_mgo: novoRegistro.mgo || null,
-            fw: novoRegistro.fw || null,
-            lixo: novoRegistro.lixo || null,
-            comentarios: novoRegistro.comentarios || null
-          }, "/api/marco");
-        }
-
-        document.getElementById("f_num_1").value = "";
-        document.getElementById("f_num_2").value = "";
-        document.getElementById("f_num_5").value = "";
-        document.getElementById("f_trash").value = "";
-        document.getElementById("f_comments").value = "";
-        aplicarHoraLocalNoFormulario();
-      });
-    }
-
-    const formEdicao = document.getElementById("form-edicao");
-    if (formEdicao) {
-      formEdicao.addEventListener("submit", function (e) {
-        e.preventDefault();
-        const idAlvo = parseInt(document.getElementById("edit-id").value, 10);
-        const idx = records.findIndex(r => r.id === idAlvo);
-        if (idx === -1) return;
-
-        records[idx].data = document.getElementById("edit_date").value;
-        records[idx].hora = document.getElementById("edit_time").value;
-        records[idx].agente = document.getElementById("edit_mc_1").value;
-        records[idx].local = document.getElementById("edit_mc_2").value;
-        records[idx].proposito = document.getElementById("edit_mc_3").value;
-        records[idx].acao = document.getElementById("edit_mc_4").value;
-        records[idx].vlsfo = document.getElementById("edit_num_1").value;
-        records[idx].mgo = document.getElementById("edit_num_2").value;
-        records[idx].fw = document.getElementById("edit_num_5").value;
-        records[idx].lixo = document.getElementById("edit_trash").value || 'N/A';
-        records[idx].comentarios = document.getElementById("edit_comments").value.trim() || '—';
-        records[idx].isEdited = true;
-        records[idx].editReason = document.getElementById("edit_reason").value.trim();
-
-        // Envia a retificação para o banco gerando versão auditável
-        const escalaId = Number(document.getElementById("f_escala_id").value) || 1;
-        if (window.Fila && window.Fila.enfileirar) {
-          window.Fila.enfileirar({
-            escala_id: escalaId,
-            tipo: records[idx].acao.toLowerCase(),
-            hora_local: records[idx].data + "T" + records[idx].hora,
-            offset: "-03:00",
-            nome_responsavel: sessionMeta.comandante,
-            motivo_correcao: records[idx].editReason,
-            rob_vlsfo: records[idx].vlsfo || null,
-            rob_mgo: records[idx].mgo || null,
-            fw: records[idx].fw || null,
-            lixo: records[idx].lixo || null,
-            comentarios: records[idx].comentarios || null
-          }, "/api/marco");
-        }
-
-        salvarEstado();
-        renderizarTabela();
+    const btnFecharModal = document.getElementById("btn-fechar-modal-edicao");
+    if (btnFecharModal) {
+      btnFecharModal.addEventListener("click", () => {
         document.getElementById("modal-edicao").style.display = "none";
       });
     }
+  });
 
-    const btnFecharEdit = document.getElementById("btn-fechar-modal-edicao");
-    if (btnFecharEdit) {
-      btnFecharEdit.addEventListener("click", () => document.getElementById("modal-edicao").style.display = "none");
+  document.addEventListener("submit", function (evento) {
+    const form = evento.target;
+    if (!form.classList) return;
+    if (form.classList.contains("lancar")) {
+      enviarMarco(form, evento);
+      const modal = document.getElementById("modal-edicao");
+      if (modal && modal.style.display === "flex") modal.style.display = "none";
+    } else if (form.classList.contains("carregar")) {
+      enviarCarga(form, evento);
+    } else if (form.classList.contains("abastecer")) {
+      enviarAbastecimento(form, evento);
     }
-
-    // Encerrar Viagem: Limpa sessão local e redireciona direto para a aba de Viagens Encerradas
-    const btnEncerrar = document.getElementById("btn-encerrar-viagem");
-    if (btnEncerrar) {
-      btnEncerrar.addEventListener("click", function () {
-        if (confirm("Deseja encerrar esta viagem e consultar o histórico em Viagens Encerradas?")) {
-          localStorage.removeItem(STORAGE_KEY);
-          window.location.href = "/navio/encerradas";
-        }
-      });
-    }
-
-    window.addEventListener("click", function () {
-      const menu = document.getElementById("menu-contexto");
-      if (menu) menu.style.display = "none";
-      document.querySelectorAll("#tabela-logbook tr").forEach(el => el.classList.remove("linha-selecionada"));
-    });
-
-    const ctxEdit = document.getElementById("ctx-item-editar");
-    if (ctxEdit) {
-      ctxEdit.addEventListener("click", function () {
-        if (idCtxSelecionado !== null) abrirModalEdicao(idCtxSelecionado);
-      });
-    }
+  });
+})();
 
     carregarEstado();
   });
