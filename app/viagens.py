@@ -79,31 +79,58 @@ def abrir_viagem(
     *,
     numero: str | None = None,
     rota_modelo_id: int = 1,
+    meta_observacoes: int = 15,
     por: str | None = None,
 ) -> tuple[int | None, list[str]]:
-    """Abre a viagem e ja cria as escalas do modelo, vazias e na ordem.
-
-    O comandante nunca cadastra escala do circuito padrao — so preenche horario.
-    """
     erros: list[str] = []
 
-    navio = conn.execute(
-        "SELECT id, ativo FROM navio WHERE id = ?", (navio_id,)
-    ).fetchone()
+    navio = conn.execute("SELECT id, ativo FROM navio WHERE id = ?", (navio_id,)).fetchone()
     if navio is None:
         return None, ["Navio {} não cadastrado.".format(navio_id)]
     if not navio[1]:
         erros.append("Navio inativo.")
 
     aberta = conn.execute(
-        "SELECT numero FROM viagem WHERE navio_id = ? AND status = 'aberta'",
-        (navio_id,),
+        "SELECT numero FROM viagem WHERE navio_id = ? AND status = 'aberta'", (navio_id,)
     ).fetchone()
     if aberta is not None:
-        erros.append(
-            "Este navio já tem a viagem {} aberta. "
-            "Encerre-a antes de abrir outra.".format(aberta[0])
+        erros.append("Este navio já tem a viagem {} aberta.".format(aberta[0]))
+
+    etapas = conn.execute(
+        "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, condicao, observacao "
+        "  FROM rota_etapa WHERE rota_modelo_id = ? ORDER BY ordem", (rota_modelo_id,)
+    ).fetchall()
+    if not etapas:
+        erros.append("Rota-modelo não tem etapas cadastradas.")
+
+    if erros:
+        return None, erros
+
+    numero = numero or _proximo_numero(conn, navio_id)
+    quando = agora()
+
+    cur = conn.execute(
+        "INSERT INTO viagem (navio_id, numero, rota_modelo_id, status, meta_observacoes, "
+        "                    aberta_por, aberta_em) "
+        "VALUES (?, ?, ?, 'aberta', ?, ?, ?)",
+        (navio_id, numero, rota_modelo_id, meta_observacoes or 15, por, quando),
+    )
+    viagem_id = cur.lastrowid
+
+    for etapa in etapas:
+        conn.execute(
+            "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
+            "                    sentido, motivo, origem, criada_por, criada_em, "
+            "                    observacao, condicao) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'modelo', ?, ?, ?, ?)",
+            (viagem_id, etapa["ordem"] * PASSO_ORDEM, etapa["codigo_porto"],
+             etapa["tipo_escala"], etapa["sentido"], etapa["motivo"], por, quando,
+             etapa["observacao"], etapa["condicao"]),
         )
+
+    conn.commit()
+    return viagem_id, []
+
 
     etapas = conn.execute(
         "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, condicao, observacao "
