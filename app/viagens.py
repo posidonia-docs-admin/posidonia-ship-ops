@@ -254,54 +254,28 @@ def adicionar_escala_extra(
     condicao: str | None = None,
     por: str | None = None,
     observacao: str | None = None,
+    permitir_encerrada: bool = False,
 ) -> tuple[int | None, list[str]]:
-    """Encaixa uma escala nao prevista (bunker em Icoaraci ou Itaqui) na posicao certa.
-
-    Nasce com `origem = 'extra'`, e e isso que permite perguntar depois quantas
-    viagens tiveram parada de bunker e quanto custaram em tempo.
-    """
     erros: list[str] = []
-
-    viagem = conn.execute(
-        "SELECT status FROM viagem WHERE id = ?", (viagem_id,)
-    ).fetchone()
+    viagem = conn.execute("SELECT status FROM viagem WHERE id = ?", (viagem_id,)).fetchone()
     if viagem is None:
         return None, ["Viagem {} não existe.".format(viagem_id)]
-    if viagem[0] != "aberta":
-        erros.append(
-            "Viagem {} está {} — não aceita escala nova.".format(viagem_id, viagem[0])
-        )
+    if viagem[0] != "aberta" and not permitir_encerrada:
+        erros.append("Viagem {} está encerrada.".format(viagem_id))
 
-    if conn.execute(
-        "SELECT 1 FROM porto WHERE codigo = ? AND ativo = 1", (codigo_porto,)
-    ).fetchone() is None:
+    if conn.execute("SELECT 1 FROM porto WHERE codigo = ? AND ativo = 1", (codigo_porto,)).fetchone() is None:
         erros.append("Porto {!r} não cadastrado ou inativo.".format(codigo_porto))
-    if tipo_escala not in dominio.TIPOS_ESCALA or tipo_escala == "abertura":
-        erros.append("Tipo de escala inválido: {!r}.".format(tipo_escala))
-    if motivo not in dominio.MOTIVOS:
-        erros.append("Motivo inválido: {!r}.".format(motivo))
-    if sentido not in dominio.SENTIDOS:
-        erros.append("Sentido inválido: {!r}.".format(sentido))
-    if condicao is not None and condicao not in dominio.CONDICOES:
-        erros.append("Condição inválida: {!r}.".format(condicao))
+
     if erros:
         return None, erros
 
     seguinte = conn.execute(
-        "SELECT MIN(ordem) FROM escala WHERE viagem_id = ? AND ordem > ?",
-        (viagem_id, apos_ordem),
+        "SELECT MIN(ordem) FROM escala WHERE viagem_id = ? AND ordem > ?", (viagem_id, apos_ordem)
     ).fetchone()[0]
     limite = seguinte if seguinte is not None else apos_ordem + 2 * PASSO_ORDEM
     nova_ordem = (apos_ordem + limite) // 2
-    if nova_ordem <= apos_ordem or nova_ordem >= limite:
-        return None, [
-            "Não há espaço de ordenação entre estas escalas. "
-            "Renumere a viagem antes de inserir outra aqui."
-        ]
 
-    # Presume a condicao pelo motivo (bunker -> bunkering). Presumir e diferente
-    # de adivinhar: o valor fica visivel na tela e pode ser trocado.
-    condicao = condicao or dominio.CONDICAO_POR_MOTIVO.get(motivo)
+    condicao = condicao or dominio.CONDICAO_POR_MOTIVO.get(motivo, "idle")
 
     cur = conn.execute(
         "INSERT INTO escala (viagem_id, ordem, codigo_porto, tipo_escala, "
@@ -313,7 +287,6 @@ def adicionar_escala_extra(
     )
     conn.commit()
     return cur.lastrowid, []
-
 
 def remover_escala_extra(conn, escala_id: int) -> tuple[bool, list[str]]:
     """Desfaz uma parada acrescentada por engano. So a EXTRA.
@@ -371,121 +344,144 @@ def remover_escala_extra(conn, escala_id: int) -> tuple[bool, list[str]]:
 # ---------------------------------------------------------------------------
 
 def lancar_marco(
-   conn,
-   escala_id: int,
-   *,
-   tipo: str,
-   hora_local: str | None,
-   nome_responsavel: str,
-   registrado_por: str,
-   offset: str | None = None,
-   id_cliente: str | None = None,
-   precisao: str = "exata",
-   observacao: str | None = None,
-   motivo_correcao: str | None = None,
-   rob_vlsfo: float | None = None,
-   rob_mgo: float | None = None,
-   fw: float | None = None,
-   lixo: str | None = None,
-   comentarios: str | None = None,
+    conn,
+    escala_id: int,
+    *,
+    tipo: str,
+    hora_local: str | None,
+    nome_responsavel: str,
+    registrado_por: str,
+    offset: str | None = None,
+    id_cliente: str | None = None,
+    precisao: str = "exata",
+    observacao: str | None = None,
+    motivo_correcao: str | None = None,
+    rob_vlsfo: float | None = None,
+    rob_mgo: float | None = None,
+    fw: float | None = None,
+    lixo: str | None = None,
+    comentarios: str | None = None,
 ) -> tuple[int | None, list[str]]:
-   escala = conn.execute(
-       "SELECT e.tipo_escala, e.status, p.offset_padrao, e.origem, e.viagem_id, "
-       "       e.codigo_porto "
-       "  FROM escala e JOIN porto p ON p.codigo = e.codigo_porto "
-       " WHERE e.id = ?",
-       (escala_id,),
-   ).fetchone()
-   if escala is None:
-       return None, ["Escala {} não existe.".format(escala_id)]
-   if escala[1] == "cancelada":
-       return None, ["Escala cancelada não aceita lançamento."]
+    escala = conn.execute(
+        "SELECT e.tipo_escala, e.status, p.offset_padrao, e.origem, e.viagem_id, "
+        "       e.codigo_porto, vg.status AS viagem_status, vg.meta_observacoes, "
+        "       vg.evento_encerramento_id "
+        "  FROM escala e "
+        "  JOIN porto p ON p.codigo = e.codigo_porto "
+        "  JOIN viagem vg ON vg.id = e.viagem_id "
+        " WHERE e.id = ?",
+        (escala_id,),
+    ).fetchone()
 
-   id_cliente = id_cliente or str(uuid.uuid4())
-   ja = conn.execute(
-       "SELECT id FROM evento WHERE id_cliente = ?", (id_cliente,)
-   ).fetchone()
-   if ja is not None:
-       return ja[0], []
+    if escala is None:
+        return None, ["Escala {} não existe.".format(escala_id)]
+    if escala["status"] == "cancelada":
+        return None, ["Escala cancelada não aceita lançamento."]
 
-   offset = (offset or escala[2]).strip()
-   anteriores = marcos_vigentes(conn, escala_id)
+    id_cliente = id_cliente or str(uuid.uuid4())
+    ja = conn.execute("SELECT id FROM evento WHERE id_cliente = ?", (id_cliente,)).fetchone()
+    if ja is not None:
+        return ja[0], []
 
-   erros = dominio.erros_marco(
-       tipo_escala=escala[0],
-       tipo_evento=tipo,
-       hora_local=hora_local,
-       offset=offset,
-       nome_responsavel=nome_responsavel,
-       precisao=precisao,
-       marcos_existentes={k: v for k, v in anteriores.items() if k != tipo},
-   )
+    offset = (offset or escala["offset_padrao"]).strip()
+    anteriores = marcos_vigentes(conn, escala_id)
 
-   t_vlsfo = _numero_positivo(rob_vlsfo, "Combustível a bordo (VLSFO)", erros)
-   t_mgo = _numero_positivo(rob_mgo, "Combustível a bordo (MGO)", erros)
-   t_fw = _numero_positivo(fw, "Água Doce (FW)", erros)
-   
-   val_lixo = (str(lixo).strip() if lixo and str(lixo).strip() not in ("", "—") else None)
-   val_comentarios = (str(comentarios).strip() if comentarios and str(comentarios).strip() else None)
+    erros = dominio.erros_marco(
+        tipo_escala=escala["tipo_escala"],
+        tipo_evento=tipo,
+        hora_local=hora_local,
+        offset=offset,
+        nome_responsavel=nome_responsavel,
+        precisao=precisao,
+        marcos_existentes={k: v for k, v in anteriores.items() if k != tipo},
+    )
 
-   if erros:
-       return None, erros
+    t_vlsfo = _numero_positivo(rob_vlsfo, "VLSFO", erros)
+    t_mgo = _numero_positivo(rob_mgo, "MGO", erros)
+    t_fw = _numero_positivo(fw, "FW", erros)
+    val_lixo = str(lixo).strip() if lixo and str(lixo).strip() not in ("", "—") else None
+    val_coment = str(comentarios).strip() if comentarios and str(comentarios).strip() else None
 
-   vigente_atual = conn.execute(
-       "SELECT id, versao FROM evento WHERE escala_id = ? AND tipo = ? AND vigente = 1",
-       (escala_id, tipo),
-   ).fetchone()
-   if vigente_atual is not None and not (motivo_correcao or "").strip():
-       return None, [
-           "Já existe {} nesta escala. Para alterar, informe o motivo da "
-           "correção.".format(dominio.ROTULO_MARCO[tipo])
-       ]
+    if erros:
+        return None, erros
 
-   hora_utc = dominio.para_utc(hora_local, offset) if precisao != "tbc" else None
-   quando = agora()
+    vigente_atual = conn.execute(
+        "SELECT id, versao FROM evento WHERE escala_id = ? AND tipo = ? AND vigente = 1",
+        (escala_id, tipo),
+    ).fetchone()
 
-   try:
-       if vigente_atual is not None:
-           conn.execute(
-               "UPDATE evento SET vigente = 0 WHERE id = ?", (vigente_atual[0],)
-           )
-       cur = conn.execute(
-           "INSERT INTO evento (id_cliente, escala_id, tipo, hora_local, offset_utc, "
-           "                    hora_utc, precisao, registrado_por, registrado_em, "
-           "                    nome_responsavel, observacao, versao, vigente, "
-           "                    substitui_evento_id, motivo_correcao, "
-           "                    rob_vlsfo, rob_mgo, fw, lixo, comentarios) "
-           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
-           (id_cliente, escala_id, tipo, hora_local, offset, hora_utc, precisao,
-            registrado_por, quando, nome_responsavel.strip(), observacao,
-            (vigente_atual[1] + 1) if vigente_atual else 1,
-            vigente_atual[0] if vigente_atual else None,
-            (motivo_correcao or "").strip() or None,
-            t_vlsfo, t_mgo, t_fw, val_lixo, val_comentarios),
-       )
-   except sqlite3.IntegrityError as exc:
-       conn.rollback()
-       return None, ["Conflito ao gravar o marco: {}".format(exc)]
+    # Se a viagem já estiver encerrada e não for correção, exige motivo de lançamento tardio
+    if escala["viagem_status"] == "encerrada" and vigente_atual is None and not (motivo_correcao or "").strip():
+        return None, ["Esta viagem já foi encerrada. Para incluir uma nova observação, informe o motivo."]
 
-   if escala[0] == "abertura" and tipo == "sailing":
-       conn.execute(
-           "UPDATE viagem SET evento_abertura_id = ? WHERE id = ?",
-           (cur.lastrowid, escala[4]),
-       )
+    if vigente_atual is not None and not (motivo_correcao or "").strip():
+        return None, ["Já existe {} nesta escala. Informe o motivo da correção.".format(dominio.ROTULO_MARCO[tipo])]
 
-   if escala[0] == "encerramento" and tipo == "unberth" and vigente_atual is not None:
-       conn.execute(
-           "UPDATE viagem SET evento_encerramento_id = ? "
-           " WHERE id = ? AND evento_encerramento_id = ?",
-           (cur.lastrowid, escala[4], vigente_atual[0]),
-       )
+    hora_utc = dominio.para_utc(hora_local, offset) if precisao != "tbc" else None
+    quando = agora()
 
-   conn.commit()
+    try:
+        if vigente_atual is not None:
+            conn.execute("UPDATE evento SET vigente = 0 WHERE id = ?", (vigente_atual[0],))
 
-   if escala[0] == "encerramento" and tipo == "unberth":
-       encadear_ciclo(conn, escala[4])
+        cur = conn.execute(
+            "INSERT INTO evento (id_cliente, escala_id, tipo, hora_local, offset_utc, "
+            "                    hora_utc, precisao, registrado_por, registrado_em, "
+            "                    nome_responsavel, observacao, versao, vigente, "
+            "                    substitui_evento_id, motivo_correcao, "
+            "                    rob_vlsfo, rob_mgo, fw, lixo, comentarios) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
+            (id_cliente, escala_id, tipo, hora_local, offset, hora_utc, precisao,
+             registrado_por, quando, nome_responsavel.strip(), observacao,
+             (vigente_atual[1] + 1) if vigente_atual else 1,
+             vigente_atual[0] if vigente_atual else None,
+             (motivo_correcao or "").strip() or None,
+             t_vlsfo, t_mgo, t_fw, val_lixo, val_coment),
+        )
+        evento_id = cur.lastrowid
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        return None, ["Conflito ao gravar o marco: {}".format(exc)]
 
-   return cur.lastrowid, []
+    # Amarra abertura no Sailing da saída de Alumar
+    if escala["tipo_escala"] == "abertura" and tipo == "sailing":
+        conn.execute("UPDATE viagem SET evento_abertura_id = ? WHERE id = ?", (evento_id, escala["viagem_id"]))
+
+    # SE A VIAGEM ESTIVER ENCERRADA: Atualiza âncora final se o evento for mais recente
+    if escala["viagem_status"] == "encerrada":
+        ultimo_evento_utc = conn.execute(
+            "SELECT ev.hora_utc FROM evento ev WHERE ev.id = ?", (escala["evento_encerramento_id"],)
+        ).fetchone()
+        if not ultimo_evento_utc or (hora_utc and hora_utc > (ultimo_evento_utc[0] or "")):
+            conn.execute("UPDATE viagem SET evento_encerramento_id = ? WHERE id = ?", (evento_id, escala["viagem_id"]))
+
+    conn.commit()
+
+    # AUTO-ENCERRAMENTO POR META OU POR UNBERTH FINAL
+    if escala["viagem_status"] == "aberta":
+        total_lancados = conn.execute(
+            "SELECT COUNT(*) FROM evento ev "
+            "  JOIN escala esc ON esc.id = ev.escala_id "
+            " WHERE esc.viagem_id = ? AND ev.vigente = 1", (escala["viagem_id"],)
+        ).fetchone()[0]
+
+        atingiu_meta = total_lancados >= (escala["meta_observacoes"] or 15)
+        e_unberth_final = (escala["tipo_escala"] == "encerramento" and tipo == "unberth")
+
+        if atingiu_meta or e_unberth_final:
+            conn.execute(
+                "UPDATE viagem SET status = 'encerrada', evento_encerramento_id = ? WHERE id = ?",
+                (evento_id, escala["viagem_id"])
+            )
+            conn.execute(
+                "UPDATE escala SET status = 'encerrada' WHERE viagem_id = ? AND status = 'aberta'",
+                (escala["viagem_id"],)
+            )
+            conn.commit()
+            # Encadeia e abre a próxima viagem automaticamente
+            encadear_ciclo(conn, escala["viagem_id"])
+
+    return evento_id, []
 
 
 def _numero_positivo(valor, rotulo: str, erros: list[str]):
