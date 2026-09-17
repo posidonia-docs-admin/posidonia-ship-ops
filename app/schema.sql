@@ -107,17 +107,18 @@ CREATE TABLE IF NOT EXISTS rota_etapa (
 -- abertura (`origem = 'abertura'`), que so pede o `sailing`.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS viagem (
-    id                    INTEGER PRIMARY KEY,
-    navio_id              INTEGER NOT NULL REFERENCES navio(id),
-    numero                TEXT NOT NULL,
-    rota_modelo_id        INTEGER REFERENCES rota_modelo(id),
-    status                TEXT NOT NULL DEFAULT 'aberta'
-                          CHECK (status IN ('aberta', 'encerrada', 'cancelada')),
-    evento_abertura_id    INTEGER REFERENCES evento(id),
+    id                     INTEGER PRIMARY KEY,
+    navio_id               INTEGER NOT NULL REFERENCES navio(id),
+    numero                 TEXT NOT NULL,
+    rota_modelo_id         INTEGER REFERENCES rota_modelo(id),
+    status                 TEXT NOT NULL DEFAULT 'aberta'
+                           CHECK (status IN ('aberta', 'encerrada', 'cancelada')),
+    meta_observacoes       INTEGER NOT NULL DEFAULT 15,
+    evento_abertura_id     INTEGER REFERENCES evento(id),
     evento_encerramento_id INTEGER REFERENCES evento(id),
-    aberta_por            TEXT,
-    aberta_em             TEXT NOT NULL,
-    observacao            TEXT,
+    aberta_por             TEXT,
+    aberta_em              TEXT NOT NULL,
+    observacao             TEXT,
     UNIQUE (navio_id, numero)
 );
 
