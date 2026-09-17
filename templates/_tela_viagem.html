@@ -1,316 +1,322 @@
 {# Painel Operacional de Bordo — Estrutura Lado a Lado (Posidonia Corsair) #}
 {% set v = corrente %}
 
-<!-- TOP HUD: PARÂMETROS DA VIAGEM -->
+<!-- TOP HUD: PARÂMETROS DA VIAGEM ATIVA -->
 <div class="hud-superior">
   <div class="hud-marca">
     <span class="codigo" id="hud-viagem-id">{{ v.viagem.numero }}</span>
     <span class="separador">·</span>
     <span class="embarcacao">{{ conta.navio_nome }}</span>
     <span class="separador">·</span>
-    <span class="rota-etiqueta" id="hud-route">Alumar ⇄ Juruti</span>
+    <span class="rota-etiqueta">Alumar ⇄ Juruti</span>
   </div>
   <div class="hud-meta-tags">
-    <div>COMANDANTE: <strong id="hud-operator">—</strong></div>
-    <div>REGISTROS: <strong id="hud-count">0</strong></div>
+    <div>META: <strong>{{ lancados }} de {{ v.viagem.meta_observacoes or 15 }} marcos</strong></div>
+    <progress class="barra" value="{{ lancados }}" max="{{ v.viagem.meta_observacoes or 15 }}"></progress>
   </div>
   <div class="hud-acoes">
-    <span class="selo selo-ok">Auditável</span>
-    <button class="btn btn-danger btn-sm" id="btn-encerrar-viagem" type="button">Encerrar Viagem</button>
+    <a href="/navio/encerradas" class="btn btn-secondary btn-sm">Viagens Encerradas</a>
   </div>
 </div>
 
-<!-- TELA 1: SETUP INICIAL DA VIAGEM -->
-<div id="setup-section" class="cartao" style="display: none;">
-  <div class="cabecalho-bloco">
-    <div>
-      <span class="rot">Inicialização da Singradura</span>
-      <h2 class="titulo-bloco">Parâmetros da Viagem</h2>
-    </div>
-    <button class="btn btn-preset" id="btn-load-preset" type="button">⚡ Carregar Rota Padrão</button>
+<!-- RÉGUA SUPERIOR: CÁLCULOS EM TEMPO REAL DA FROTA -->
+<div class="faixa" style="margin-bottom: 16px;">
+  <div class="celula destaque">
+    <span class="rot">Posição Atual</span>
+    <b>{% if v.situacao %}{{ v.situacao.escala.porto_nome }}{%
+         if v.situacao.escala.condicao %}<span class="cond">{{ v.situacao.escala.condicao }}</span>{%
+         endif %}{% else %}Viagem Aberta{% endif %}</b>
   </div>
-  
-  <p style="color: var(--suave); font-size: 12.5px; margin-bottom: 10px;">
-    Confira os dados da viagem antes de iniciar os lançamentos.
-  </p>
-
-  <div class="grid-setup">
-    <div class="campo-grupo full-width">
-      <label for="meta-target-count" class="rot req">Meta de Observações (X)</label>
-      <input type="number" id="meta-target-count" value="15" min="1" required style="max-width: 130px;">
-    </div>
-    <div class="campo-grupo">
-      <label for="meta-viagem-id" class="rot req">ID Viagem</label>
-      <input type="text" id="meta-viagem-id" value="{{ v.viagem.numero }}" required readonly>
-    </div>
-    <div class="campo-grupo">
-      <label for="meta-comandante" class="rot req">Comandante</label>
-      <input type="text" id="meta-comandante" placeholder="Ex: Cap. Silveira" required>
-    </div>
-    <div class="campo-grupo full-width">
-      <label for="meta-notes" class="rot">Comentários da Rota</label>
-      <textarea id="meta-notes" rows="2" placeholder="Instruções de viagem, rota planejada..."></textarea>
-    </div>
+  <div class="celula">
+    <span class="rot">Saída de Alumar</span>
+    <b>{{ v.abertura|br if v.abertura else "Aguardando saída" }}</b>
   </div>
-
-  <button class="btn btn-primary" id="btn-iniciar-viagem" type="button" style="width: 100%; margin-top: 14px; min-height: 40px;">
-    Iniciar Lançamentos
-  </button>
+  <div class="celula">
+    <span class="rot">Último Lançamento</span>
+    <b>{% if v.situacao %}{{ v.situacao.marco.curto }} · {{ v.situacao.marco.lancado.hora_local|br }}{% else %}—{% endif %}</b>
+  </div>
+  <div class="celula">
+    <span class="rot">VLSFO a Bordo</span>
+    <b class="num">{{ v.situacao.marco.lancado.rob_vlsfo|mt if v.situacao and v.situacao.marco.lancado.rob_vlsfo is not none else "—" }}</b>
+  </div>
+  <div class="celula">
+    <span class="rot">MGO a Bordo</span>
+    <b class="num">{{ v.situacao.marco.lancado.rob_mgo|mt if v.situacao and v.situacao.marco.lancado.rob_mgo is not none else "—" }}</b>
+  </div>
 </div>
 
-<!-- TELA 2: OPERACIONAL LADO A LADO -->
-<div class="dashboard-grid" id="dashboard-section" style="display: none;">
+<!-- DASHBOARD LADO A LADO -->
+<div class="dashboard-grid">
 
-  <!-- ESQUERDA: FORMULÁRIO -->
+  <!-- ESQUERDA: FORMULÁRIO DE LANÇAMENTO DA ETAPA ATIVA -->
   <div class="cartao painel-esquerda">
-    <div class="cabecalho-bloco">
-      <div>
-        <span class="rot" id="indicador-contador">Observação 1 de 15</span>
-        <h2 class="titulo-bloco">Lançamento de Ocorrência</h2>
-      </div>
-      <button class="btn btn-secondary" id="btn-sync-local-time" type="button" style="font-size: 10.5px; padding: 3px 8px;">
-        🕒 Sincronizar Relógio
-      </button>
-    </div>
-
-    <!-- Assistente de Rota Padrão -->
-    <div class="caixa-assistente">
-      <div style="min-width: 0;">
-        <span class="rot">Etapa Sugerida</span>
-        <strong id="texto-etapa-sugerida">1. Alumar — Início de Singradura p/ Fazendinha</strong>
-      </div>
-      <button class="btn btn-preset" id="btn-aplicar-etapa" type="button" style="font-size: 10.5px; padding: 4px 8px;">
-        ⚡ Preencher
-      </button>
-    </div>
-
-    <form id="form-registro" class="form-grid">
-      <input type="hidden" id="f_escala_id" value="{{ v.blocos[0].escala.id if v.blocos else '' }}">
-
-      <div class="campo-grupo">
-        <label for="f_date" class="rot req">Data (Local)</label>
-        <input type="date" id="f_date" required>
-      </div>
-      <div class="campo-grupo">
-        <label for="f_time" class="rot req">Hora (Local)</label>
-        <input type="time" id="f_time" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_mc_1" class="rot req">Agente</label>
-        <select id="f_mc_1" required>
-          <option value="Orion" selected>Orion</option>
-          <option value="Williams">Williams</option>
-          <option value="LBH">LBH</option>
-          <option value="Amaggi">Amaggi</option>
-        </select>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_mc_2" class="rot req">Localidade</label>
-        <select id="f_mc_2" required>
-          <option value="Alumar - MA">Alumar - MA</option>
-          <option value="Fazendinha">Fazendinha</option>
-          <option value="Juruti">Juruti</option>
-          <option value="Barra Norte">Barra Norte</option>
-          <option value="Icoaraci">Icoaraci</option>
-          <option value="Mosqueiro">Mosqueiro</option>
-          <option value="Itaqui">Itaqui</option>
-          <option value="Rio de Janeiro">Rio de Janeiro</option>
-          <option value="AJB">Águas Jurisdicionais Brasileiras (AJB)</option>
-        </select>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_mc_3" class="rot req">Propósito</label>
-        <select id="f_mc_3" required>
-          <option value="Laden">Laden</option>
-          <option value="Loading">Loading</option>
-          <option value="Discharging">Discharging</option>
-          <option value="Bunkering">Bunkering</option>
-        </select>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_mc_4" class="rot req">Ação / Marco</label>
-        <select id="f_mc_4" required>
-          <option value="sailing">Sailing (Saída)</option>
-          <option value="arrival">Arrival (Chegada)</option>
-          <option value="berth">Berth (Atracação)</option>
-          <option value="unberth">Unberth (Desatracação)</option>
-          <option value="Fundeado">Fundeado</option>
-          <option value="Standby">Stand-by</option>
-          <option value="Fueling">Fueling</option>
-        </select>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_num_1" class="rot req">VLSFO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="f_num_1" placeholder="0.000" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_num_2" class="rot req">MGO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="f_num_2" placeholder="0.000" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_num_5" class="rot">FW Água (t)</label>
-        <input type="number" step="0.1" min="0" id="f_num_5" placeholder="0.0">
-      </div>
-
-      <div class="campo-grupo">
-        <label for="f_trash" class="rot">Lixo</label>
-        <select id="f_trash">
-          <option value="">—</option>
-          <option value="Solido">Sólido</option>
-          <option value="Liquido">Líquido</option>
-        </select>
-      </div>
-
-      <div class="campo-grupo full-width">
-        <label for="f_comments" class="rot">Comentários Adicionais / Ocorrências</label>
-        <input type="text" id="f_comments" placeholder="Praticagem, manobra, condições climáticas...">
-      </div>
-
-      <div class="full-width" style="margin-top: 4px;">
-        <button type="submit" class="btn btn-primary" id="btn-gravar-registro" style="width: 100%; min-height: 40px;">
-          Gravar Registro e Avançar
+    {% if v.proximo and v.proximo.marco %}
+      {% set p_escala = v.proximo.escala %}
+      {% set p_marco = v.proximo.marco %}
+      
+      <div class="cabecalho-bloco">
+        <div>
+          <span class="rot">Próxima Etapa Operacional</span>
+          <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — {{ p_marco.curto }}</h2>
+        </div>
+        <button class="btn btn-secondary" id="btn-sync-local-time" type="button" style="font-size: 10.5px; padding: 3px 8px;">
+          🕒 Sincronizar Relógio Local
         </button>
       </div>
-    </form>
+
+      <div class="caixa-assistente">
+        <div style="min-width: 0;">
+          <span class="rot">Condição da Escala</span>
+          <strong>{{ p_escala.porto_nome }} · {{ p_escala.condicao|upper }}</strong>
+        </div>
+        <span class="selo selo-acao">{{ p_escala.sentido }}</span>
+      </div>
+
+      <form class="form-grid lancar" data-offset="{{ p_escala.offset_padrao }}" data-escala="{{ p_escala.id }}" data-tipo="{{ p_marco.tipo }}" data-nome="{{ p_marco.curto }}">
+        <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
+        <input type="hidden" name="tipo" value="{{ p_marco.tipo }}">
+        <input type="hidden" name="offset" value="{{ p_escala.offset_padrao }}">
+
+        <div class="campo-grupo">
+          <label class="rot req">Data (Local)</label>
+          <input type="date" id="f_date" name="data" required>
+        </div>
+
+        <div class="campo-grupo">
+          <label class="rot req">Hora (Local)</label>
+          <input type="time" id="f_time" name="hora" required>
+        </div>
+
+        <div class="campo-grupo full-width">
+          <label class="rot req">Quem Preenche (Comandante / Oficial)</label>
+          <input type="text" id="campo-responsavel" name="nome_responsavel" placeholder="Nome do responsável pelo quarto" required>
+        </div>
+
+        <div class="campo-grupo">
+          <label class="rot req">VLSFO Tanque (t)</label>
+          <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="ROB VLSFO" required>
+        </div>
+
+        <div class="campo-grupo">
+          <label class="rot req">MGO Tanque (t)</label>
+          <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="ROB MGO" required>
+        </div>
+
+        <div class="campo-grupo">
+          <label class="rot">FW Água (t)</label>
+          <input type="number" step="0.1" min="0" name="fw" placeholder="0.0">
+        </div>
+
+        <div class="campo-grupo">
+          <label class="rot">Lixo</label>
+          <select name="lixo">
+            <option value="">—</option>
+            <option value="Solido">Sólido</option>
+            <option value="Liquido">Líquido</option>
+          </select>
+        </div>
+
+        <div class="campo-grupo full-width">
+          <label class="rot">Comentários / Ocorrências</label>
+          <input type="text" name="comentarios" placeholder="Condições climáticas, manobra, espera de prático...">
+        </div>
+
+        <div class="full-width" style="margin-top: 4px;">
+          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+            Gravar {{ p_marco.curto }} e Avançar
+          </button>
+          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+        </div>
+      </form>
+
+    {% elif v.proximo and v.proximo.carga %}
+      <!-- Form de Carga (Juruti ou Alumar) -->
+      {% set p_escala = v.proximo.escala %}
+      <div class="cabecalho-bloco">
+        <div>
+          <span class="rot">Movimentação de Carga</span>
+          <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — {{ "Carregamento" if v.proximo.carrega else "Descarga" }}</h2>
+        </div>
+      </div>
+      <form class="form-grid carregar" data-escala="{{ p_escala.id }}" data-tipo="carga">
+        <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
+        <div class="campo-grupo full-width">
+          <label class="rot req">Quem Preenche</label>
+          <input type="text" class="campo-responsavel-sec" name="nome_responsavel" required>
+        </div>
+        <div class="campo-grupo full-width">
+          <label class="rot req">Quantidade de Bauxita (MT)</label>
+          <input type="number" step="0.001" min="0" name="quantidade" placeholder="Ex: 58000.000" required>
+        </div>
+        <div class="full-width" style="margin-top: 6px;">
+          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+            Gravar Movimento de Carga
+          </button>
+          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+        </div>
+      </form>
+
+    {% elif v.proximo and v.proximo.bunker %}
+      <!-- Form de Abastecimento (Escala de Bunker) -->
+      {% set p_escala = v.proximo.escala %}
+      <div class="cabecalho-bloco">
+        <div>
+          <span class="rot">Bunker Recebido</span>
+          <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — Abastecimento</h2>
+        </div>
+      </div>
+      <form class="form-grid abastecer" data-escala="{{ p_escala.id }}" data-tipo="abastecimento">
+        <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
+        <div class="campo-grupo full-width">
+          <label class="rot req">Quem Preenche</label>
+          <input type="text" class="campo-responsavel-sec" name="nome_responsavel" required>
+        </div>
+        <div class="campo-grupo">
+          <label class="rot">VLSFO Recebido (t)</label>
+          <input type="number" step="0.001" min="0" name="vlsfo" placeholder="0.000">
+        </div>
+        <div class="campo-grupo">
+          <label class="rot">MGO Recebido (t)</label>
+          <input type="number" step="0.001" min="0" name="mgo" placeholder="0.000">
+        </div>
+        <div class="full-width" style="margin-top: 6px;">
+          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+            Gravar Abastecimento
+          </button>
+          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+        </div>
+      </form>
+
+    {% else %}
+      <div class="cabecalho-bloco">
+        <div>
+          <span class="rot">Viagem Concluída</span>
+          <h2 class="titulo-bloco">Ciclo Encerrado</h2>
+        </div>
+      </div>
+      <p style="color: var(--ok); font-size: 13.5px; padding: 10px 0;">
+        Meta atingida ou ciclo concluído. A viagem foi finalizada e os dados já alimentam a supervisão.
+      </p>
+    {% endif %}
   </div>
 
-  <!-- DIREITA: TABELA EM TEMPO REAL (SEM HASH) -->
+  <!-- DIREITA: LOGBOOK EM TEMPO REAL COM STATUS DE FILA POR LINHA -->
   <div class="cartao painel-direita">
     <div class="cabecalho-bloco">
       <div>
-        <span class="rot">Linha do Tempo</span>
+        <span class="rot">Linha do Tempo Auditada</span>
         <h2 class="titulo-bloco">Logbook Operacional</h2>
       </div>
-      <span style="font-size: 11px; color: var(--suave);">💡 Dica: Clique direito ou use ✏️ para retificar</span>
+      <span style="font-size: 11px; color: var(--suave);">💡 Use ✏️ para retificar lançamentos</span>
     </div>
 
     <div class="tabela-container">
       <table id="tabela-logbook">
         <thead>
           <tr>
+            <th>Status</th>
             <th>Ação</th>
-            <th>#</th>
             <th>Data/Hora</th>
-            <th>Local</th>
-            <th>Operação</th>
-            <th>Propósito</th>
+            <th>Porto</th>
+            <th>Marco</th>
             <th>VLSFO (t)</th>
             <th>MGO (t)</th>
             <th>FW (t)</th>
             <th>Lixo</th>
+            <th>Quem Lançou</th>
             <th>Comentários</th>
           </tr>
         </thead>
-        <tbody id="tabela-corpo"></tbody>
+        <tbody id="tabela-corpo">
+          {% for b in v.blocos %}
+            {% for m in b.marcos %}
+              {% if m.lancado %}
+                <tr data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
+                  <td>
+                    <!-- Indicador visual de fila por linha (fila.js) -->
+                    <span class="estado salvo" data-estado>salvo</span>
+                  </td>
+                  <td>
+                    <button type="button" class="btn-row-edit"
+                            onclick="abrirModalEdicaoMarco({{ b.escala.id }}, '{{ m.tipo }}', '{{ m.lancado.hora_local }}', '{{ b.escala.offset_padrao }}', '{{ m.lancado.rob_vlsfo or '' }}', '{{ m.lancado.rob_mgo or '' }}', '{{ m.lancado.fw or '' }}', '{{ m.lancado.lixo or '' }}', '{{ m.lancado.comentarios or '' }}', '{{ m.lancado.nome_responsavel }}')">
+                      ✏️ Editar
+                    </button>
+                  </td>
+                  <td class="num">{{ m.lancado.hora_local|br }}</td>
+                  <td><strong>{{ b.escala.porto_nome }}</strong></td>
+                  <td>
+                    <span class="selo selo-acao">{{ m.curto }}</span>
+                    {% if m.lancado.versao > 1 %}
+                      <span class="tag-retificado" title="{{ m.lancado.motivo_correcao }}">v{{ m.lancado.versao }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="num">{{ m.lancado.rob_vlsfo|mt if m.lancado.rob_vlsfo is not none else "—" }}</td>
+                  <td class="num">{{ m.lancado.rob_mgo|mt if m.lancado.rob_mgo is not none else "—" }}</td>
+                  <td class="num">{{ m.lancado.fw|mt(1) if m.lancado.fw is not none else "—" }}</td>
+                  <td>{{ m.lancado.lixo or "—" }}</td>
+                  <td>{{ m.lancado.nome_responsavel }}</td>
+                  <td style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ m.lancado.comentarios or '' }}">
+                    {{ m.lancado.comentarios or "—" }}
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>
 
 </div>
 
-<!-- MENU DE CONTEXTO (CLIQUE DIREITO) -->
-<div id="menu-contexto">
-  <div class="item-contexto" id="ctx-item-editar">
-    <span>✏️</span> <strong>Retificar Lançamento</strong>
-  </div>
-</div>
-
-<!-- MODAL: RETIFICAR OCORRÊNCIA (SEM HASH) -->
+<!-- MODAL: RETIFICAÇÃO CONTEXTUAL (SEM EXIBIÇÃO DE HASH) -->
 <div class="modal-overlay" id="modal-edicao">
   <div class="modal-box">
     <div class="modal-topo">
-      <h3 id="modal-edicao-titulo" style="color: var(--navy); font-size: 15px;">✏️ Retificar Ocorrência</h3>
+      <h3 style="color: var(--navy); font-size: 15px;">✏️ Retificar Ocorrência</h3>
       <button class="btn btn-secondary" id="btn-fechar-modal-edicao" type="button" style="padding: 2px 8px;">✕</button>
     </div>
     <p style="color: var(--suave); font-size: 12px; margin-bottom: 10px;">
-      A alteração atualizará os registros do banco de dados mantendo a versão anterior no histórico de auditoria.
+      A retificação preserva o rastro de auditoria gerando uma nova versão do evento.
     </p>
 
-    <form id="form-edicao" class="form-grid">
-      <input type="hidden" id="edit-id">
+    <form id="form-edicao" class="form-grid lancar">
+      <input type="hidden" id="edit-escala-id" name="escala_id">
+      <input type="hidden" id="edit-tipo" name="tipo">
+      <input type="hidden" id="edit-offset" name="offset">
 
       <div class="campo-grupo">
-        <label for="edit_date" class="rot req">Data (Local)</label>
-        <input type="date" id="edit_date" required>
+        <label class="rot req">Data</label>
+        <input type="date" id="edit-date" name="data" required>
       </div>
       <div class="campo-grupo">
-        <label for="edit_time" class="rot req">Hora (Local)</label>
-        <input type="time" id="edit_time" required>
+        <label class="rot req">Hora</label>
+        <input type="time" id="edit-time" name="hora" required>
       </div>
 
-      <div class="campo-grupo">
-        <label for="edit_mc_1" class="rot req">Agente</label>
-        <select id="edit_mc_1" required>
-          <option value="Orion">Orion</option>
-          <option value="Williams">Williams</option>
-          <option value="LBH">LBH</option>
-          <option value="Amaggi">Amaggi</option>
-        </select>
+      <div class="campo-grupo full-width">
+        <label class="rot req">Quem Retifica</label>
+        <input type="text" id="edit-responsavel" name="nome_responsavel" required>
       </div>
 
       <div class="campo-grupo">
-        <label for="edit_mc_2" class="rot req">Localidade</label>
-        <select id="edit_mc_2" required>
-          <option value="Alumar - MA">Alumar - MA</option>
-          <option value="Fazendinha">Fazendinha</option>
-          <option value="Juruti">Juruti</option>
-          <option value="Barra Norte">Barra Norte</option>
-          <option value="Icoaraci">Icoaraci</option>
-          <option value="Mosqueiro">Mosqueiro</option>
-          <option value="Itaqui">Itaqui</option>
-          <option value="Rio de Janeiro">Rio de Janeiro</option>
-          <option value="AJB">Águas Jurisdicionais Brasileiras (AJB)</option>
-        </select>
+        <label class="rot req">VLSFO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="edit-vlsfo" name="rob_vlsfo" required>
       </div>
 
       <div class="campo-grupo">
-        <label for="edit_mc_3" class="rot req">Propósito</label>
-        <select id="edit_mc_3" required>
-          <option value="Laden">Laden</option>
-          <option value="Loading">Loading</option>
-          <option value="Discharging">Discharging</option>
-          <option value="Bunkering">Bunkering</option>
-        </select>
+        <label class="rot req">MGO Tanque (t)</label>
+        <input type="number" step="0.001" min="0" id="edit-mgo" name="rob_mgo" required>
       </div>
 
       <div class="campo-grupo">
-        <label for="edit_mc_4" class="rot req">Ação</label>
-        <select id="edit_mc_4" required>
-          <option value="sailing">Sailing (Saída)</option>
-          <option value="arrival">Arrival (Chegada)</option>
-          <option value="berth">Berth (Atracação)</option>
-          <option value="unberth">Unberth (Desatracação)</option>
-          <option value="Fundeado">Fundeado</option>
-          <option value="Standby">Stand-by</option>
-          <option value="Fueling">Fueling</option>
-        </select>
+        <label class="rot">FW Água (t)</label>
+        <input type="number" step="0.1" min="0" id="edit-fw" name="fw">
       </div>
 
       <div class="campo-grupo">
-        <label for="edit_num_1" class="rot req">VLSFO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="edit_num_1" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="edit_num_2" class="rot req">MGO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="edit_num_2" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label for="edit_num_5" class="rot">FW Água (t)</label>
-        <input type="number" step="0.1" min="0" id="edit_num_5">
-      </div>
-
-      <div class="campo-grupo">
-        <label for="edit_trash" class="rot">Lixo</label>
-        <select id="edit_trash">
+        <label class="rot">Lixo</label>
+        <select id="edit-lixo" name="lixo">
           <option value="">—</option>
           <option value="Solido">Sólido</option>
           <option value="Liquido">Líquido</option>
@@ -318,13 +324,13 @@
       </div>
 
       <div class="campo-grupo full-width">
-        <label for="edit_comments" class="rot">Comentários / Ocorrências</label>
-        <input type="text" id="edit_comments">
+        <label class="rot">Comentários</label>
+        <input type="text" id="edit-comments" name="comentarios">
       </div>
 
       <div class="campo-grupo full-width">
-        <label for="edit_reason" class="rot req" style="color: var(--erro);">Motivo da Retificação (Obrigatório)</label>
-        <input type="text" id="edit_reason" placeholder="Ex: Correção de sondagem após aferição" required>
+        <label class="rot req" style="color: var(--erro);">Motivo da Retificação (Obrigatório)</label>
+        <input type="text" id="edit-reason" name="motivo_correcao" placeholder="Justificativa da alteração..." required>
       </div>
 
       <div class="full-width" style="margin-top: 4px;">
