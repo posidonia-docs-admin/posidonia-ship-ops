@@ -662,11 +662,55 @@ def test_o_logbook_acumula_os_marcos_e_o_topo_conta(cliente):
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
-    """Dois campos com o mesmo id fariam o JavaScript ler o errado."""
+    """Dois campos com o mesmo id fariam o JavaScript ler o errado. E o
+    formulario da etapa NAO pergunta de novo: o nome vem da barra."""
     entrar(cliente)
     html = cliente.get("/navio").text
     assert html.count('id="responsavel"') == 1
     assert html.index('id="responsavel"') < html.index('class="painel"')
+    assert 'name="nome_responsavel"' not in html
+
+
+def test_quem_preenche_nao_aparece_para_a_supervisao(cliente):
+    entrar(cliente, login="vlo")
+    for url in ("/painel", "/viagens", "/bunker", "/analises"):
+        assert 'id="responsavel"' not in cliente.get(url).text, url
+
+
+def test_o_formulario_sugere_o_ultimo_rob_e_pede_confirmacao(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    html = cliente.get("/navio").text
+    assert 'id="modal-confirmar"' in html and "Tem certeza?" in html
+    assert 'name="rob_vlsfo" placeholder' in html          # sem sugestao ainda: vazio, e opcional
+    assert 'name="rob_vlsfo"' in html and 'name="rob_vlsfo" required' not in html
+    _lancar_rob = cliente.post("/api/marco", json={
+        "escala_id": escala_de(cliente, ordem=10), "tipo": "sailing", "hora_local": "2026-03-01T18:40",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "sug-1",
+        "rob_vlsfo": "1402.5", "rob_mgo": "110.25", "fw": "180"})
+    assert _lancar_rob.status_code == 200
+    html = cliente.get("/navio").text
+    assert 'name="rob_vlsfo" value="1402.5" class="sugerido"' in html
+    assert 'name="rob_mgo" value="110.25" class="sugerido"' in html
+    assert 'name="fw" value="180.0" class="sugerido"' in html
+
+
+def test_as_listas_das_telas_vem_de_um_lugar_so(cliente):
+    from app import listas
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    for valor, rotulo in listas.LIXO[1:]:
+        assert '<option value="{}">{}</option>'.format(valor, rotulo) in html
+    for valor, rotulo in listas.MOTIVOS_PARADA_ADICIONAL:
+        assert '<option value="{}">{}</option>'.format(valor, rotulo) in html
+
+
+def test_o_pirata_esta_em_toda_pagina_com_sessao(cliente):
+    entrar(cliente, login="vlo")
+    html = cliente.get("/painel").text
+    assert "/static/pirata.js" in html and 'data-pirata-uma-em="10000"' in html
+    assert "pirata.js" not in cliente.get("/login").text
+    assert cliente.get("/static/pirata.js").status_code == 200
 
 
 def test_a_tela_e_um_painel_lado_a_lado(cliente):
@@ -1481,7 +1525,8 @@ def test_frota_deduz_a_pernada_do_ultimo_marco(cliente):
     lanca(alumar, "sailing", "2026-03-01T18:40", 1)
     html, linha = frota()
     assert "Navegando Alumar \u2192 Fazendinha" in linha and "ballast" in linha
-    assert "Sailing \u00b7 Alumar" in linha and "01/03/2026 18:40" in linha
+    assert "Sailing \u00b7 <span class=\"porto-chip porto-alumar\">Alumar</span>" in linha
+    assert "01/03/2026 18:40" in linha
     assert "nesta pernada" in linha                         # a hora esta correndo
     assert "<b>1<small>de 4 navios" in html                 # so o Pathfinder saiu
     ha = linha[linha.index('class="ha correndo"'):]
@@ -1622,7 +1667,23 @@ def test_analises_desenha_o_grafico_e_o_esconde_quando_pedido(cliente):
     assert 'class="legenda-svg"' in html                    # duas series: legenda presente
     assert 'style="' not in html
     sem = cliente.get("/analises?base=viagens&l=navio&c=situacao&v=viagens&agg=soma&grafico=0").text
-    assert '<svg class="grafico-svg"' not in sem
+    assert '<svg class="grafico-svg"' not in sem and "Só a tabela" in sem
+
+
+def test_analises_oferece_a_serie_historica_quando_o_tempo_esta_nas_linhas(cliente):
+    entrar(cliente)
+    _percorrer(cliente)                                       # marcos em marco/2026
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-04-10T08:00", "abr-1")   # e um em abril
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    por_mes = "/analises?base=marcos&l=mes&c=navio&v=marcos&agg=soma"
+    html = cliente.get(por_mes).text
+    assert "data-serie-historica" in html                    # a opcao existe...
+    html = cliente.get(por_mes + "&grafico=linha").text
+    assert 'data-grafico="linha"' in html and 'class="linha-svg"' in html   # ...e desenha
+    por_navio = cliente.get("/analises?base=marcos&l=navio&v=marcos&agg=soma&grafico=linha").text
+    assert "data-serie-historica" not in por_navio and 'data-grafico="linha"' not in por_navio
+    assert "deixe só o mês" in por_navio
 
 
 def test_base_marcos_traz_fw_e_lixo(cliente):
@@ -1721,3 +1782,69 @@ def test_importar_csv_com_erro_nao_grava(cliente):
     assert "Corrija o arquivo" in r.text
     with closing(db.conectar()) as conn:
         assert conn.execute("SELECT COUNT(*) FROM viagem WHERE numero = 'APT25040'").fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# O Statement of Facts na parada
+# ---------------------------------------------------------------------------
+
+def test_sof_marcos_e_dados_pela_api_e_na_tela(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    # chega a Juruti: a parada do SOF passa a ser Juruti
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T18:40", "sof-0")
+    _lancar(cliente, escala_de(cliente, ordem=20), "arrival", "2026-03-03T18:40", "sof-1")
+    _lancar(cliente, escala_de(cliente, ordem=20), "sailing", "2026-03-03T19:40", "sof-2")
+    juruti = escala_de(cliente, ordem=30)
+    html = cliente.get("/navio").text
+    assert 'data-sof="{}"'.format(juruti) in html and "Statement of Facts — Juruti" in html
+    assert 'name="tipo_sof"' in html and '<option value="nor_tendered">' in html
+    assert 'name="draft_fwd_atracacao"' in html and 'name="porao_7"' in html
+
+    r = cliente.post("/api/sof/marco", json={
+        "escala_id": juruti, "tipo": "nor_tendered", "hora_local": "2026-03-05T12:50",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "observacao": "NOR por e-mail"})
+    assert r.status_code == 200, r.text
+    r = cliente.post("/api/sof/marco", json={
+        "escala_id": juruti, "tipo": "nor_tendered", "hora_local": "2026-03-05T13:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt."})
+    assert r.status_code == 200                              # repetir substitui
+    r = cliente.post("/api/sof/marco", json={
+        "escala_id": juruti, "tipo": "inventado", "hora_local": "2026-03-05T13:00",
+        "offset": "-03:00", "nome_responsavel": "Cmt."})
+    assert r.status_code == 422
+    r = cliente.post("/api/sof/dados", json={
+        "escala_id": juruti, "nome_responsavel": "Cmt.",
+        "dados": {"draft_fwd_atracacao": "4,44", "draft_aft_atracacao": "7,59", "porao_1": "11501", "taxa_carga": "3563.52"}})
+    assert r.status_code == 200, r.text
+    r = cliente.post("/api/sof/dados", json={"escala_id": juruti, "nome_responsavel": "Cmt.", "dados": {"porao_2": "4860"}})
+    assert r.status_code == 200                              # mescla: o porao 1 continua
+    r = cliente.post("/api/sof/dados", json={"escala_id": juruti, "nome_responsavel": "Cmt.", "dados": {"porao_2": "muito"}})
+    assert r.status_code == 422
+
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM sof_marco WHERE escala_id = ?", (juruti,)).fetchone()[0] == 1
+        assert conn.execute("SELECT hora_local FROM sof_marco WHERE escala_id = ?", (juruti,)).fetchone()[0] == "2026-03-05T13:00"
+        import json as _json
+        dados = _json.loads(conn.execute("SELECT dados FROM sof_escala WHERE escala_id = ?", (juruti,)).fetchone()[0])
+        assert dados == {"draft_fwd_atracacao": 4.44, "draft_aft_atracacao": 7.59, "porao_1": 11501.0,
+                         "taxa_carga": 3563.52, "porao_2": 4860.0}
+
+    html = cliente.get("/navio").text
+    assert "NOR tendered" in html and "05/03/2026 13:00" in html
+    assert 'name="porao_1" data-sof-campo data-rotulo="Carga no porão 1" value="11501.0"' in html
+    assert 'class="linha-sof"' in html                       # e no logbook
+
+
+def test_sof_de_outro_navio_e_bloqueado(cliente):
+    entrar(cliente, "navio.pioneer")
+    cliente.get("/navio")
+    cliente.get("/logout")
+    entrar(cliente, "navio.pathfinder")
+    cliente.get("/navio")
+    with closing(db.conectar()) as conn:
+        alheia = conn.execute(
+            "SELECT e.id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id WHERE vg.navio_id = 2 AND e.ordem = 30").fetchone()[0]
+    r = cliente.post("/api/sof/marco", json={"escala_id": alheia, "tipo": "pratico_a_bordo",
+                                            "hora_local": "2026-03-05T13:00", "offset": "-03:00", "nome_responsavel": "X"})
+    assert r.status_code == 403

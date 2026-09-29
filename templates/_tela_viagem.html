@@ -92,7 +92,7 @@
         <span class="selo selo-acao">{{ p_escala.sentido }}</span>
       </div>
 
-      <form class="form-grid lancar" data-offset="{{ p_escala.offset_padrao }}" data-escala="{{ p_escala.id }}" data-tipo="{{ p_marco.tipo }}" data-nome="{{ p_marco.curto }}">
+      <form class="form-grid lancar" data-offset="{{ p_escala.offset_padrao }}" data-escala="{{ p_escala.id }}" data-tipo="{{ p_marco.tipo }}" data-nome="{{ p_marco.curto }}" data-porto="{{ p_escala.porto_nome }}">
         <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
         <input type="hidden" name="tipo" value="{{ p_marco.tipo }}">
         <input type="hidden" name="offset" value="{{ p_escala.offset_padrao }}">
@@ -107,32 +107,30 @@
           <input type="time" id="f_time" name="hora" required>
         </div>
 
-        <div class="campo-grupo full-width">
-          <label class="rot req">Quem Preenche (Comandante / Oficial)</label>
-          <input type="text" id="campo-responsavel" name="nome_responsavel" placeholder="Nome do responsável pelo quarto" required>
+        {#
+          ROB e FW sao opcionais no servidor, e aqui tambem: exigir os dois
+          travaria um Arrival de madrugada por falta de uma leitura. A
+          SUGESTAO e o ultimo valor lancado — ele corrige o que mudou.
+        #}
+        <div class="campo-grupo">
+          <label class="rot">VLSFO a bordo (t)</label>
+          <input type="number" step="0.001" min="0" name="rob_vlsfo"{% if sugestao.rob_vlsfo is defined %} value="{{ sugestao.rob_vlsfo }}" class="sugerido" title="sugestão: o último ROB lançado"{% endif %} placeholder="ROB VLSFO">
         </div>
 
         <div class="campo-grupo">
-          <label class="rot req">VLSFO Tanque (t)</label>
-          <input type="number" step="0.001" min="0" name="rob_vlsfo" placeholder="ROB VLSFO" required>
+          <label class="rot">MGO a bordo (t)</label>
+          <input type="number" step="0.001" min="0" name="rob_mgo"{% if sugestao.rob_mgo is defined %} value="{{ sugestao.rob_mgo }}" class="sugerido" title="sugestão: o último ROB lançado"{% endif %} placeholder="ROB MGO">
         </div>
 
         <div class="campo-grupo">
-          <label class="rot req">MGO Tanque (t)</label>
-          <input type="number" step="0.001" min="0" name="rob_mgo" placeholder="ROB MGO" required>
-        </div>
-
-        <div class="campo-grupo">
-          <label class="rot">FW Água (t)</label>
-          <input type="number" step="0.1" min="0" name="fw" placeholder="0.0">
+          <label class="rot">Água doce FW (t)</label>
+          <input type="number" step="0.1" min="0" name="fw"{% if sugestao.fw is defined %} value="{{ sugestao.fw }}" class="sugerido" title="sugestão: a última leitura"{% endif %} placeholder="0,0">
         </div>
 
         <div class="campo-grupo">
           <label class="rot">Lixo</label>
           <select name="lixo">
-            <option value="">—</option>
-            <option value="Solido">Sólido</option>
-            <option value="Liquido">Líquido</option>
+            {% for valor, rotulo in LISTAS.LIXO %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
           </select>
         </div>
 
@@ -158,12 +156,8 @@
           <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — {{ "Carregamento" if v.proximo.carrega else "Descarga" }}</h2>
         </div>
       </div>
-      <form class="form-grid carregar" data-escala="{{ p_escala.id }}" data-tipo="carga">
+      <form class="form-grid carregar" data-escala="{{ p_escala.id }}" data-tipo="carga" data-porto="{{ p_escala.porto_nome }}">
         <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
-        <div class="campo-grupo full-width">
-          <label class="rot req">Quem Preenche</label>
-          <input type="text" class="campo-responsavel-sec" name="nome_responsavel" required>
-        </div>
         <div class="campo-grupo full-width">
           <label class="rot req">Quantidade de Bauxita (MT)</label>
           <input type="number" step="0.001" min="0" name="quantidade" placeholder="Ex: 58000.000" required>
@@ -185,12 +179,8 @@
           <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — Abastecimento</h2>
         </div>
       </div>
-      <form class="form-grid abastecer" data-escala="{{ p_escala.id }}" data-tipo="abastecimento">
+      <form class="form-grid abastecer" data-escala="{{ p_escala.id }}" data-tipo="abastecimento" data-porto="{{ p_escala.porto_nome }}">
         <input type="hidden" name="escala_id" value="{{ p_escala.id }}">
-        <div class="campo-grupo full-width">
-          <label class="rot req">Quem Preenche</label>
-          <input type="text" class="campo-responsavel-sec" name="nome_responsavel" required>
-        </div>
         <div class="campo-grupo">
           <label class="rot">VLSFO Recebido (t)</label>
           <input type="number" step="0.001" min="0" name="vlsfo" placeholder="0.000">
@@ -220,6 +210,55 @@
     {% endif %}
 
     {#
+      O Statement of Facts da parada em operacao: os marcos alem dos quatro
+      (NOR, pratico, primeiro cabo, inicio e fim de operacao, draft survey...)
+      e os numeros (calados, taxa de carga, carga por porao). Opcional, atras
+      de um clique — o circuito continua sendo os quatro marcos.
+    #}
+    {% if parada_sof %}
+    <details class="sof" data-sof="{{ parada_sof.escala.id }}">
+      <summary>Statement of Facts — {{ parada_sof.escala.porto_nome }}{% if parada_sof.sof or parada_sof.sof_dados %} <span class="selo selo-ok">{{ parada_sof.sof|length }} marco{{ "" if parada_sof.sof|length == 1 else "s" }}{% if parada_sof.sof_dados %} · dados{% endif %}</span>{% endif %}</summary>
+      <form class="form-grid sof-marco" data-offset="{{ parada_sof.escala.offset_padrao }}" data-porto="{{ parada_sof.escala.porto_nome }}">
+        <input type="hidden" name="escala_id" value="{{ parada_sof.escala.id }}">
+        <div class="campo-grupo full-width">
+          <label class="rot req">Marco do SOF</label>
+          <select name="tipo_sof" required>
+            {% for chave, rotulo in parada_sof.sof_marcos_possiveis %}<option value="{{ chave }}">{{ rotulo }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="campo-grupo"><label class="rot req">Data</label><input type="date" name="data" required></div>
+        <div class="campo-grupo"><label class="rot req">Hora</label><input type="time" name="hora" required></div>
+        <div class="campo-grupo full-width"><label class="rot">Observação</label><input type="text" name="observacao" placeholder="ex.: loading stopped by terminal"></div>
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-secondary btn-largo">Gravar marco do SOF</button>
+          <span class="estado estado-centro" data-estado></span>
+        </div>
+      </form>
+      {% if parada_sof.sof %}
+      <ul class="lista-sof">
+        {% for m in parada_sof.sof %}<li><span class="num">{{ m.hora_local|br }}</span> {{ m.rotulo }}{% if m.observacao %} <small>· {{ m.observacao }}</small>{% endif %}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if parada_sof.escala.tipo_escala in ("operacional", "encerramento") %}
+      <form class="form-grid sof-dados" data-porto="{{ parada_sof.escala.porto_nome }}">
+        <input type="hidden" name="escala_id" value="{{ parada_sof.escala.id }}">
+        {% set atuais = {} %}{% for d in parada_sof.sof_dados %}{% set _ = atuais.update({d.chave: d.valor}) %}{% endfor %}
+        {% for c in campos_sof %}
+        <div class="campo-grupo">
+          <label class="rot">{{ c.rotulo }} ({{ c.unidade }})</label>
+          <input type="number" step="0.01" min="0" name="{{ c.chave }}" data-sof-campo data-rotulo="{{ c.rotulo }}"{% if c.chave in atuais %} value="{{ atuais[c.chave] }}"{% endif %}>
+        </div>
+        {% endfor %}
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-secondary btn-largo">Gravar dados do SOF</button>
+          <span class="estado estado-centro" data-estado></span>
+        </div>
+      </form>
+      {% endif %}
+    </details>
+    {% endif %}
+
+    {#
       A parada adicional (bunker em Icoaraci ou Itaqui, espera de mare) de
       volta ao painel: entra na posicao certa da viagem e aparece no roteiro,
       de onde tambem pode ser tirada.
@@ -236,18 +275,13 @@
         <div class="campo-grupo">
           <label class="rot req">Motivo</label>
           <select name="motivo">
-            <option value="bunker">Bunker — abastecimento</option>
-            <option value="espera_mare">Espera de maré</option>
-            <option value="docagem">Docagem</option>
-            <option value="outro">Outro</option>
+            {% for valor, rotulo in LISTAS.MOTIVOS_PARADA_ADICIONAL %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
           </select>
         </div>
         <div class="campo-grupo">
           <label class="rot req">Atraca?</label>
           <select name="tipo_escala">
-            <option value="fundeio">Não — fica fundeado</option>
-            <option value="operacional">Sim — atraca</option>
-            <option value="passagem">Só passagem</option>
+            {% for valor, rotulo in LISTAS.TIPOS_PARADA_ADICIONAL %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
           </select>
         </div>
         <div class="campo-grupo">
@@ -333,6 +367,18 @@
                 </tr>
               {% endif %}
             {% endfor %}
+            {% for s in b.sof %}
+              <tr class="linha-sof">
+                <td><span class="selo selo-fechada">SOF</span></td>
+                <td></td>
+                <td class="num">{{ s.hora_local|br }}</td>
+                <td><span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span></td>
+                <td>{{ s.rotulo }}</td>
+                <td colspan="4" class="td-comentario" title="{{ s.observacao or '' }}">{{ s.observacao or "—" }}</td>
+                <td>{{ s.nome_responsavel }}</td>
+                <td></td>
+              </tr>
+            {% endfor %}
           {% endfor %}
         </tbody>
       </table>
@@ -366,19 +412,14 @@
         <input type="time" id="edit-time" name="hora" required>
       </div>
 
-      <div class="campo-grupo full-width">
-        <label class="rot req">Quem Retifica</label>
-        <input type="text" id="edit-responsavel" name="nome_responsavel" required>
+      <div class="campo-grupo">
+        <label class="rot">VLSFO a bordo (t)</label>
+        <input type="number" step="0.001" min="0" id="edit-vlsfo" name="rob_vlsfo">
       </div>
 
       <div class="campo-grupo">
-        <label class="rot req">VLSFO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="edit-vlsfo" name="rob_vlsfo" required>
-      </div>
-
-      <div class="campo-grupo">
-        <label class="rot req">MGO Tanque (t)</label>
-        <input type="number" step="0.001" min="0" id="edit-mgo" name="rob_mgo" required>
+        <label class="rot">MGO a bordo (t)</label>
+        <input type="number" step="0.001" min="0" id="edit-mgo" name="rob_mgo">
       </div>
 
       <div class="campo-grupo">
@@ -389,9 +430,7 @@
       <div class="campo-grupo">
         <label class="rot">Lixo</label>
         <select id="edit-lixo" name="lixo">
-          <option value="">—</option>
-          <option value="Solido">Sólido</option>
-          <option value="Liquido">Líquido</option>
+          {% for valor, rotulo in LISTAS.LIXO %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
         </select>
       </div>
 
@@ -411,5 +450,20 @@
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- "TEM CERTEZA?": o resumo do que vai ser gravado, antes de gravar -->
+<div class="modal-overlay" id="modal-confirmar">
+  <div class="modal-box modal-confirmar">
+    <div class="modal-topo">
+      <h3 class="modal-titulo">Tem certeza?</h3>
+    </div>
+    <p class="modal-nota" id="confirmar-titulo"></p>
+    <dl class="resumo-confirmacao" id="confirmar-resumo"></dl>
+    <div class="modal-acoes">
+      <button type="button" class="btn btn-secondary" id="btn-voltar">Voltar e corrigir</button>
+      <button type="button" class="btn btn-primary" id="btn-confirmar">Sim, gravar</button>
+    </div>
   </div>
 </div>

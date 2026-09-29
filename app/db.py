@@ -244,6 +244,25 @@ _TABELAS_POSTERIORES = (
     "  consulta TEXT NOT NULL,"
     "  criado_por TEXT,"
     "  criado_em TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS sof_marco ("
+    "  id INTEGER PRIMARY KEY,"
+    "  escala_id INTEGER NOT NULL REFERENCES escala(id),"
+    "  tipo TEXT NOT NULL,"
+    "  hora_local TEXT NOT NULL,"
+    "  offset_utc TEXT NOT NULL,"
+    "  hora_utc TEXT NOT NULL,"
+    "  registrado_por TEXT NOT NULL,"
+    "  registrado_em TEXT NOT NULL,"
+    "  nome_responsavel TEXT NOT NULL,"
+    "  observacao TEXT,"
+    "  UNIQUE (escala_id, tipo))",
+    "CREATE INDEX IF NOT EXISTS ix_sof_marco_escala ON sof_marco (escala_id, hora_utc)",
+    "CREATE TABLE IF NOT EXISTS sof_escala ("
+    "  escala_id INTEGER PRIMARY KEY REFERENCES escala(id),"
+    "  dados TEXT NOT NULL,"
+    "  registrado_por TEXT NOT NULL,"
+    "  registrado_em TEXT NOT NULL,"
+    "  nome_responsavel TEXT NOT NULL)",
 )
 
 

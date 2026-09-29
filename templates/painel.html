@@ -10,14 +10,6 @@
   A posição é deduzida do último marco, nunca digitada.
 #}
 
-{% block lateral_rodape %}
-  <div class="responsavel">
-    <label for="responsavel">Quem preenche</label>
-    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
-    <span class="dica">Fica registrado em cada correção.</span>
-  </div>
-{% endblock %}
-
 {% block conteudo %}
 <div class="topo-conteudo">
   <span class="codigo">Frota</span>
@@ -76,7 +68,7 @@
     </span>
     <span class="ha{{ " correndo" if n.ha else "" }}">{{ n.ha or "—" }}<small>{{ "nesta pernada" if n.ha else "" }}</small></span>
     <span class="ultimo">
-      {% if n.situacao.ultimo %}{{ n.situacao.ultimo.curto }} · {{ n.situacao.ultimo.porto }}
+      {% if n.situacao.ultimo %}{{ n.situacao.ultimo.curto }} · <span class="porto-chip {{ n.situacao.ultimo.codigo|classe_porto }}">{{ n.situacao.ultimo.porto }}</span>
         <span class="num">{{ n.situacao.ultimo.hora_local|br }}</span>
       {% else %}<span class="vazio">nenhum ainda</span>{% endif %}
     </span>

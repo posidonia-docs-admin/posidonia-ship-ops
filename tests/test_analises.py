@@ -132,3 +132,22 @@ def test_grafico_agrupa_barras_e_transpoe_quando_as_series_nao_cabem():
     assert analises.grafico(r, "descarregado", "soma")["legenda"] == []
     r = analises.pivotar([{"dims": {"navio": (1, "A")}, "medidas": {"horas": -2.0}}], ["navio"], [], "horas", "soma", {})
     assert analises.grafico(r, "horas", "soma") is None
+
+
+def test_serie_historica_liga_os_meses_e_quebra_onde_nao_ha_valor():
+    linhas = []
+    for m, v in ((1, 100), (2, 120), (3, None), (4, 90), (5, 130)):
+        linhas.append({"dims": {"navio": (1, "A"), "mes": ("2026-%02d" % m, "%s/2026" % analises.MESES[m - 1])},
+                       "medidas": {"descarregado": v}})
+    r = analises.pivotar(linhas, ["mes"], [], "descarregado", "soma", {})
+    g = analises.grafico_linha(r, "descarregado", "soma")
+    assert g and len(g["series"]) == 1 and g["legenda"] == []
+    s = g["series"][0]
+    assert len(s["caminhos"]) == 2 and len(s["pontos"]) == 4     # o buraco de marco quebra a linha
+    assert s["ultimo"]["valor"] == "130"
+    assert [e["rotulo"] for e in g["eixo_x"]] == ["jan/26", "fev/26", "mar/26", "abr/26", "mai/26"]
+    assert analises.eh_serie_historica(["mes"]) and not analises.eh_serie_historica(["navio"])
+    assert not analises.eh_serie_historica(["mes", "navio"])
+    # com um ponto so nao ha serie
+    r1 = analises.pivotar(linhas[:1], ["mes"], [], "descarregado", "soma", {})
+    assert analises.grafico_linha(r1, "descarregado", "soma") is None

@@ -87,6 +87,8 @@ def pernada_atual(blocos) -> dict:
     return {
         "titulo": titulo, "detalhe": detalhe, "condicao": condicao,
         "ultimo": {"curto": marco["curto"], "porto": porto,
+                   # a cor do porto na Frota; os testes de unidade montam escalas sem o codigo
+                   "codigo": escala["codigo_porto"] if "codigo_porto" in escala.keys() else None,
                    "hora_local": marco["lancado"]["hora_local"],
                    "hora_utc": marco["lancado"]["hora_utc"]},
     }

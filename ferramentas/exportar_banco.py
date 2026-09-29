@@ -183,6 +183,27 @@ def exportar(conn, saida: Path) -> dict:
          {4: "#,##0", 5: "#,##0", 6: "#,##0", 7: dt})
     contagens["Carga"] = len(linhas)
 
+    # ---- SOF: marcos e dados da parada
+    from app import sof as _sof
+    linhas = [[r["nome_oficial"].title(), r["numero"], r["porto"], "marco", _sof.CHAVES_MARCOS.get(r["tipo"], (r["tipo"],))[0],
+               _data(r["hora_local"]), None, r["observacao"], r["nome_responsavel"]]
+              for r in conn.execute(
+            "SELECT n.nome_oficial, vg.numero, p.nome AS porto, s.tipo, s.hora_local, s.observacao, s.nome_responsavel "
+            "  FROM sof_marco s JOIN escala e ON e.id = s.escala_id JOIN viagem vg ON vg.id = e.viagem_id "
+            "  JOIN navio n ON n.id = vg.navio_id JOIN porto p ON p.codigo = e.codigo_porto "
+            " ORDER BY vg.navio_id, vg.id, e.ordem, s.hora_utc")]
+    for r in conn.execute(
+            "SELECT n.nome_oficial, vg.numero, p.nome AS porto, e.id AS escala_id, s.nome_responsavel "
+            "  FROM sof_escala s JOIN escala e ON e.id = s.escala_id JOIN viagem vg ON vg.id = e.viagem_id "
+            "  JOIN navio n ON n.id = vg.navio_id JOIN porto p ON p.codigo = e.codigo_porto "
+            " ORDER BY vg.navio_id, vg.id, e.ordem"):
+        for d in _sof.dados_da_escala(conn, r["escala_id"]):
+            linhas.append([r["nome_oficial"].title(), r["numero"], r["porto"], "dado",
+                           "{} ({})".format(d["rotulo"], d["unidade"]), None, d["valor"], None, r["nome_responsavel"]])
+    _aba(wb, "SOF", ["Navio", "Viagem", "Porto", "Tipo", "Marco ou dado", "Hora local", "Valor", "Observação",
+                     "Quem lançou"], linhas, {0: 20, 4: 36, 5: 17, 7: 40, 8: 34}, {5: dt, 6: "#,##0.00"})
+    contagens["SOF"] = len(linhas)
+
     # ---- Premissas
     orcado = pernadas.premissas(conn)
     nomes = {p[0]: p[2] for p in pernadas.PERNADAS}

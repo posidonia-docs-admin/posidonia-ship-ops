@@ -160,7 +160,45 @@
   servidor em SVG — a CSP não deixa carregar biblioteca de fora, e barras são
   geometria simples. Cores por atributo `fill`, nunca por style=.
 #}
-{% if grafico %}
+{% if grafico or pode_linha or tipo_grafico == "0" %}
+<div class="alternador-grafico">
+  <span class="rot">Gráfico</span>
+  <span class="alternador">
+    <a class="{{ "ativo" if tipo_grafico == "barras" else "" }}" href="{{ url_grafico.barras }}">Barras</a>
+    {% if pode_linha %}<a class="{{ "ativo" if tipo_grafico == "linha" else "" }}" href="{{ url_grafico.linha }}" data-serie-historica>Série histórica</a>{% endif %}
+    <a class="{{ "ativo" if tipo_grafico == "0" else "" }}" href="{{ url_grafico["0"] }}">Só a tabela</a>
+  </span>
+  {% if not pode_linha %}<span class="dica-caixa">Para a série histórica, deixe só o mês, o trimestre ou o ano nas linhas.</span>{% endif %}
+</div>
+{% endif %}
+{% if grafico and tipo_grafico == "linha" %}
+<figure class="grafico" data-grafico="linha">
+  <svg class="grafico-svg" viewBox="0 0 {{ grafico.largura }} {{ grafico.altura }}" role="img"
+       aria-label="{{ nome }} — série histórica">
+    {% for t in grafico.ticks %}
+      <line class="grade" x1="{{ grafico.plot.x }}" x2="{{ grafico.plot.x + grafico.plot.w }}" y1="{{ t.y }}" y2="{{ t.y }}"></line>
+      <text class="tick" x="{{ grafico.plot.x - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.rotulo }}</text>
+    {% endfor %}
+    {% for s in grafico.series %}
+      {% for d in s.caminhos %}<path class="linha-svg" d="{{ d }}" fill="none" stroke="{{ s.cor }}"></path>{% endfor %}
+      {% for pt in s.pontos %}
+        <circle class="ponto-svg" cx="{{ pt.x }}" cy="{{ pt.y }}" r="4" fill="{{ s.cor }}"><title>{{ pt.titulo }}</title></circle>
+      {% endfor %}
+      {% if s.ultimo %}<text class="valor-svg" x="{{ s.ultimo.x }}" y="{{ s.ultimo.y - 9 }}" text-anchor="end">{{ s.ultimo.valor }}</text>{% endif %}
+    {% endfor %}
+    {% for e in grafico.eixo_x %}
+      <text class="rotulo-x" x="{{ e.x }}" y="{{ grafico.plot.y + grafico.plot.h + 18 }}" text-anchor="middle"><title>{{ e.titulo }}</title>{{ e.rotulo }}</text>
+    {% endfor %}
+    <line class="eixo" x1="{{ grafico.plot.x }}" x2="{{ grafico.plot.x + grafico.plot.w }}" y1="{{ grafico.plot.y + grafico.plot.h }}" y2="{{ grafico.plot.y + grafico.plot.h }}"></line>
+  </svg>
+  {% if grafico.legenda %}
+  <ul class="legenda-svg">
+    {% for s in grafico.legenda %}<li><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 6h12" stroke="{{ s.cor }}" stroke-width="2"></path><circle cx="7" cy="6" r="3" fill="{{ s.cor }}"></circle></svg>{{ s.rotulo }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <figcaption>ponto sem valor quebra a linha: onde não houve viagem, não há número · passe o mouse nos pontos</figcaption>
+</figure>
+{% elif grafico %}
 <figure class="grafico" data-grafico>
   <svg class="grafico-svg" viewBox="0 0 {{ grafico.largura }} {{ grafico.altura }}" role="img"
        aria-label="{{ nome }} — {{ eixos }}">
@@ -186,7 +224,7 @@
     {% for s in grafico.legenda %}<li><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="3" fill="{{ s.cor }}"></rect></svg>{{ s.rotulo }}</li>{% endfor %}
   </ul>
   {% endif %}
-  <figcaption><a href="{{ sem_grafico }}">ocultar gráfico</a> · passe o mouse nas barras para ver o valor</figcaption>
+  <figcaption>passe o mouse nas barras para ver o valor</figcaption>
 </figure>
 {% endif %}
 
@@ -205,7 +243,7 @@
     <tbody>
       {% for l in resultado.linhas %}
       <tr>
-        {% for r in l.rotulos %}<td class="rotulo{{ " sub" if not loop.first else "" }}">{{ r }}</td>{% endfor %}
+        {% for r in l.rotulos %}<td class="rotulo{{ " sub" if not loop.first else "" }}">{% if q.l[loop.index0] == "porto" and r in codigo_do_porto %}<span class="porto-chip {{ codigo_do_porto[r]|classe_porto }}">{{ r }}</span>{% else %}{{ r }}{% endif %}</td>{% endfor %}
         {% if not l.rotulos %}<td class="rotulo">Total</td>{% endif %}
         {% for v in l.celulas %}<td class="v{{ " vazio" if v is none else "" }}">{{ formatar(v, q.v, q.agg) }}</td>{% endfor %}
         <td class="v total">{{ formatar(l.total, q.v, q.agg) }}</td>

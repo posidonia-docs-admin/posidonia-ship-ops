@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, pernadas, viagens
+from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, listas, pernadas, sof, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -71,6 +71,7 @@ def classe_porto(codigo: str) -> str:
 
 
 templates.env.filters["classe_porto"] = classe_porto
+templates.env.globals["LISTAS"] = listas
 
 
 def formato_br(iso):
@@ -395,6 +396,10 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "movimenta_carga": escala["condicao"] in ("loading", "discharging"),
             "carrega": escala["condicao"] == "loading",
             "carga": carga,
+            # o Statement of Facts da parada: marcos alem dos quatro, e os numeros
+            "sof": sof.marcos_da_escala(conn, escala["id"]),
+            "sof_dados": sof.dados_da_escala(conn, escala["id"]),
+            "sof_marcos_possiveis": sof.marcos_para(escala["tipo_escala"]),
             **_janela(lancados.values()),
         })
     return saida
@@ -517,8 +522,27 @@ def _contexto_navio(conta) -> dict:
                    for b in (corrente["blocos"] if corrente else []))
     total = sum(len(b["marcos"]) for b in (corrente["blocos"] if corrente else []))
 
+    # A sugestao para os campos de ROB e FW: o que o ultimo marco lancado
+    # trouxe. O comandante corrige o que mudou, em vez de digitar tudo de novo.
+    ultimo = (corrente["situacao"] or {}).get("marco") if corrente else None
+    lancado = ultimo["lancado"] if ultimo else None
+    sugestao = {chave: lancado[chave] for chave in ("rob_vlsfo", "rob_mgo", "fw")} if lancado else {}
+
+    # A parada do SOF: a que esta sendo operada agora — a proxima etapa, ou a
+    # ultima com marco quando a viagem ja acabou.
+    parada_sof = None
+    if corrente:
+        if corrente["proximo"]:
+            parada_sof = next((b for b in corrente["blocos"]
+                               if b["escala"]["id"] == corrente["proximo"]["escala"]["id"]), None)
+        if parada_sof is None:
+            com_marco = [b for b in corrente["blocos"] if any(m["lancado"] for m in b["marcos"])]
+            parada_sof = com_marco[-1] if com_marco else None
+
     return {"conta": conta, "lista": lista, "portos": portos,
-            "corrente": corrente, "lancados": lancados, "total": total}
+            "corrente": corrente, "lancados": lancados, "total": total,
+            "sugestao": {k: v for k, v in sugestao.items() if v is not None},
+            "parada_sof": parada_sof, "campos_sof": sof.campos_dados()}
 
 
 @app.get("/navio", response_class=HTMLResponse)
@@ -1247,6 +1271,7 @@ def analises_tela(request: Request, formato: str = ""):
         linhas = analises.carregar(conn, q["base"])
         salvos = conn.execute(
             "SELECT id, nome, consulta FROM relatorio_salvo ORDER BY nome").fetchall()
+        portos_nome = conn.execute("SELECT nome, codigo FROM porto").fetchall()
     resultado = analises.pivotar(linhas, q["l"], q["c"], q["v"], q["agg"], q["filtros"])
 
     if formato == "csv":
@@ -1257,6 +1282,9 @@ def analises_tela(request: Request, formato: str = ""):
 
     disponiveis = analises.valores_disponiveis(linhas, q["base"])
     nome, eixos = analises.titulo(q["v"], q["agg"], q["l"], q["c"])
+    tipo_grafico = request.query_params.get("grafico") or "barras"
+    if tipo_grafico == "linha" and not analises.eh_serie_historica(q["l"]):
+        tipo_grafico = "barras"
     usadas = set(q["l"]) | set(q["c"])
 
     def tira_de(lista, d):
@@ -1295,10 +1323,15 @@ def analises_tela(request: Request, formato: str = ""):
         "url_base": {b: _consulta_para_url(dict(PADRAO_ANALISE, filtros=q["filtros"]), base=b,
                                             **PADRAO_POR_BASE[b])
                      for b in analises.BASES},
-        "grafico": analises.grafico(resultado, q["v"], q["agg"]) if request.query_params.get("grafico") != "0" else None,
-        "sem_grafico": _consulta_para_url(q) + "&grafico=0",
+        "grafico": (None if tipo_grafico == "0"
+                    else analises.grafico_linha(resultado, q["v"], q["agg"]) if tipo_grafico == "linha"
+                    else analises.grafico(resultado, q["v"], q["agg"])),
+        "tipo_grafico": tipo_grafico,
+        "pode_linha": analises.eh_serie_historica(q["l"]),
+        "url_grafico": {t: _consulta_para_url(q) + "&grafico=" + t for t in ("barras", "linha", "0")},
         "consulta": _consulta_para_url(q), "csv": _consulta_para_url(q) + "&formato=csv",
         "salvos": salvos, "formatar": analises.formatar,
+        "codigo_do_porto": {r[0]: r[1] for r in portos_nome},
         "pode_salvar": conta["perfil"] not in contas.PERFIS_SOMENTE_LEITURA,
         "regra_mes": "mes" in q["l"] + q["c"] or "trimestre" in q["l"] + q["c"] or "ano" in q["l"] + q["c"],
     })
@@ -1418,3 +1451,52 @@ def importar_confirmar(request: Request, chave: str = Form(...)):
         resultado = importacao.importar(conn, viagens_lidas, por=conta["login"])
     importacao.descartar(chave)
     return templates.TemplateResponse(request, "importar.html", {"conta": conta, "resultado": resultado})
+
+
+# ---------------------------------------------------------------------------
+# O Statement of Facts pela API — mesmo contrato do marco: JSON, 422 no dado
+# invalido para a fila nao repetir, 403 em parada de outro navio.
+# ---------------------------------------------------------------------------
+
+def _escala_do_navio(conn, conta, escala_id):
+    escala = conn.execute(
+        "SELECT e.id, vg.navio_id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
+        (escala_id,)).fetchone()
+    if escala is None:
+        return None, JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
+    if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
+        return None, JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+    return escala, None
+
+
+@app.post("/api/sof/marco")
+async def api_sof_marco(request: Request):
+    corpo = await request.json()
+    conta = request.state.conta
+    with closing(db.conectar()) as conn:
+        escala, recusa = _escala_do_navio(conn, conta, corpo.get("escala_id"))
+        if recusa:
+            return recusa
+        _, erros = sof.registrar_marco(
+            conn, escala["id"], tipo=corpo.get("tipo"), hora_local=corpo.get("hora_local"),
+            offset=corpo.get("offset"), nome_responsavel=corpo.get("nome_responsavel", ""),
+            registrado_por=conta["login"], observacao=corpo.get("observacao"))
+    if erros:
+        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    return {"ok": True}
+
+
+@app.post("/api/sof/dados")
+async def api_sof_dados(request: Request):
+    corpo = await request.json()
+    conta = request.state.conta
+    with closing(db.conectar()) as conn:
+        escala, recusa = _escala_do_navio(conn, conta, corpo.get("escala_id"))
+        if recusa:
+            return recusa
+        _, erros = sof.registrar_dados(
+            conn, escala["id"], dados=corpo.get("dados") or {},
+            nome_responsavel=corpo.get("nome_responsavel", ""), registrado_por=conta["login"])
+    if erros:
+        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    return {"ok": True}

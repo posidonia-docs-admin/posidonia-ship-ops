@@ -10,14 +10,6 @@
   por célula sujariam a tela. A referência é a média das encerradas mostradas.
 #}
 
-{% block lateral_rodape %}
-  <div class="responsavel">
-    <label for="responsavel">Quem preenche</label>
-    <input id="responsavel" type="text" autocomplete="name" placeholder="Seu nome">
-    <span class="dica">Fica registrado em cada correção.</span>
-  </div>
-{% endblock %}
-
 {% block conteudo %}
 <div class="topo-conteudo">
   <span class="codigo">Bunker</span>
@@ -121,7 +113,7 @@
       </span>
       <span class="num">{{ a.quando|br if a.quando else "—" }}</span>
       <span class="viagem-linha">{{ a.numero }}</span>
-      <span class="porto">{{ a.porto }}<small>{{ "parada adicional" if a.origem == "extra" else "parada do circuito" }} · {{ "fundeado" if a.tipo_escala == "fundeio" else "atracado" if a.tipo_escala == "operacional" else a.tipo_escala }}</small></span>
+      <span class="porto"><span class="porto-chip {{ a.codigo_porto|classe_porto }}">{{ a.porto }}</span><small>{{ "parada adicional" if a.origem == "extra" else "parada do circuito" }} · {{ "fundeado" if a.tipo_escala == "fundeio" else "atracado" if a.tipo_escala == "operacional" else a.tipo_escala }}</small></span>
       <span class="h">{{ a.vlsfo|mt }}</span>
       <span class="h">{{ a.mgo|mt }}</span>
       <span class="vazio">{{ a.nome_responsavel }}</span>

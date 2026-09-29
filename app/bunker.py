@@ -100,7 +100,7 @@ def abastecimentos(conn, navio_id: int, limite: int = 20) -> list:
     """
     return conn.execute(
         "SELECT a.escala_id, a.vlsfo, a.mgo, a.nome_responsavel, "
-        "       vg.numero, p.nome AS porto, e.origem, e.tipo_escala, "
+        "       vg.numero, p.nome AS porto, e.codigo_porto, e.origem, e.tipo_escala, "
         "       (SELECT MAX(v.hora_local) FROM evento_vigente v "
         "         WHERE v.escala_id = e.id) AS quando "
         "  FROM abastecimento a "

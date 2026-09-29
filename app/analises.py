@@ -362,9 +362,89 @@ def csv(resultado: dict, dims_l: list[str], medida: str, como: str) -> str:
 # ---------------------------------------------------------------------------
 
 PALETA = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
-LIMITE_SERIES, LIMITE_LINHAS = 8, 30
+LIMITE_SERIES, LIMITE_LINHAS, LIMITE_PONTOS = 8, 30, 120
 LARGURA, ALTURA = 960, 360
 MARGEM = {"esq": 64, "dir": 16, "topo": 18, "base": 54}
+DIMENSOES_DE_TEMPO = ("ano", "trimestre", "mes")
+
+
+def eh_serie_historica(dims_linhas: list[str]) -> bool:
+    """A serie historica so faz sentido com o tempo nas linhas (e so ele)."""
+    return len(dims_linhas) == 1 and dims_linhas[0] in DIMENSOES_DE_TEMPO
+
+
+def _rotulo_curto_de_tempo(rotulo: str) -> str:
+    """'jan/2026' -> 'jan/26'; '1º tri 2026' -> '1T26'; ano fica como esta."""
+    if "/" in rotulo and len(rotulo) == 8:
+        return rotulo[:4] + rotulo[6:]
+    if "tri" in rotulo:
+        return rotulo[0] + "T" + rotulo[-2:]
+    return rotulo
+
+
+def grafico_linha(resultado: dict, medida: str, como: str) -> dict | None:
+    """A serie historica: o tempo no eixo x, uma linha por coluna do pivot.
+
+    Linhas de 2px, marcadores de 8px com anel na cor do fundo, so o ultimo
+    ponto de cada serie rotulado; o eixo x mostra um rotulo a cada k pontos
+    para nunca se atropelar. Um ponto sem valor quebra a linha — nao se
+    inventa zero onde nao houve viagem.
+    """
+    pontos = [l for l in resultado["linhas"] if l["rotulos"] and l["rotulos"][0] != EM_CURSO[1]]
+    series = resultado["colunas"] or [[MEDIDAS[medida][0]]]
+    n_p, n_s = len(pontos), len(series)
+    if n_p < 2 or n_s > LIMITE_SERIES or n_p > LIMITE_PONTOS:
+        return None
+    valores = [v for l in pontos for v in l["celulas"] if v is not None]
+    if not valores or min(valores) < 0:
+        return None
+    teto, passo = _escala_bonita(max(valores))
+    plot_x, plot_y = MARGEM["esq"], MARGEM["topo"]
+    plot_w = LARGURA - MARGEM["esq"] - MARGEM["dir"]
+    plot_h = ALTURA - MARGEM["topo"] - MARGEM["base"]
+    passo_x = plot_w / max(n_p - 1, 1)
+
+    def x_de(i):
+        return round(plot_x + i * passo_x, 1)
+
+    def y_de(v):
+        return round(plot_y + plot_h - (v / teto) * plot_h, 1)
+
+    linhas_svg = []
+    for j, s in enumerate(series):
+        segmentos, atual, ultimo = [], [], None
+        for i, l in enumerate(pontos):
+            v = l["celulas"][j]
+            if v is None:
+                if atual:
+                    segmentos.append(atual)
+                atual = []
+                continue
+            atual.append({"x": x_de(i), "y": y_de(v), "valor": formatar(v, medida, como),
+                          "titulo": "{} · {}: {}".format(l["rotulos"][0], " / ".join(s), formatar(v, medida, como))})
+            ultimo = atual[-1]
+        if atual:
+            segmentos.append(atual)
+        linhas_svg.append({
+            "rotulo": " / ".join(s), "cor": PALETA[j],
+            "caminhos": [" ".join("{}{},{}".format("M" if k == 0 else "L", p["x"], p["y"]) for k, p in enumerate(seg))
+                         for seg in segmentos],
+            "pontos": [p for seg in segmentos for p in seg],
+            "ultimo": ultimo,
+        })
+
+    cada = max(1, -(-n_p // 12))                     # no maximo ~12 rotulos no eixo x
+    eixo_x = [{"x": x_de(i), "rotulo": _rotulo_curto_de_tempo(l["rotulos"][0]), "titulo": l["rotulos"][0]}
+              for i, l in enumerate(pontos) if i % cada == 0 or i == n_p - 1]
+    ticks, v = [], 0.0
+    while v <= teto + 1e-9:
+        ticks.append({"y": y_de(v), "rotulo": formatar(v, medida, como) if v else "0"})
+        v += passo
+    return {
+        "largura": LARGURA, "altura": ALTURA, "plot": {"x": plot_x, "y": plot_y, "w": plot_w, "h": plot_h},
+        "series": linhas_svg, "eixo_x": eixo_x, "ticks": ticks,
+        "legenda": [{"rotulo": s["rotulo"], "cor": s["cor"]} for s in linhas_svg] if n_s > 1 else [],
+    }
 
 
 def _escala_bonita(maximo: float, passos: int = 5) -> tuple[float, float]:
@@ -445,8 +525,9 @@ def grafico(resultado: dict, medida: str, como: str) -> dict | None:
                                                 " / ".join(series[j]), formatar(v, medida, como)),
             })
         rotulo = " / ".join(l["rotulos"]) or "Total"
+        curto = " / ".join(_rotulo_curto_de_tempo(r) for r in l["rotulos"]) or "Total"
         grupos.append({"x": round(plot_x + i * grupo_w + grupo_w / 2, 1),
-                       "rotulo": rotulo if len(rotulo) <= 16 else rotulo[:15] + "…",
+                       "rotulo": curto if len(curto) <= 16 else curto[:15] + "…",
                        "titulo": rotulo, "barras": barras})
 
     ticks = []
@@ -459,5 +540,6 @@ def grafico(resultado: dict, medida: str, como: str) -> dict | None:
         "largura": LARGURA, "altura": ALTURA, "plot": {"x": plot_x, "y": plot_y, "w": plot_w, "h": plot_h},
         "grupos": grupos, "ticks": ticks,
         "legenda": [{"rotulo": " / ".join(s), "cor": PALETA[j]} for j, s in enumerate(series)] if n_s > 1 else [],
-        "eixo_x_inclinado": n_l > 8,
+        # so inclina quando os rotulos nao cabem de pe: muitos grupos e texto longo
+        "eixo_x_inclinado": n_l > 8 and any(len(g["rotulo"]) > 6 for g in grupos),
     }
