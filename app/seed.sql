@@ -47,12 +47,14 @@ INSERT OR IGNORE INTO porto (codigo, nome, un_locode, uf, pais, offset_padrao, a
     'Navegação em mar aberto / AJB.');
 
 INSERT OR IGNORE INTO porto_alias (alias, codigo_porto) VALUES
-   ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'),
+   ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'), ('SAO LUIS - ALUMAR', 'ALUMAR'),
    ('JURUTI', 'JURUTI'), ('PORTO DE JURUTI', 'JURUTI'),
-   ('FAZENDINHA', 'FAZENDINHA'), ('MACAPA', 'FAZENDINHA'),
-   ('BARRA NORTE', 'BARRA_NORTE'),
+   -- Macapa e a mesma parada que Fazendinha (confirmado 10/set/2026): um porto so,
+   -- com as duas grafias resolvendo para ele. Cadastrar dois duplicaria a escala.
+   ('FAZENDINHA', 'FAZENDINHA'), ('MACAPA', 'FAZENDINHA'), ('MACAPA/AP', 'FAZENDINHA'),
+   ('BARRA NORTE', 'BARRA_NORTE'), ('BARRA-NORTE', 'BARRA_NORTE'),
    ('ICOARACI', 'ICOARACI'),
-   ('ITAQUI', 'ITAQUI'),
+   ('ITAQUI', 'ITAQUI'), ('ITQ', 'ITAQUI'), ('IQI', 'ITAQUI'), ('PORTO DO ITAQUI', 'ITAQUI'),
    ('AJB', 'AJB'), ('AGUAS JURISDICIONAIS BRASILEIRAS', 'AJB');
 
 -- ---------------------------------------------------------------------------

@@ -467,55 +467,50 @@ def _contexto_navio(conta) -> dict:
         if _viagem_do_navio(conn, conta["navio_id"]) is None:
             viagens.abrir_viagem(conn, conta["navio_id"], por=conta["login"])
 
-         linhas = conn.execute(
+        linhas = conn.execute(
             "SELECT vg.id, vg.numero, vg.status, vg.meta_observacoes, ev.hora_local AS abertura "
             "  FROM viagem vg "
             "  LEFT JOIN evento ev ON ev.id = vg.evento_abertura_id "
             " WHERE vg.navio_id = ? "
             " ORDER BY (vg.status = 'aberta') DESC, vg.id DESC LIMIT 6",
             (conta["navio_id"],)).fetchall()
-@app.post("/api/marco")
-async def api_marco(request: Request):
-    corpo = await request.json()
-    conta = request.state.conta
 
-    with closing(db.conectar()) as conn:
-        escala = conn.execute(
-            "SELECT e.id, vg.navio_id, vg.status AS viagem_status FROM escala e "
-            "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
-            (corpo.get("escala_id"),)).fetchone()
-        if escala is None:
-            return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
-        if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
-            return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+        lista = []
+        for viagem in linhas:
+            faltantes = conn.execute(
+                "SELECT COUNT(*) FROM escalas_incompletas WHERE viagem_id = ?",
+                (viagem["id"],)).fetchone()[0]
+            blocos = _escalas_com_marcos(conn, viagem["id"])
+            for bloco in blocos:
+                lancados = sum(1 for m in bloco["marcos"] if m["lancado"])
+                bloco["lancados"] = lancados
+                bloco["total"] = len(bloco["marcos"])
+                bloco["estado"] = ("pronta" if bloco["completa"]
+                                   else "parcial" if lancados else "vazia")
+                bloco["resumo"] = _resumo_marcos(bloco["marcos"])
+                bloco["falta"] = _falta_marcos(bloco["marcos"])
+            lista.append({
+                "viagem": viagem,
+                "aberta": viagem["status"] == "aberta",
+                "faltantes": faltantes,
+                "blocos": blocos,
+                # O Sailing de Alumar que abre a viagem — o comeco da historia,
+                # que antes ficava invisivel para quem estava preenchendo.
+                "abertura": viagem["abertura"],
+                "proximo": _proximo_lancamento(blocos),
+                "situacao": _situacao(blocos),
+            })
 
-        evento_id, erros = viagens.lancar_marco(
-            conn, escala["id"],
-            tipo=corpo.get("tipo"),
-            hora_local=corpo.get("hora_local"),
-            offset=corpo.get("offset"),
-            nome_responsavel=corpo.get("nome_responsavel", ""),
-            registrado_por=conta["login"],
-            id_cliente=corpo.get("id_cliente"),
-            observacao=(corpo.get("observacao") or "").strip() or None,
-            motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
-            rob_vlsfo=corpo.get("rob_vlsfo"),
-            rob_mgo=corpo.get("rob_mgo"),
-            fw=corpo.get("fw"),
-            lixo=corpo.get("lixo"),
-            comentarios=corpo.get("comentarios"),
-        )
+        portos = conn.execute(
+            "SELECT codigo, nome FROM porto WHERE ativo = 1 ORDER BY nome").fetchall()
 
-    if erros:
-        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    corrente = next((v for v in lista if v["aberta"]), None)
+    lancados = sum(len([m for m in b["marcos"] if m["lancado"]])
+                   for b in (corrente["blocos"] if corrente else []))
+    total = sum(len(b["marcos"]) for b in (corrente["blocos"] if corrente else []))
 
-    with closing(db.conectar()) as conn:
-        # Se a viagem fechou (por meta ou unberth final), avisa o front para atualizar
-        ainda_aberta = conn.execute(
-            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
-            " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
-
-    return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
+    return {"conta": conta, "lista": lista, "portos": portos,
+            "corrente": corrente, "lancados": lancados, "total": total}
 
 
 @app.get("/navio", response_class=HTMLResponse)
@@ -548,44 +543,44 @@ def navio_tela(request: Request):
 
 @app.post("/api/marco")
 async def api_marco(request: Request):
-   corpo = await request.json()
-   conta = request.state.conta
+    corpo = await request.json()
+    conta = request.state.conta
 
-   with closing(db.conectar()) as conn:
-       escala = conn.execute(
-           "SELECT e.id, vg.navio_id FROM escala e "
-           "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
-           (corpo.get("escala_id"),)).fetchone()
-       if escala is None:
-           return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
-       if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
-           return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
+    with closing(db.conectar()) as conn:
+        escala = conn.execute(
+            "SELECT e.id, vg.navio_id FROM escala e "
+            "  JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
+            (corpo.get("escala_id"),)).fetchone()
+        if escala is None:
+            return JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
+        if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
+            return JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
 
-       evento_id, erros = viagens.lancar_marco(
-           conn, escala["id"],
-           tipo=corpo.get("tipo"),
-           hora_local=corpo.get("hora_local"),
-           offset=corpo.get("offset"),
-           nome_responsavel=corpo.get("nome_responsavel", ""),
-           registrado_por=conta["login"],
-           id_cliente=corpo.get("id_cliente"),
-           observacao=(corpo.get("observacao") or "").strip() or None,
-           motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
-           rob_vlsfo=corpo.get("rob_vlsfo"),
-           rob_mgo=corpo.get("rob_mgo"),
-           fw=corpo.get("fw"),
-           lixo=corpo.get("lixo"),
-           comentarios=corpo.get("comentarios"),
-       )
+        evento_id, erros = viagens.lancar_marco(
+            conn, escala["id"],
+            tipo=corpo.get("tipo"),
+            hora_local=corpo.get("hora_local"),
+            offset=corpo.get("offset"),
+            nome_responsavel=corpo.get("nome_responsavel", ""),
+            registrado_por=conta["login"],
+            id_cliente=corpo.get("id_cliente"),
+            observacao=(corpo.get("observacao") or "").strip() or None,
+            motivo_correcao=(corpo.get("motivo_correcao") or "").strip() or None,
+            rob_vlsfo=corpo.get("rob_vlsfo"),
+            rob_mgo=corpo.get("rob_mgo"),
+            fw=corpo.get("fw"),
+            lixo=corpo.get("lixo"),
+            comentarios=corpo.get("comentarios"),
+        )
 
-   if erros:
-       return JSONResponse({"ok": False, "erros": erros}, status_code=422)
+    if erros:
+        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
 
-   with closing(db.conectar()) as conn:
-       ainda_aberta = conn.execute(
-           "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
-           " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
-   return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
+    with closing(db.conectar()) as conn:
+        ainda_aberta = conn.execute(
+            "SELECT 1 FROM escala e JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE e.id = ? AND vg.status = 'aberta'", (escala["id"],)).fetchone()
+    return {"ok": True, "evento_id": evento_id, "viagem_mudou": ainda_aberta is None}
 
 
 @app.post("/api/abastecimento")

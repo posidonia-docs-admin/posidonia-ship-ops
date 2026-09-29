@@ -265,6 +265,16 @@ def adicionar_escala_extra(
 
     if conn.execute("SELECT 1 FROM porto WHERE codigo = ? AND ativo = 1", (codigo_porto,)).fetchone() is None:
         erros.append("Porto {!r} não cadastrado ou inativo.".format(codigo_porto))
+    # Os enums do banco tem CHECK, mas a violacao viria como erro obscuro de
+    # SQL. Aqui vira frase para o comandante.
+    if tipo_escala not in dominio.TIPOS_ESCALA or tipo_escala == "abertura":
+        erros.append("Tipo de escala inválido: {!r}.".format(tipo_escala))
+    if motivo not in dominio.MOTIVOS:
+        erros.append("Motivo inválido: {!r}.".format(motivo))
+    if sentido not in dominio.SENTIDOS:
+        erros.append("Sentido inválido: {!r}.".format(sentido))
+    if condicao is not None and condicao not in dominio.CONDICOES:
+        erros.append("Condição inválida: {!r}.".format(condicao))
 
     if erros:
         return None, erros
@@ -274,6 +284,9 @@ def adicionar_escala_extra(
     ).fetchone()[0]
     limite = seguinte if seguinte is not None else apos_ordem + 2 * PASSO_ORDEM
     nova_ordem = (apos_ordem + limite) // 2
+    if nova_ordem <= apos_ordem or nova_ordem >= limite:
+        return None, ["Não há espaço de ordenação entre estas escalas. "
+                      "Renumere a viagem antes de inserir outra aqui."]
 
     condicao = condicao or dominio.CONDICAO_POR_MOTIVO.get(motivo, "idle")
 
@@ -478,8 +491,12 @@ def lancar_marco(
                 (escala["viagem_id"],)
             )
             conn.commit()
-            # Encadeia e abre a próxima viagem automaticamente
-            encadear_ciclo(conn, escala["viagem_id"])
+            # A viagem acabou de ser fechada AQUI, entao encadear_ciclo (que so
+            # encadeia viagem aberta) nao abriria a seguinte: abre-se direto.
+            # O comandante nunca pode ficar sem viagem onde lancar.
+            navio_id = conn.execute(
+                "SELECT navio_id FROM viagem WHERE id = ?", (escala["viagem_id"],)).fetchone()[0]
+            abrir_viagem(conn, navio_id, por="sistema")
 
     return evento_id, []
 

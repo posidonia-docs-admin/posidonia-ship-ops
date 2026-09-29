@@ -13,6 +13,7 @@ def test_seed_traz_os_portos_do_circuito(conn):
     codigos = {r[0] for r in conn.execute("SELECT codigo FROM porto")}
     assert codigos == {
         "ALUMAR", "JURUTI", "FAZENDINHA", "BARRA_NORTE", "ICOARACI", "ITAQUI",
+        "AJB",   # aguas jurisdicionais brasileiras: navegacao em mar aberto (set/2026)
     }
 
 
