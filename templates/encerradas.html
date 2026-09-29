@@ -240,59 +240,58 @@
               {% endif %}
             </div>
             {% endfor %}
-            
-            <details class="lancamento-tardio">
-              <summary style="cursor:pointer; color:var(--teal); font-size:12px; margin-top:8px;">
-                ➕ Adicionar observação a esta viagem encerrada
-              </summary>
-              <form class="form-grid lancar" data-offset="{{ b.escala.offset_padrao }}" data-recarrega="1" style="margin-top:8px;">
-                <input type="hidden" name="escala_id" value="{{ b.escala.id }}">
-                
-                <div class="campo-grupo">
-                  <label class="rot req">Tipo</label>
-                  <select name="tipo" required>
-                    <option value="arrival">Arrival</option>
-                    <option value="berth">Berth</option>
-                    <option value="unberth">Unberth</option>
-                    <option value="sailing">Sailing</option>
-                  </select>
-                </div>
-            
-                <div class="campo-grupo">
-                  <label class="rot req">Data</label>
-                  <input type="date" name="data" required>
-                </div>
-            
-                <div class="campo-grupo">
-                  <label class="rot req">Hora</label>
-                  <input type="time" name="hora" required>
-                </div>
-            
-                <div class="campo-grupo">
-                  <label class="rot req">Quem Lança</label>
-                  <input type="text" name="nome_responsavel" required>
-                </div>
-            
-                <div class="campo-grupo">
-                  <label class="rot">VLSFO (t)</label>
-                  <input type="number" step="0.001" min="0" name="rob_vlsfo">
-                </div>
-            
-                <div class="campo-grupo">
-                  <label class="rot">MGO (t)</label>
-                  <input type="number" step="0.001" min="0" name="rob_mgo">
-                </div>
-            
-                <div class="campo-grupo full-width">
-                  <label class="rot req" style="color:var(--erro);">Motivo do Lançamento em Viagem Encerrada</label>
-                  <input type="text" name="motivo_correcao" required placeholder="Ex: Inclusão retroativa de leitura de fundeio">
-                </div>
-            
-                <div class="full-width">
-                  <button type="submit" class="btn btn-primary" style="margin-top:6px;">Gravar na Viagem Encerrada</button>
-                </div>
-              </form>
-            </details>
+              <details class="lancamento-tardio">
+                <summary style="cursor:pointer; color:var(--teal); font-size:12px; margin-top:8px;">
+                  ➕ Adicionar observação a esta viagem encerrada
+                </summary>
+                <form class="form-grid lancar" data-offset="{{ b.escala.offset_padrao }}" data-recarrega="1" style="margin-top:8px;">
+                  <input type="hidden" name="escala_id" value="{{ b.escala.id }}">
+                  
+                  <div class="campo-grupo">
+                    <label class="rot req">Tipo</label>
+                    <select name="tipo" required>
+                      <option value="arrival">Arrival</option>
+                      <option value="berth">Berth</option>
+                      <option value="unberth">Unberth</option>
+                      <option value="sailing">Sailing</option>
+                    </select>
+                  </div>
+              
+                  <div class="campo-grupo">
+                    <label class="rot req">Data</label>
+                    <input type="date" name="data" required>
+                  </div>
+              
+                  <div class="campo-grupo">
+                    <label class="rot req">Hora</label>
+                    <input type="time" name="hora" required>
+                  </div>
+              
+                  <div class="campo-grupo">
+                    <label class="rot req">Quem Lança</label>
+                    <input type="text" name="nome_responsavel" required>
+                  </div>
+              
+                  <div class="campo-grupo">
+                    <label class="rot">VLSFO (t)</label>
+                    <input type="number" step="0.001" min="0" name="rob_vlsfo">
+                  </div>
+              
+                  <div class="campo-grupo">
+                    <label class="rot">MGO (t)</label>
+                    <input type="number" step="0.001" min="0" name="rob_mgo">
+                  </div>
+              
+                  <div class="campo-grupo full-width">
+                    <label class="rot req" style="color:var(--erro);">Motivo do Lançamento em Viagem Encerrada</label>
+                    <input type="text" name="motivo_correcao" required placeholder="Ex: Inclusão retroativa de leitura de fundeio">
+                  </div>
+              
+                  <div class="full-width">
+                    <button type="submit" class="btn btn-primary" style="margin-top:6px;">Gravar na Viagem Encerrada</button>
+                  </div>
+                </form>
+              </details>
           </div>
         </details>
         {% endfor %}
