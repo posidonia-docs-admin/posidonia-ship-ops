@@ -25,16 +25,19 @@ MESES = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "
 
 # chave -> (rótulo, bases em que existe)
 DIMENSOES = {
-    "navio":     ("Navio", ("viagens", "pernadas")),
-    "ano":       ("Ano", ("viagens", "pernadas")),
-    "trimestre": ("Trimestre", ("viagens", "pernadas")),
-    "mes":       ("Mês", ("viagens", "pernadas")),
-    "situacao":  ("Situação", ("viagens", "pernadas")),
+    "navio":     ("Navio", ("viagens", "pernadas", "marcos")),
+    "ano":       ("Ano", ("viagens", "pernadas", "marcos")),
+    "trimestre": ("Trimestre", ("viagens", "pernadas", "marcos")),
+    "mes":       ("Mês", ("viagens", "pernadas", "marcos")),
+    "situacao":  ("Situação", ("viagens", "pernadas", "marcos")),
     "bunker":    ("Teve bunker", ("viagens", "pernadas")),
     "adicional": ("Parada adicional", ("viagens", "pernadas")),
     "grupo":     ("Grupo", ("pernadas",)),
     "pernada":   ("Pernada", ("pernadas",)),
-    "viagem":    ("Viagem", ("pernadas",)),
+    "viagem":    ("Viagem", ("pernadas", "marcos")),
+    "porto":     ("Porto", ("marcos",)),
+    "marco":     ("Marco", ("marcos",)),
+    "lixo":      ("Lixo", ("marcos",)),
 }
 
 # chave -> (rótulo, unidade, casas decimais, bases)
@@ -51,13 +54,18 @@ MEDIDAS = {
     "mgo_abastecido":   ("MGO abastecido", "t", 3, ("viagens",)),
     "horas":            ("Horas", "h", 1, ("pernadas",)),
     "desvio":           ("Desvio da premissa", "h", 1, ("pernadas",)),
+    # base Marcos: o que o comandante lanca em cada marco (set/2026: FW e lixo)
+    "marcos":           ("Marcos", "", 0, ("marcos",)),
+    "rob_vlsfo":        ("ROB VLSFO", "t", 3, ("marcos",)),
+    "rob_mgo":          ("ROB MGO", "t", 3, ("marcos",)),
+    "fw":               ("Água doce (FW)", "t", 1, ("marcos",)),
 }
 
 AGREGACOES = {
     "soma": "soma", "media": "média", "contagem": "contagem",
     "minimo": "mínimo", "maximo": "máximo",
 }
-BASES = {"viagens": "Viagens", "pernadas": "Pernadas"}
+BASES = {"viagens": "Viagens", "pernadas": "Pernadas", "marcos": "Marcos"}
 
 EM_CURSO = ("9999-99", "em curso")   # ordena por último
 
@@ -184,7 +192,53 @@ def _pernadas(conn, viagens: list[dict]) -> list[dict]:
     return linhas
 
 
+def _marcos(conn) -> list[dict]:
+    """Uma linha por marco vigente: o que foi lancado, onde e quando.
+
+    O mes aqui e o do PROPRIO marco (hora local), nao o do encerramento da
+    viagem: a pergunta desta base e "o que aconteceu em tal mes", nao "quanto
+    a viagem entregou".
+    """
+    ordem_marco = {"arrival": 0, "berth": 1, "unberth": 2, "sailing": 3}
+    rotulo_marco = {"arrival": "Arrival", "berth": "Berth", "unberth": "Unberth", "sailing": "Sailing"}
+    extras = defaultdict(set)
+    for r in conn.execute(
+            "SELECT viagem_id, motivo FROM escala WHERE origem = 'extra' AND status <> 'cancelada'"):
+        extras[r[0]].add(r[1])
+    portos = {r[0]: r[1] for r in conn.execute("SELECT codigo, nome FROM porto")}
+    ordem_porto = {codigo: i for i, codigo in enumerate(sorted(portos))}
+    linhas = []
+    for r in conn.execute(
+            "SELECT ev.tipo, ev.hora_local, ev.rob_vlsfo, ev.rob_mgo, ev.fw, ev.lixo, "
+            "       e.codigo_porto, vg.id AS viagem_id, vg.numero, vg.status, vg.navio_id, "
+            "       n.nome_oficial "
+            "  FROM evento_vigente ev JOIN escala e ON e.id = ev.escala_id "
+            "  JOIN viagem vg ON vg.id = e.viagem_id JOIN navio n ON n.id = vg.navio_id "
+            " WHERE e.status <> 'cancelada' AND ev.hora_local IS NOT NULL "
+            " ORDER BY vg.navio_id, ev.hora_utc"):
+        lixo = (r["lixo"] or "").strip()
+        linhas.append({
+            "viagem_id": r["viagem_id"],
+            "dims": {
+                "navio": (r["navio_id"], r["nome_oficial"].replace("AMAZON ", "Amazon ").title()),
+                **_tempo(r["hora_local"]),
+                "situacao": (0, "encerrada") if r["status"] == "encerrada" else (1, "em curso"),
+                "viagem": (r["viagem_id"], r["numero"]),
+                "porto": (ordem_porto.get(r["codigo_porto"], 99), portos.get(r["codigo_porto"], r["codigo_porto"])),
+                "marco": (ordem_marco.get(r["tipo"], 9), rotulo_marco.get(r["tipo"], r["tipo"])),
+                "lixo": (0, lixo) if lixo else (1, "sem retirada"),
+            },
+            "medidas": {
+                "marcos": 1,
+                "rob_vlsfo": r["rob_vlsfo"], "rob_mgo": r["rob_mgo"], "fw": r["fw"],
+            },
+        })
+    return linhas
+
+
 def carregar(conn, base: str) -> list[dict]:
+    if base == "marcos":
+        return _marcos(conn)
     viagens = _viagens(conn)
     if base == "pernadas":
         return _pernadas(conn, viagens)
@@ -296,3 +350,114 @@ def csv(resultado: dict, dims_l: list[str], medida: str, como: str) -> str:
     saida.append(";".join(["Total"] + [""] * (len(dims_l) - 1)
                           + [cel(v) for v in resultado["totais_colunas"]] + [cel(resultado["total"])]))
     return "﻿" + "\r\n".join(saida) + "\r\n"
+
+
+# ---------------------------------------------------------------------------
+# O gráfico: as barras do pivot, em SVG desenhado no servidor
+#
+# Sem biblioteca — a CSP nao deixa carregar nada de fora, e um grafico de
+# barras e geometria simples. As cores sao a paleta categorica validada
+# (dataviz, 8 posicoes em ordem fixa); com uma serie so, a primeira. Acima de
+# 8 series ou de 30 linhas o grafico nao se desenha: a tabela ja esta ali.
+# ---------------------------------------------------------------------------
+
+PALETA = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
+LIMITE_SERIES, LIMITE_LINHAS = 8, 30
+LARGURA, ALTURA = 960, 360
+MARGEM = {"esq": 64, "dir": 16, "topo": 18, "base": 54}
+
+
+def _escala_bonita(maximo: float, passos: int = 5) -> tuple[float, float]:
+    """(teto, passo) com numeros redondos: 0 / 1.000 / 2.000, nao 0 / 1.234 / 2.468."""
+    import math
+    if maximo <= 0:
+        return 1.0, 0.2
+    bruto = maximo / passos
+    potencia = 10 ** math.floor(math.log10(bruto))
+    for m in (1, 2, 2.5, 5, 10):
+        passo = m * potencia
+        if passo >= bruto:
+            break
+    teto = math.ceil(maximo / passo) * passo
+    return teto, passo
+
+
+def grafico(resultado: dict, medida: str, como: str) -> dict | None:
+    """Geometria das barras agrupadas: linhas do pivot no eixo x, uma serie por coluna."""
+    linhas = resultado["linhas"]
+    series = resultado["colunas"] or [[MEDIDAS[medida][0]]]
+    # Mais series do que cores (meses nas colunas, por exemplo) e poucas
+    # linhas: troca os eixos — as linhas viram series e as colunas, grupos.
+    if len(series) > LIMITE_SERIES and 1 < len(linhas) <= LIMITE_SERIES:
+        linhas = [{"rotulos": c, "celulas": [l["celulas"][j] for l in resultado["linhas"]]}
+                  for j, c in enumerate(resultado["colunas"])]
+        series = [l["rotulos"] for l in resultado["linhas"]]
+    n_l, n_s = len(linhas), len(series)
+    if not linhas or n_s > LIMITE_SERIES or n_l > LIMITE_LINHAS:
+        return None
+    valores = [v for l in linhas for v in l["celulas"] if v is not None]
+    if not valores:
+        return None
+    maximo = max(valores)
+    negativo = min(valores) < 0
+    if negativo:
+        return None                        # desvio negativo pede outro desenho; a tabela mostra
+    teto, passo = _escala_bonita(maximo)
+
+    plot_x, plot_y = MARGEM["esq"], MARGEM["topo"]
+    plot_w = LARGURA - MARGEM["esq"] - MARGEM["dir"]
+    plot_h = ALTURA - MARGEM["topo"] - MARGEM["base"]
+    grupo_w = plot_w / n_l
+    folga = max(8.0, grupo_w * 0.25)
+    barra_w = min(24.0, (grupo_w - folga) / n_s - 2)
+    if barra_w < 3:
+        return None
+    bloco_w = n_s * (barra_w + 2) - 2
+
+    def y_de(v):
+        return plot_y + plot_h - (v / teto) * plot_h
+
+    # a barra mais alta de cada serie ganha o rotulo direto; as demais, so o title
+    extremos = {}
+    for j in range(n_s):
+        col = [(l["celulas"][j], i) for i, l in enumerate(linhas) if l["celulas"][j] is not None]
+        if col:
+            extremos[j] = max(col)[1]
+
+    grupos = []
+    for i, l in enumerate(linhas):
+        x0 = plot_x + i * grupo_w + (grupo_w - bloco_w) / 2
+        barras = []
+        for j, v in enumerate(l["celulas"]):
+            x = x0 + j * (barra_w + 2)
+            if v is None:
+                barras.append({"x": round(x, 1), "y": None, "w": round(barra_w, 1), "h": 0,
+                               "cor": PALETA[j], "titulo": "{} · {}: —".format(
+                                   " / ".join(l["rotulos"]) or "Total", " / ".join(series[j]))})
+                continue
+            y = y_de(v)
+            barras.append({
+                "x": round(x, 1), "y": round(y, 1), "w": round(barra_w, 1),
+                "h": round(plot_y + plot_h - y, 1), "cor": PALETA[j],
+                "valor": formatar(v, medida, como),
+                "rotular": extremos.get(j) == i,
+                "titulo": "{} · {}: {}".format(" / ".join(l["rotulos"]) or "Total",
+                                                " / ".join(series[j]), formatar(v, medida, como)),
+            })
+        rotulo = " / ".join(l["rotulos"]) or "Total"
+        grupos.append({"x": round(plot_x + i * grupo_w + grupo_w / 2, 1),
+                       "rotulo": rotulo if len(rotulo) <= 16 else rotulo[:15] + "…",
+                       "titulo": rotulo, "barras": barras})
+
+    ticks = []
+    v = 0.0
+    while v <= teto + 1e-9:
+        ticks.append({"y": round(y_de(v), 1), "rotulo": formatar(v, medida, "contagem" if como == "contagem" else como)
+                      if v else "0"})
+        v += passo
+    return {
+        "largura": LARGURA, "altura": ALTURA, "plot": {"x": plot_x, "y": plot_y, "w": plot_w, "h": plot_h},
+        "grupos": grupos, "ticks": ticks,
+        "legenda": [{"rotulo": " / ".join(s), "cor": PALETA[j]} for j, s in enumerate(series)] if n_s > 1 else [],
+        "eixo_x_inclinado": n_l > 8,
+    }

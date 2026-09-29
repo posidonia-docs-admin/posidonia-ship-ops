@@ -121,6 +121,9 @@ class Marco:
     precisao: str = "exata"
     rotulo: str = ""               # o que a planilha chamou esta linha
     nota: str | None = None        # vira evento.observacao
+    rob_vlsfo: float | None = None # so o CSV plano traz estes tres
+    rob_mgo: float | None = None
+    fw: float | None = None
 
     @property
     def iso(self) -> str:

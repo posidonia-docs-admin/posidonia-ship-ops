@@ -1152,3 +1152,73 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 .rot-erro { color: var(--erro); }
 .resumo-tardio { cursor: pointer; color: var(--teal); font-size: 12px; margin-top: 8px; }
 .form-tardio { margin-top: 8px; }
+
+/* ---- a cor de cada porto: a mesma da planilha das supervisoras ---------- */
+/* Classes fixas por codigo porque a CSP nao deixa escrever a cor no HTML.
+   Os valores sao os de porto.cor no seed. */
+.porto-chip { display: inline-block; padding: 2px 9px; border-radius: 6px; font-weight: 600;
+              color: var(--tinta); border: 1px solid rgba(0,0,0,.08); white-space: nowrap; }
+.porto-alumar      { background: #F4B183; }
+.porto-fazendinha  { background: #70AD47; color: #fff; }
+.porto-juruti      { background: #FFD966; }
+.porto-barra-norte { background: #9DC3E6; }
+.porto-icoaraci    { background: #B4C7E7; }
+.porto-itaqui      { background: #C9C9C9; }
+.porto-ajb         { background: #DEEBF7; }
+
+/* ---- o roteiro da viagem: todas as paradas, na ordem, com o estado ------ */
+.roteiro { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-bottom: 16px; }
+.roteiro .etapa { display: flex; flex-direction: column; gap: 3px; min-width: 128px; padding: 8px 12px;
+                  border-radius: var(--r-campo); border: 1px solid var(--campo-borda);
+                  background: var(--painel); font-size: 12.5px; position: relative; }
+.roteiro .etapa .porto-chip { align-self: flex-start; font-size: 12.5px; }
+.roteiro .etapa small { color: var(--suave); font-size: 11px; }
+.roteiro .etapa .progresso { font-family: var(--mono); font-size: 11px; color: var(--navy); }
+.roteiro .etapa.concluida { opacity: .78; }
+.roteiro .etapa.concluida .progresso { color: var(--ok); }
+.roteiro .etapa.proxima { border-color: var(--teal); box-shadow: var(--foco); }
+.roteiro .etapa.proxima .progresso { color: var(--teal-fundo); font-weight: 600; }
+.roteiro .etapa.pendente { border-style: dashed; }
+.roteiro .etapa .extra-chip { position: absolute; top: 6px; right: 8px; font-family: var(--mono);
+                              font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+                              color: var(--suave); }
+.roteiro form.tirar { margin: 4px 0 0; }
+.roteiro form.tirar button { border: 0; background: transparent; color: var(--erro); font: 600 11.5px var(--sans);
+                             padding: 0; cursor: pointer; text-decoration: underline; }
+
+/* ---- acrescentar parada adicional (de volta ao painel) ------------------ */
+.extra { margin-top: 14px; border-top: 1px solid var(--linha); padding-top: 10px; }
+.extra > summary { cursor: pointer; color: var(--teal-fundo); font: 600 12.5px var(--sans); list-style: none; }
+.extra > summary::-webkit-details-marker { display: none; }
+.extra > summary::before { content: "+ "; }
+.extra form { margin-top: 8px; }
+
+/* ---- analises: o grafico de barras (SVG do servidor) -------------------- */
+.grafico { margin: 0 0 14px; padding: 14px 16px 10px; background: var(--painel);
+           border: 1px solid var(--campo-borda); border-radius: var(--r-cartao); }
+.grafico-svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
+.grafico-svg .grade { stroke: var(--linha); stroke-width: 1; }
+.grafico-svg .eixo { stroke: var(--campo-borda); stroke-width: 1; }
+.grafico-svg .tick { font-size: 11px; fill: var(--suave); font-family: var(--mono); }
+.grafico-svg .rotulo-x { font-size: 11.5px; fill: var(--tinta); }
+.grafico-svg .rotulo-x.inclinado { font-size: 10.5px; }
+.grafico-svg .valor-svg { font-size: 11px; fill: var(--tinta); font-family: var(--mono); font-weight: 600; }
+.grafico-svg .barra-svg:hover { opacity: .8; }
+.legenda-svg { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 0; padding: 0;
+               font-size: 12.5px; color: var(--tinta); }
+.legenda-svg li { display: inline-flex; align-items: center; gap: 7px; }
+.grafico figcaption { font-size: 11.5px; color: var(--tenue); margin-top: 6px; }
+
+/* ---- importar viagens (supervisao) -------------------------------------- */
+.cartao-envio { display: flex; flex-direction: column; gap: 10px; background: var(--painel);
+                border: 1.5px dashed #cfd9e3; border-radius: var(--r-cartao); padding: 18px 20px;
+                margin-bottom: 22px; max-width: 640px; }
+.cartao-envio input[type=file] { min-height: 44px; padding: 8px; }
+.cartao-envio .botao { align-self: flex-start; }
+.problemas { margin: 12px 0; }
+.problemas summary { cursor: pointer; font: 600 13px var(--sans); color: var(--navy); }
+.problemas.erro summary { color: var(--erro); }
+.problemas.aviso summary { color: var(--alerta); }
+.problemas ul { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; }
+.problemas li .num { color: var(--suave); font-size: 11.5px; margin-right: 6px; }
+form.confirmar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }

@@ -143,19 +143,22 @@ def exportar(conn, saida: Path) -> dict:
     # ---- Marcos: todo evento vigente
     linhas = [[r["nome_oficial"].title(), r["numero"], r["porto"], r["ordem"], r["tipo"],
                _data(r["hora_local"]), r["offset_utc"], _data(r["hora_utc"]), r["precisao"],
-               r["rob_vlsfo"], r["rob_mgo"], r["nome_responsavel"], r["versao"], r["observacao"]]
+               r["rob_vlsfo"], r["rob_mgo"], r["fw"], r["lixo"], r["comentarios"],
+               r["nome_responsavel"], r["versao"], r["observacao"]]
               for r in conn.execute(
             "SELECT n.nome_oficial, vg.numero, p.nome AS porto, e.ordem, ev.tipo, ev.hora_local, "
             "       ev.offset_utc, ev.hora_utc, ev.precisao, ev.rob_vlsfo, ev.rob_mgo, "
+            "       ev.fw, ev.lixo, ev.comentarios, "
             "       ev.nome_responsavel, ev.versao, ev.observacao "
             "  FROM evento_vigente ev JOIN escala e ON e.id = ev.escala_id "
             "  JOIN viagem vg ON vg.id = e.viagem_id JOIN navio n ON n.id = vg.navio_id "
             "  JOIN porto p ON p.codigo = e.codigo_porto "
             " ORDER BY vg.navio_id, ev.hora_utc, e.ordem")]
     _aba(wb, "Marcos", ["Navio", "Viagem", "Porto", "Ordem da escala", "Marco", "Hora local", "Fuso",
-                        "Hora UTC", "Precisão", "ROB VLSFO (t)", "ROB MGO (t)", "Quem lançou", "Versão",
-                        "Observação"], linhas, {0: 20, 5: 17, 7: 17, 11: 34, 13: 70},
-         {5: dt, 7: dt, 9: "#,##0.000", 10: "#,##0.000"})
+                        "Hora UTC", "Precisão", "ROB VLSFO (t)", "ROB MGO (t)", "FW (t)", "Lixo",
+                        "Comentários", "Quem lançou", "Versão", "Observação"],
+         linhas, {0: 20, 5: 17, 7: 17, 13: 40, 14: 34, 16: 70},
+         {5: dt, 7: dt, 9: "#,##0.000", 10: "#,##0.000", 11: "#,##0.0"})
     contagens["Marcos"] = len(linhas)
 
     # ---- Abastecimentos

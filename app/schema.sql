@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS porto (
     pais          TEXT NOT NULL DEFAULT 'BR',
     offset_padrao TEXT NOT NULL DEFAULT '-03:00',
     ativo         INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    observacao    TEXT
+    observacao    TEXT,
+    cor           TEXT                          -- fundo do porto nas telas (#RRGGBB)
 );
 
 -- "GUAMARE OIL TERMINAL", "ITQ", "IQI" -> o mesmo porto. Resolucao por JOIN,

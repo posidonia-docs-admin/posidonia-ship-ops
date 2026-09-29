@@ -1584,3 +1584,140 @@ def test_analises_salva_e_apaga_relatorio(cliente):
         rid = conn.execute("SELECT id FROM relatorio_salvo").fetchone()[0]
     cliente.post("/analises/apagar", data={"id": rid, "consulta": "/analises"}, follow_redirects=False)
     assert "Carga por mês" not in cliente.get("/analises").text
+
+
+# ---------------------------------------------------------------------------
+# O roteiro da viagem e a parada adicional de volta ao painel (set/2026)
+# ---------------------------------------------------------------------------
+
+def test_roteiro_mostra_todas_as_paradas_com_a_cor_do_porto(cliente):
+    entrar(cliente)
+    html = cliente.get("/navio").text
+    etapas = re.findall(r'<div class="etapa ([a-z]+)"', html)
+    assert etapas == ["proxima"] + ["pendente"] * 5          # uma proxima, o resto por vir
+    for classe in ("porto-alumar", "porto-fazendinha", "porto-juruti", "porto-barra-norte"):
+        assert classe in html, classe
+
+
+def test_parada_adicional_entra_no_roteiro_e_sai_por_ele(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    html = cliente.get("/navio").text
+    assert 'action="/navio/escala-extra"' in html and "Acrescentar parada adicional" in html
+    extra = _extra(cliente)
+    html = cliente.get("/navio").text
+    assert "porto-icoaraci" in html and 'action="/navio/escala-extra/remover"' in html
+    assert "adicional" in html[html.index('data-etapa="{}"'.format(extra)):][:600]
+    _remover(cliente, extra)
+    assert "porto-icoaraci" not in cliente.get("/navio").text
+
+
+def test_analises_desenha_o_grafico_e_o_esconde_quando_pedido(cliente):
+    entrar(cliente)
+    _percorrer(cliente)
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/analises?base=viagens&l=navio&c=situacao&v=viagens&agg=soma").text
+    assert '<svg class="grafico-svg"' in html and 'class="barra-svg"' in html
+    assert 'class="legenda-svg"' in html                    # duas series: legenda presente
+    assert 'style="' not in html
+    sem = cliente.get("/analises?base=viagens&l=navio&c=situacao&v=viagens&agg=soma&grafico=0").text
+    assert '<svg class="grafico-svg"' not in sem
+
+
+def test_base_marcos_traz_fw_e_lixo(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    r = cliente.post("/api/marco", json={
+        "escala_id": escala_de(cliente, ordem=10), "tipo": "sailing", "hora_local": "2026-03-01T18:40",
+        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "fw-1",
+        "rob_vlsfo": "1400", "rob_mgo": "110", "fw": "180.5", "lixo": "Solido", "comentarios": "tudo certo"})
+    assert r.status_code == 200, r.text
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/analises?base=marcos&l=porto&c=lixo&v=fw&agg=soma").text
+    assert "180,5" in html and "Solido" in html and "Alumar" in html
+
+
+# ---------------------------------------------------------------------------
+# Importar viagens pela supervisao
+# ---------------------------------------------------------------------------
+
+def _csv_de_viagem(codigo="APT25040", navio="Amazon Pathfinder"):
+    from app import importacao
+    linhas = [";".join(importacao.CABECALHO_MODELO)]
+    for l in importacao.EXEMPLO_MODELO:
+        l = list(l); l[0] = navio; l[1] = codigo
+        linhas.append(";".join(l))
+    return ("\r\n".join(linhas) + "\r\n").encode("utf-8")
+
+
+def test_importar_e_da_supervisao_e_tem_modelo(cliente):
+    entrar(cliente)
+    assert cliente.get("/importar", follow_redirects=False).status_code == 303
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+    html = cliente.get("/importar").text
+    assert 'enctype="multipart/form-data"' in html and 'href="/importar/modelo.csv"' in html
+    modelo = cliente.get("/importar/modelo.csv")
+    assert modelo.status_code == 200 and modelo.text.startswith("\ufeffNavio;Viagem;Porto;Sentido;Marco")
+    assert 'href="/importar"' in cliente.get("/painel").text
+
+
+def test_importar_csv_le_mostra_o_plano_e_grava_so_o_novo(cliente):
+    entrar(cliente)
+    _percorrer(cliente)                       # APT26001 encerrada, APT26002 em curso
+    cliente.get("/logout")
+    entrar(cliente, login="vlo")
+
+    r = cliente.post("/importar", files={"arquivo": ("passadas.csv", _csv_de_viagem(), "text/csv")})
+    assert r.status_code == 200
+    html = r.text
+    assert 'data-situacao="nova"' in html and "APT25040" in html
+    assert "Gravar 1 viagem nova" in html
+    chave = re.search(r'name="chave" value="([^"]+)"', html).group(1)
+
+    r = cliente.post("/importar/confirmar", data={"chave": chave})
+    assert r.status_code == 200 and "Entraram: APT25040" in r.text
+    with closing(db.conectar()) as conn:
+        v = conn.execute("SELECT status, evento_abertura_id, evento_encerramento_id "
+                         "  FROM viagem WHERE numero = 'APT25040'").fetchone()
+        assert v["status"] == "encerrada" and v["evento_abertura_id"] and v["evento_encerramento_id"]
+        assert conn.execute("SELECT COUNT(*) FROM viagem WHERE status = 'aberta' AND navio_id = 1").fetchone()[0] == 1
+        # o que entrou pela importacao ja nasce conferido, pelo supervisor que
+        # importou (os 14 marcos do comandante, lancados antes, seguem na fila)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM escalas_a_conferir c JOIN viagem vg ON vg.id = c.viagem_id "
+            " WHERE vg.numero = 'APT25040'").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT c.conferido_por FROM conferencia c JOIN evento ev ON ev.id = c.evento_id "
+            "  JOIN escala e ON e.id = ev.escala_id JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE vg.numero = 'APT25040' LIMIT 1").fetchone()[0] == "vlo"
+        marco = conn.execute("SELECT rob_vlsfo, fw FROM evento ev JOIN escala e ON e.id = ev.escala_id "
+                             "  JOIN viagem vg ON vg.id = e.viagem_id WHERE vg.numero = 'APT25040' "
+                             "   AND ev.tipo = 'sailing' AND e.ordem = 10").fetchone()
+        assert marco["rob_vlsfo"] == 1402.5 and marco["fw"] == 180.0
+        extra = conn.execute("SELECT e.codigo_porto, a.vlsfo, a.mgo FROM escala e "
+                             "  JOIN abastecimento a ON a.escala_id = e.id JOIN viagem vg ON vg.id = e.viagem_id "
+                             " WHERE vg.numero = 'APT25040' AND e.origem = 'extra'").fetchone()
+        assert tuple(extra) == ("ICOARACI", 400.0, 40.0)
+        carga = conn.execute("SELECT SUM(carregado), SUM(descarregado) FROM movimento_carga mc "
+                             "  JOIN escala e ON e.id = mc.escala_id JOIN viagem vg ON vg.id = e.viagem_id "
+                             " WHERE vg.numero = 'APT25040'").fetchone()
+        assert tuple(carga) == (58200.0, 57900.0)
+
+    # de novo: ja existe, nao e tocada
+    r = cliente.post("/importar", files={"arquivo": ("passadas.csv", _csv_de_viagem(), "text/csv")})
+    assert 'data-situacao="existe"' in r.text and "Nada novo para gravar" in r.text
+
+
+def test_importar_csv_com_erro_nao_grava(cliente):
+    entrar(cliente, login="vlo")
+    ruim = _csv_de_viagem().replace(b"Juruti", b"Porto de Lugar Nenhum", 1)
+    r = cliente.post("/importar", files={"arquivo": ("ruim.csv", ruim, "text/csv")})
+    assert "porto n" in r.text and "Corrija o arquivo" in r.text
+    chave = re.search(r'name="chave" value="([^"]+)"', r.text).group(1)
+    r = cliente.post("/importar/confirmar", data={"chave": chave})
+    assert "Corrija o arquivo" in r.text
+    with closing(db.conectar()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM viagem WHERE numero = 'APT25040'").fetchone()[0] == 0

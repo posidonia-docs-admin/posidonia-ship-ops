@@ -46,6 +46,19 @@ INSERT OR IGNORE INTO porto (codigo, nome, un_locode, uf, pais, offset_padrao, a
    ('AJB',         'Águas Jurisdicionais Brasileiras', NULL, 'NA', 'BR', '-03:00', 1,
     'Navegação em mar aberto / AJB.');
 
+-- A cor de cada porto: as tres do circuito sao as MESMAS da planilha das
+-- supervisoras (fundo laranja de Alumar, verde de Fazendinha, amarelo de
+-- Juruti — lidas do tema do Excel em 29/09/2026). As demais seguem a mesma
+-- paleta do Office, para a tela falar a lingua da planilha. UPDATE, e nao
+-- parte do INSERT: a coluna nasceu depois do primeiro deploy.
+UPDATE porto SET cor = '#F4B183' WHERE codigo = 'ALUMAR'      AND cor IS NULL;
+UPDATE porto SET cor = '#70AD47' WHERE codigo = 'FAZENDINHA'  AND cor IS NULL;
+UPDATE porto SET cor = '#FFD966' WHERE codigo = 'JURUTI'      AND cor IS NULL;
+UPDATE porto SET cor = '#9DC3E6' WHERE codigo = 'BARRA_NORTE' AND cor IS NULL;
+UPDATE porto SET cor = '#B4C7E7' WHERE codigo = 'ICOARACI'    AND cor IS NULL;
+UPDATE porto SET cor = '#C9C9C9' WHERE codigo = 'ITAQUI'      AND cor IS NULL;
+UPDATE porto SET cor = '#DEEBF7' WHERE codigo = 'AJB'         AND cor IS NULL;
+
 INSERT OR IGNORE INTO porto_alias (alias, codigo_porto) VALUES
    ('ALUMAR', 'ALUMAR'), ('PORTO DO ALUMAR', 'ALUMAR'), ('SAO LUIS - ALUMAR', 'ALUMAR'),
    ('JURUTI', 'JURUTI'), ('PORTO DE JURUTI', 'JURUTI'),

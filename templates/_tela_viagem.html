@@ -45,6 +45,26 @@
   </div>
 </div>
 
+<!-- ROTEIRO: todas as paradas da viagem, na ordem, com o estado de cada uma -->
+<div class="roteiro" data-roteiro>
+  {% for b in v.blocos %}
+    {% set proxima = v.proximo and v.proximo.escala.id == b.escala.id %}
+    <div class="etapa {{ "proxima" if proxima else ("concluida" if b.completa else ("parcial" if b.lancados else "pendente")) }}"
+         data-etapa="{{ b.escala.id }}">
+      {% if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}
+      <span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span>
+      <small>{{ b.escala.sentido if b.escala.sentido != "na" else ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}{% if b.escala.condicao %} · {{ b.escala.condicao }}{% endif %}</small>
+      <span class="progresso">{% if b.completa %}completa{% elif proxima %}próxima · {{ b.lancados }} de {{ b.total }}{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}</span>
+      {% if b.escala.origem == "extra" %}
+        <form class="tirar" method="post" action="/navio/escala-extra/remover">
+          <input type="hidden" name="escala_id" value="{{ b.escala.id }}">
+          <button type="submit" title="tirar esta parada da viagem">tirar parada</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
 <!-- DASHBOARD LADO A LADO -->
 <div class="dashboard-grid">
 
@@ -198,6 +218,51 @@
         Meta atingida ou ciclo concluído. A viagem foi finalizada e os dados já alimentam a supervisão.
       </p>
     {% endif %}
+
+    {#
+      A parada adicional (bunker em Icoaraci ou Itaqui, espera de mare) de
+      volta ao painel: entra na posicao certa da viagem e aparece no roteiro,
+      de onde tambem pode ser tirada.
+    #}
+    <details class="extra">
+      <summary>Acrescentar parada adicional</summary>
+      <form class="form-grid" method="post" action="/navio/escala-extra">
+        <div class="campo-grupo">
+          <label class="rot req">Porto</label>
+          <select name="codigo_porto" required>
+            {% for p in portos %}<option value="{{ p.codigo }}">{{ p.nome }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="campo-grupo">
+          <label class="rot req">Motivo</label>
+          <select name="motivo">
+            <option value="bunker">Bunker — abastecimento</option>
+            <option value="espera_mare">Espera de maré</option>
+            <option value="docagem">Docagem</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        <div class="campo-grupo">
+          <label class="rot req">Atraca?</label>
+          <select name="tipo_escala">
+            <option value="fundeio">Não — fica fundeado</option>
+            <option value="operacional">Sim — atraca</option>
+            <option value="passagem">Só passagem</option>
+          </select>
+        </div>
+        <div class="campo-grupo">
+          <label class="rot req">Depois de qual parada?</label>
+          <select name="apos_ordem">
+            {% for b in v.blocos %}
+              <option value="{{ b.escala.ordem }}">{{ b.escala.porto_nome }}{% if b.escala.sentido != "na" %} ({{ b.escala.sentido }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-secondary btn-largo">Acrescentar parada</button>
+        </div>
+      </form>
+    </details>
   </div>
 
   <!-- DIREITA: LOGBOOK EM TEMPO REAL COM STATUS DE FILA POR LINHA -->
@@ -250,7 +315,7 @@
                     </button>
                   </td>
                   <td class="num">{{ m.lancado.hora_local|br }}</td>
-                  <td><strong>{{ b.escala.porto_nome }}</strong></td>
+                  <td><span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span></td>
                   <td>
                     <span class="selo selo-acao">{{ m.curto }}</span>
                     {% if m.lancado.versao > 1 %}

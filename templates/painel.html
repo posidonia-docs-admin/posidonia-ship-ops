@@ -52,6 +52,9 @@
   <span class="rot">Onde cada navio está agora</span>
   <span class="risco"></span>
   <span class="legenda-curta num">{{ agora_local|br }}</span>
+  {% if conta.perfil in ("supervisor", "admin") %}
+    <a class="botao" href="/importar" data-importar>Importar viagens</a>
+  {% endif %}
 </div>
 
 <div class="tabela">

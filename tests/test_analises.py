@@ -104,3 +104,31 @@ def test_a_base_de_viagens_sai_do_banco(conn):
     # calcular_em_lote da o mesmo que calcular, viagem a viagem
     lote = pernadas.calcular_em_lote(conn)
     assert lote[vid] == pernadas.calcular(conn, vid)
+
+
+def test_grafico_agrupa_barras_e_transpoe_quando_as_series_nao_cabem():
+    r = analises.pivotar(_linhas(), ["navio"], ["mes"], "descarregado", "soma", {})
+    g = analises.grafico(r, "descarregado", "soma")
+    assert g and len(g["grupos"]) == 2 and len(g["grupos"][0]["barras"]) == 3
+    assert len(g["legenda"]) == 3                       # tres series: legenda
+    # so a barra mais alta de cada serie leva rotulo; "em curso" nao tem valor nenhum
+    assert sum(1 for gr in g["grupos"] for b in gr["barras"] if b.get("rotular")) == 2
+    assert g["ticks"][0]["rotulo"] == "0" and g["ticks"][-1]["rotulo"] == "60.000"
+
+    # nove meses nas colunas e dois navios nas linhas: os eixos trocam de lugar
+    muitas = [{"dims": {"navio": (1, "A"), "mes": ("2026-%02d" % m, "m%d" % m)}, "medidas": {"x": m}}
+              for m in range(1, 10)] + [{"dims": {"navio": (2, "B"), "mes": ("2026-01", "m1")}, "medidas": {"x": 3}}]
+    analises.MEDIDAS["x"] = ("X", "", 0, ("viagens",))
+    try:
+        r = analises.pivotar(muitas, ["navio"], ["mes"], "x", "soma", {})
+        g = analises.grafico(r, "x", "soma")
+        assert g and len(g["grupos"]) == 9 and len(g["legenda"]) == 2
+        assert [s["rotulo"] for s in g["legenda"]] == ["A", "B"]
+    finally:
+        del analises.MEDIDAS["x"]
+
+    # uma serie so: sem legenda; valor negativo: sem grafico
+    r = analises.pivotar(_linhas(), ["navio"], [], "descarregado", "soma", {})
+    assert analises.grafico(r, "descarregado", "soma")["legenda"] == []
+    r = analises.pivotar([{"dims": {"navio": (1, "A")}, "medidas": {"horas": -2.0}}], ["navio"], [], "horas", "soma", {})
+    assert analises.grafico(r, "horas", "soma") is None

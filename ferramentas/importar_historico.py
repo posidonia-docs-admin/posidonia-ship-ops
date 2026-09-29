@@ -118,21 +118,24 @@ def apagar_tudo(conn) -> dict:
     return contagens
 
 
-def _inserir_evento(conn, escala_id: int, tipo: str, marco: hp.Marco, aba: str, codigo: str) -> int:
+def _inserir_evento(conn, escala_id: int, tipo: str, marco: hp.Marco, aba: str, codigo: str,
+                    por: str | None = None) -> int:
     hora_utc = dominio.para_utc(marco.iso, hp.OFFSET)
-    id_cliente = "hist:{}:{}:L{}:{}".format(aba.replace("AMAZON ", ""), codigo, marco.linha, tipo)
+    id_cliente = "hist:{}:{}:L{}:{}:{}".format(aba.replace("AMAZON ", ""), codigo, marco.linha, tipo,
+                                              db.agora()[:19] if aba == "CSV" else "")
     cur = conn.execute(
         "INSERT INTO evento (id_cliente, escala_id, tipo, hora_local, offset_utc, hora_utc, "
         "                    precisao, registrado_por, registrado_em, nome_responsavel, "
-        "                    observacao, versao, vigente) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)",
+        "                    observacao, versao, vigente, rob_vlsfo, rob_mgo, fw) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
         (id_cliente, escala_id, tipo, marco.iso, hp.OFFSET, hora_utc, marco.precisao,
-         CONTA, db.agora(), RESPONSAVEL, marco.nota))
+         por or CONTA, db.agora(), RESPONSAVEL, marco.nota,
+         marco.rob_vlsfo, marco.rob_mgo, marco.fw))
     evento_id = cur.lastrowid
     conn.execute(
         "INSERT INTO conferencia (evento_id, conferido_por, conferido_em, resultado, comentario) "
         "VALUES (?, ?, ?, 'conferido', ?)",
-        (evento_id, CONTA, db.agora(), COMENTARIO_CONFERENCIA))
+        (evento_id, por or CONTA, db.agora(), COMENTARIO_CONFERENCIA))
     return evento_id
 
 
@@ -142,7 +145,8 @@ def _observacao(escala: hp.Escala) -> str | None:
     return "\n".join(partes) or None
 
 
-def _gravar_escala(conn, escala_id: int, escala: hp.Escala, aba: str, codigo: str, viagem_id: int) -> dict:
+def _gravar_escala(conn, escala_id: int, escala: hp.Escala, aba: str, codigo: str, viagem_id: int,
+                   por: str | None = None) -> dict:
     """Marcos, notas, abastecimento e carga de uma escala. Devolve tipo -> evento_id."""
     eventos = {}
     if escala.cancelar:
@@ -151,7 +155,7 @@ def _gravar_escala(conn, escala_id: int, escala: hp.Escala, aba: str, codigo: st
         return eventos
     for tipo in ("arrival", "berth", "unberth", "sailing"):
         if tipo in escala.marcos:
-            eventos[tipo] = _inserir_evento(conn, escala_id, tipo, escala.marcos[tipo], aba, codigo)
+            eventos[tipo] = _inserir_evento(conn, escala_id, tipo, escala.marcos[tipo], aba, codigo, por)
     obs = _observacao(escala)
     if obs:
         conn.execute("UPDATE escala SET observacao = ? WHERE id = ?", (obs, escala_id))
@@ -171,8 +175,12 @@ def _gravar_escala(conn, escala_id: int, escala: hp.Escala, aba: str, codigo: st
     return eventos
 
 
-def gravar_viagem(conn, v: hp.Viagem) -> int:
-    viagem_id, erros = servico.abrir_viagem(conn, v.navio_id, numero=v.codigo, por=CONTA)
+def gravar_viagem(conn, v: hp.Viagem, *, forcar_encerrada: bool = False, por: str | None = None) -> int:
+    """Grava uma viagem lida. `forcar_encerrada` insere-a ja encerrada, sem passar
+    pelo estado aberto — e o que permite importar viagens passadas num navio que
+    ja tem outra viagem em curso (a tela de Importar da supervisao)."""
+    viagem_id, erros = servico.abrir_viagem(conn, v.navio_id, numero=v.codigo, por=por or CONTA,
+                                            status="encerrada" if forcar_encerrada else "aberta")
     if erros:
         raise RuntimeError("{}: {}".format(v.codigo, erros))
     conn.execute("UPDATE viagem SET observacao = ? WHERE id = ?",
@@ -181,23 +189,32 @@ def gravar_viagem(conn, v: hp.Viagem) -> int:
 
     ids = {r["ordem"]: r["id"] for r in conn.execute(
         "SELECT id, ordem FROM escala WHERE viagem_id = ?", (viagem_id,))}
+    encerramento = None
     for chave, ordem in hp.ORDEM_MODELO.items():
-        eventos = _gravar_escala(conn, ids[ordem], v.escalas[chave], v.aba, v.codigo, viagem_id)
+        eventos = _gravar_escala(conn, ids[ordem], v.escalas[chave], v.aba, v.codigo, viagem_id, por)
         if chave == "abertura" and "sailing" in eventos:
             conn.execute("UPDATE viagem SET evento_abertura_id = ? WHERE id = ?",
                          (eventos["sailing"], viagem_id))
+        if chave == "encerramento":
+            encerramento = eventos.get("unberth")
 
     for extra in v.extras:
         escala_id, erros = servico.adicionar_escala_extra(
             conn, viagem_id, codigo_porto=extra.porto, tipo_escala="fundeio",
             motivo=extra.motivo, apos_ordem=hp.ORDEM_MODELO["abertura"], sentido="subida",
-            condicao="bunkering" if extra.motivo == "bunker" else "ballast", por=CONTA,
+            condicao="bunkering" if extra.motivo == "bunker" else "ballast", por=por or CONTA,
+            permitir_encerrada=forcar_encerrada,
             observacao=("Porto presumido pelas horas desde a saída de Alumar\n" if extra.porto_presumido else ""))
         if erros:
             raise RuntimeError("{}: parada adicional: {}".format(v.codigo, erros))
-        _gravar_escala(conn, escala_id, extra, v.aba, v.codigo, viagem_id)
+        _gravar_escala(conn, escala_id, extra, v.aba, v.codigo, viagem_id, por)
 
-    if not v.aberta:
+    if forcar_encerrada:
+        # Ja nasceu encerrada: so as ancoras e as escalas ficam por fechar.
+        conn.execute("UPDATE viagem SET evento_encerramento_id = ? WHERE id = ?", (encerramento, viagem_id))
+        conn.execute("UPDATE escala SET status = 'encerrada' WHERE viagem_id = ? AND status = 'aberta'",
+                     (viagem_id,))
+    elif not v.aberta:
         fechou, avisos = servico.encerrar_viagem(conn, viagem_id)
         if not fechou:
             raise RuntimeError("{}: não fechou: {}".format(v.codigo, avisos))

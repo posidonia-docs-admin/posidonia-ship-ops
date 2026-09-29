@@ -225,7 +225,9 @@ _COLUNAS_NOVAS = (
     ("evento", "fw", "REAL"),
     ("evento", "lixo", "TEXT"),
     ("evento", "comentarios", "TEXT"),
-    ("viagem", "meta_observacoes", "INTEGER"), 
+    ("viagem", "meta_observacoes", "INTEGER"),
+    # A cor de cada porto, a mesma da planilha das supervisoras (set/2026).
+    ("porto", "cor", "TEXT"),
 )
 
 

@@ -81,7 +81,13 @@ def abrir_viagem(
     rota_modelo_id: int = 1,
     meta_observacoes: int = 15,
     por: str | None = None,
+    status: str = "aberta",
 ) -> tuple[int | None, list[str]]:
+    """Abre a viagem e ja cria as escalas do modelo, vazias e na ordem.
+
+    `status="encerrada"` insere uma viagem PASSADA (importacao pela supervisao):
+    nao passa pelo estado aberto, entao nao briga com a viagem em curso do navio.
+    """
     erros: list[str] = []
 
     navio = conn.execute("SELECT id, ativo FROM navio WHERE id = ?", (navio_id,)).fetchone()
@@ -89,12 +95,17 @@ def abrir_viagem(
         return None, ["Navio {} não cadastrado.".format(navio_id)]
     if not navio[1]:
         erros.append("Navio inativo.")
+    if status not in ("aberta", "encerrada"):
+        return None, ["Status inválido: {!r}.".format(status)]
 
     aberta = conn.execute(
         "SELECT numero FROM viagem WHERE navio_id = ? AND status = 'aberta'", (navio_id,)
     ).fetchone()
-    if aberta is not None:
+    if aberta is not None and status == "aberta":
         erros.append("Este navio já tem a viagem {} aberta.".format(aberta[0]))
+    if conn.execute("SELECT 1 FROM viagem WHERE navio_id = ? AND numero = ?",
+                    (navio_id, numero or "")).fetchone() is not None:
+        erros.append("A viagem {} já existe neste navio.".format(numero))
 
     etapas = conn.execute(
         "SELECT ordem, codigo_porto, tipo_escala, sentido, motivo, condicao, observacao "
@@ -112,8 +123,8 @@ def abrir_viagem(
     cur = conn.execute(
         "INSERT INTO viagem (navio_id, numero, rota_modelo_id, status, meta_observacoes, "
         "                    aberta_por, aberta_em) "
-        "VALUES (?, ?, ?, 'aberta', ?, ?, ?)",
-        (navio_id, numero, rota_modelo_id, meta_observacoes or 15, por, quando),
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (navio_id, numero, rota_modelo_id, status, meta_observacoes or 15, por, quando),
     )
     viagem_id = cur.lastrowid
 

@@ -176,7 +176,7 @@
                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
                    aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
             </span>
-            <span class="porto">{{ b.escala.porto_nome }}{%
+            <span class="porto"><span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span>{%
               if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}</span>
             <span class="vazio">{{ b.escala.sentido if b.escala.sentido != "na" else "—" }}</span>
             <span>{% if b.escala.condicao %}<span class="condicao">{{ b.escala.condicao }}</span>{% endif %}</span>

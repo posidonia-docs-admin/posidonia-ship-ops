@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block titulo %}Importar viagens{% endblock %}
+
+{#
+  Importar viagens passadas — a tela da supervisão.
+
+  Dois passos, sempre: o arquivo é lido e o relatório aparece; só a
+  confirmação grava. Nada do que já existe no sistema é tocado.
+#}
+
+{% block conteudo %}
+<div class="topo-conteudo">
+  <span class="codigo">Importar viagens</span>
+  <span class="embarcacao">planilha das supervisoras ou CSV, uma linha por marco</span>
+  <span class="selo-conta"><span class="quando">{{ conta.nome_exibicao }}</span></span>
+</div>
+
+{% if resultado %}
+  <div class="faixa quatro">
+    <div class="celula destaque"><span class="rot">Gravadas</span><b>{{ resultado.gravadas|length }}<small>viagens</small></b></div>
+    <div class="celula"><span class="rot">Já existiam</span><b>{{ resultado.puladas|length }}<small>não tocadas</small></b></div>
+  </div>
+  {% if resultado.gravadas %}
+  <p class="aviso">Entraram: {{ resultado.gravadas|join(", ") }}. Já aparecem em Viagens, Bunker e Análises.</p>
+  {% else %}
+  <p class="aviso">Nenhuma viagem nova para gravar.</p>
+  {% endif %}
+  <p><a class="botao" href="/importar">Importar outro arquivo</a> <a class="botao primario" href="/painel">Voltar à Frota</a></p>
+
+{% elif relatorio %}
+  <div class="titulo-tabela">
+    <span class="rot">O que o arquivo tem</span>
+    <span class="risco"></span>
+    <span class="legenda-curta">{{ nome_arquivo }}</span>
+  </div>
+  <div class="tabela rolagem">
+    <table class="pivot">
+      <thead><tr><th>Navio</th><th class="v">Viagens</th><th>Códigos</th><th>Período</th><th class="v">Marcos</th><th class="v">Paradas extra</th><th class="v">Abastecimentos</th></tr></thead>
+      <tbody>
+      {% for r in relatorio.resumo %}
+        <tr><td class="rotulo">{{ r.prefixo }}</td><td class="v">{{ r.viagens }}</td><td>{{ r.primeira }} – {{ r.ultima }}</td>
+            <td>{{ r.de|br if r.de else "—" }} → {{ r.ate|br if r.ate else "—" }}</td>
+            <td class="v">{{ r.marcos }}</td><td class="v">{{ r.extras }}</td><td class="v">{{ r.abastecimentos }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="titulo-tabela"><span class="rot">Viagem a viagem</span><span class="risco"></span>
+    <span class="legenda-curta"><b>{{ relatorio.novas }}</b> nova{{ "" if relatorio.novas == 1 else "s" }} · {{ relatorio.existentes }} já no sistema{% if relatorio.conflitos %} · <b>{{ relatorio.conflitos }}</b> em conflito{% endif %}</span></div>
+  <div class="tabela rolagem">
+    <table class="pivot" data-plano>
+      <thead><tr><th>Navio</th><th>Viagem</th><th class="v">Marcos</th><th class="v">Extras</th><th>Situação</th></tr></thead>
+      <tbody>
+      {% for p in relatorio.plano %}
+        <tr data-situacao="{{ p.situacao }}"><td class="rotulo">{{ p.navio }}</td><td>{{ p.codigo }}</td><td class="v">{{ p.marcos }}</td><td class="v">{{ p.extras }}</td>
+            <td>{% if p.situacao == "nova" %}<span class="selo selo-ok">nova · {{ p.motivo }}</span>{% elif p.situacao == "existe" %}<span class="selo selo-fechada">{{ p.motivo }}</span>{% else %}<span class="selo selo-falta">{{ p.motivo }}</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% for nivel, titulo in (("erro", "Erros — impedem a importação"), ("aviso", "Avisos — importa, mas confira"), ("nota", "Notas")) %}
+    {% set lista = relatorio.problemas|selectattr("nivel", "equalto", nivel)|list %}
+    {% if lista %}
+      <details class="problemas {{ nivel }}"{{ " open" if nivel == "erro" else "" }}>
+        <summary>{{ titulo }} ({{ lista|length }})</summary>
+        <ul>{% for p in lista %}<li><span class="num">{{ p.aba.replace("AMAZON ", "").title() }}{% if p.codigo %} {{ p.codigo }}{% endif %}{% if p.linha %} L{{ p.linha }}{% endif %}</span> {{ p.texto }}</li>{% endfor %}</ul>
+      </details>
+    {% endif %}
+  {% endfor %}
+
+  <form method="post" action="/importar/confirmar" class="confirmar">
+    <input type="hidden" name="chave" value="{{ chave }}">
+    {% if relatorio.erros %}
+      <p class="aviso aviso-erro">Há {{ relatorio.erros }} erro{{ "" if relatorio.erros == 1 else "s" }}. Corrija o arquivo e envie de novo.</p>
+      <a class="botao" href="/importar">Enviar outro arquivo</a>
+    {% elif not relatorio.novas %}
+      <p class="aviso">Nada novo para gravar: tudo o que está no arquivo já existe no sistema.</p>
+      <a class="botao" href="/importar">Enviar outro arquivo</a>
+    {% else %}
+      <button type="submit" class="botao primario">Gravar {{ relatorio.novas }} viage{{ "m" if relatorio.novas == 1 else "ns" }} nova{{ "" if relatorio.novas == 1 else "s" }}</button>
+      <a class="botao" href="/importar">Cancelar</a>
+    {% endif %}
+  </form>
+
+{% else %}
+  {% if erro %}<p class="aviso aviso-erro">{{ erro }}</p>{% endif %}
+  <form method="post" action="/importar" enctype="multipart/form-data" class="envio">
+    <div class="cartao-envio">
+      <span class="rot">Arquivo</span>
+      <input type="file" name="arquivo" accept=".xlsx,.xlsm,.csv" required>
+      <span class="dica-caixa">Planilha no layout "Análise Viagens" (uma aba por navio, blocos por parada) ou CSV com uma linha por marco.</span>
+      <button type="submit" class="botao primario">Ler o arquivo</button>
+    </div>
+  </form>
+
+  <div class="titulo-tabela"><span class="rot">O CSV, coluna a coluna</span><span class="risco"></span>
+    <a class="botao" href="/importar/modelo.csv" data-modelo>Baixar modelo CSV</a></div>
+  <div class="tabela rolagem">
+    <table class="pivot">
+      <thead><tr>{% for c in cabecalho %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for linha in exemplo %}<tr>{% for c in linha %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="rodape-grade">
+    <span>Separador ponto e vírgula; datas dd/mm/aaaa; decimais com vírgula.</span>
+    <span>Marco: Arrival, Berth, Unberth ou Sailing. Sentido só em Fazendinha (subida/descida) e em Barra Norte fora do padrão.</span>
+    <span>Portos fora do circuito (Icoaraci, Itaqui) viram paradas adicionais.</span>
+    <span>Viagem que já existe no sistema não é tocada.</span>
+  </div>
+{% endif %}
+{% endblock %}

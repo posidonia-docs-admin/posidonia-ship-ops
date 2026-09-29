@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import analises, auth, bunker, config, contas, db, dominio, frota, pernadas, viagens
+from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -63,6 +63,14 @@ MENU = {
 }
 templates.env.globals["MENU"] = MENU
 templates.env.globals["ROTULO_CONDICAO"] = dominio.ROTULO_CONDICAO
+
+
+def classe_porto(codigo: str) -> str:
+    """'BARRA_NORTE' -> 'porto-barra-norte': a classe com a cor do porto."""
+    return "porto-" + (codigo or "").lower().replace("_", "-")
+
+
+templates.env.filters["classe_porto"] = classe_porto
 
 
 def formato_br(iso):
@@ -1175,6 +1183,12 @@ def admin_trocar_senha(request: Request, login: str = Form(...), senha: str = Fo
 
 PADRAO_ANALISE = {"base": "viagens", "l": ["navio"], "c": ["mes"], "v": "descarregado",
                   "agg": "soma"}
+# O que cada base mostra ao ser escolhida: a pergunta mais comum de cada uma.
+PADRAO_POR_BASE = {
+    "viagens": {"l": ["navio"], "c": ["mes"], "v": "descarregado", "agg": "soma"},
+    "pernadas": {"l": ["grupo", "pernada"], "c": ["navio"], "v": "horas", "agg": "media"},
+    "marcos": {"l": ["porto"], "c": ["navio"], "v": "fw", "agg": "media"},
+}
 
 
 def _ler_consulta(params) -> dict:
@@ -1279,10 +1293,10 @@ def analises_tela(request: Request, formato: str = ""):
         "sem_filtro": [(k, r) for k, r in analises.dimensoes_da(q["base"]) if k not in q["filtros"]],
         "chips_l": chips_l, "chips_c": chips_c, "filtros": filtros,
         "url_base": {b: _consulta_para_url(dict(PADRAO_ANALISE, filtros=q["filtros"]), base=b,
-                                            l=["navio"], c=["mes"] if b == "viagens" else ["navio"],
-                                            v="descarregado" if b == "viagens" else "horas",
-                                            agg="soma" if b == "viagens" else "media")
+                                            **PADRAO_POR_BASE[b])
                      for b in analises.BASES},
+        "grafico": analises.grafico(resultado, q["v"], q["agg"]) if request.query_params.get("grafico") != "0" else None,
+        "sem_grafico": _consulta_para_url(q) + "&grafico=0",
         "consulta": _consulta_para_url(q), "csv": _consulta_para_url(q) + "&formato=csv",
         "salvos": salvos, "formatar": analises.formatar,
         "pode_salvar": conta["perfil"] not in contas.PERFIS_SOMENTE_LEITURA,
@@ -1315,3 +1329,92 @@ def analises_apagar(request: Request, id: int = Form(...), consulta: str = Form(
         conn.execute("DELETE FROM relatorio_salvo WHERE id = ?", (id,))
         conn.commit()
     return RedirectResponse(consulta if consulta.startswith("/analises") else "/analises", 303)
+
+
+# ---------------------------------------------------------------------------
+# Importar viagens passadas (supervisao): planilha das supervisoras ou CSV
+#
+# Dois passos, sempre: ler e mostrar o relatorio; so a confirmacao grava. O
+# arquivo fica guardado entre os dois passos, por chave aleatoria, e e apagado
+# ao gravar. Viagem que ja existe nao e tocada.
+# ---------------------------------------------------------------------------
+
+def _pode_importar(conta) -> bool:
+    return conta["perfil"] in ("supervisor", "admin")
+
+
+def _relatorio_importacao(conn, viagens_por_navio, problemas) -> dict:
+    itens = importacao.plano(conn, viagens_por_navio)
+    return {
+        "resumo": hp_resumo(viagens_por_navio), "plano": itens, "problemas": problemas,
+        "erros": sum(1 for p in problemas if p.nivel == "erro"),
+        "novas": sum(1 for i in itens if i["situacao"] == "nova"),
+        "existentes": sum(1 for i in itens if i["situacao"] == "existe"),
+        "conflitos": sum(1 for i in itens if i["situacao"] == "conflito"),
+    }
+
+
+def hp_resumo(viagens_por_navio):
+    from ferramentas import historico_planilha
+    return historico_planilha.resumo(viagens_por_navio)
+
+
+@app.get("/importar", response_class=HTMLResponse)
+def importar_tela(request: Request):
+    conta = request.state.conta
+    if not _pode_importar(conta):
+        return RedirectResponse("/painel" if conta["perfil"] != "navio" else "/navio", 303)
+    return templates.TemplateResponse(request, "importar.html", {
+        "conta": conta, "cabecalho": importacao.CABECALHO_MODELO, "exemplo": importacao.EXEMPLO_MODELO[:6]})
+
+
+@app.get("/importar/modelo.csv")
+def importar_modelo(request: Request):
+    if not _pode_importar(request.state.conta):
+        return RedirectResponse("/painel", 303)
+    return Response(importacao.modelo_csv(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="modelo-viagens-corsair.csv"'})
+
+
+@app.post("/importar", response_class=HTMLResponse)
+async def importar_ler(request: Request, arquivo: UploadFile = File(...)):
+    conta = request.state.conta
+    if not _pode_importar(conta):
+        return RedirectResponse("/painel", 303)
+    nome = arquivo.filename or "arquivo"
+    if not nome.lower().endswith((".xlsx", ".xlsm", ".csv")):
+        return templates.TemplateResponse(request, "importar.html", {
+            "conta": conta, "cabecalho": importacao.CABECALHO_MODELO,
+            "exemplo": importacao.EXEMPLO_MODELO[:6], "erro": "Envie um .xlsx ou um .csv."})
+    chave = importacao.guardar(nome, await arquivo.read())
+    with closing(db.conectar()) as conn:
+        try:
+            viagens_lidas, problemas = importacao.ler(importacao.caminho_de(chave), conn)
+        except Exception as exc:  # noqa: BLE001 — arquivo alheio: o erro vira relatorio
+            importacao.descartar(chave)
+            return templates.TemplateResponse(request, "importar.html", {
+                "conta": conta, "cabecalho": importacao.CABECALHO_MODELO,
+                "exemplo": importacao.EXEMPLO_MODELO[:6],
+                "erro": "Não consegui ler o arquivo: {}".format(exc)})
+        relatorio = _relatorio_importacao(conn, viagens_lidas, problemas)
+    return templates.TemplateResponse(request, "importar.html", {
+        "conta": conta, "relatorio": relatorio, "chave": chave, "nome_arquivo": nome})
+
+
+@app.post("/importar/confirmar", response_class=HTMLResponse)
+def importar_confirmar(request: Request, chave: str = Form(...)):
+    conta = request.state.conta
+    if not _pode_importar(conta):
+        return RedirectResponse("/painel", 303)
+    caminho = importacao.caminho_de(chave)
+    if caminho is None:
+        return RedirectResponse("/importar", 303)
+    with closing(db.conectar()) as conn:
+        viagens_lidas, problemas = importacao.ler(caminho, conn)
+        if any(p.nivel == "erro" for p in problemas):
+            relatorio = _relatorio_importacao(conn, viagens_lidas, problemas)
+            return templates.TemplateResponse(request, "importar.html", {
+                "conta": conta, "relatorio": relatorio, "chave": chave, "nome_arquivo": caminho.name})
+        resultado = importacao.importar(conn, viagens_lidas, por=conta["login"])
+    importacao.descartar(chave)
+    return templates.TemplateResponse(request, "importar.html", {"conta": conta, "resultado": resultado})

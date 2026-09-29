@@ -50,7 +50,7 @@
     <span class="rot">Base</span>
     {% for chave, rotulo in bases.items() %}
       <a class="opcao{{ " ativa" if q.base == chave else "" }}" href="{{ url_base[chave] }}">{{ rotulo }}
-        <small>{% if chave == "viagens" %}uma linha por viagem{% else %}uma linha por pernada{% endif %}</small>
+        <small>{% if chave == "viagens" %}uma linha por viagem{% elif chave == "pernadas" %}uma linha por pernada{% else %}uma linha por marco lançado{% endif %}</small>
       </a>
     {% endfor %}
   </div>
@@ -154,6 +154,42 @@
 {% if not resultado.linhas %}
   <p class="aviso">Nenhuma viagem passa por estes filtros.</p>
 {% else %}
+
+{#
+  O gráfico do pivot: barras agrupadas, uma série por coluna. Desenhado no
+  servidor em SVG — a CSP não deixa carregar biblioteca de fora, e barras são
+  geometria simples. Cores por atributo `fill`, nunca por style=.
+#}
+{% if grafico %}
+<figure class="grafico" data-grafico>
+  <svg class="grafico-svg" viewBox="0 0 {{ grafico.largura }} {{ grafico.altura }}" role="img"
+       aria-label="{{ nome }} — {{ eixos }}">
+    {% for t in grafico.ticks %}
+      <line class="grade" x1="{{ grafico.plot.x }}" x2="{{ grafico.plot.x + grafico.plot.w }}" y1="{{ t.y }}" y2="{{ t.y }}"></line>
+      <text class="tick" x="{{ grafico.plot.x - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.rotulo }}</text>
+    {% endfor %}
+    {% for g in grafico.grupos %}
+      {% for b in g.barras %}{% if b.y is not none %}
+        <rect class="barra-svg" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3" fill="{{ b.cor }}">
+          <title>{{ b.titulo }}</title>
+        </rect>
+        {% if b.rotular %}<text class="valor-svg" x="{{ b.x + b.w / 2 }}" y="{{ b.y - 5 }}" text-anchor="middle">{{ b.valor }}</text>{% endif %}
+      {% endif %}{% endfor %}
+      <text class="rotulo-x{{ " inclinado" if grafico.eixo_x_inclinado else "" }}" x="{{ g.x }}" y="{{ grafico.plot.y + grafico.plot.h + 18 }}"
+            text-anchor="{{ "end" if grafico.eixo_x_inclinado else "middle" }}"
+            {% if grafico.eixo_x_inclinado %}transform="rotate(-35 {{ g.x }} {{ grafico.plot.y + grafico.plot.h + 18 }})"{% endif %}><title>{{ g.titulo }}</title>{{ g.rotulo }}</text>
+    {% endfor %}
+    <line class="eixo" x1="{{ grafico.plot.x }}" x2="{{ grafico.plot.x + grafico.plot.w }}" y1="{{ grafico.plot.y + grafico.plot.h }}" y2="{{ grafico.plot.y + grafico.plot.h }}"></line>
+  </svg>
+  {% if grafico.legenda %}
+  <ul class="legenda-svg">
+    {% for s in grafico.legenda %}<li><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="3" fill="{{ s.cor }}"></rect></svg>{{ s.rotulo }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <figcaption><a href="{{ sem_grafico }}">ocultar gráfico</a> · passe o mouse nas barras para ver o valor</figcaption>
+</figure>
+{% endif %}
+
 <div class="tabela rolagem">
   <table class="pivot" data-pivot>
     <thead>
