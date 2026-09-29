@@ -20,7 +20,7 @@
 </div>
 
 <!-- RÉGUA SUPERIOR: CÁLCULOS EM TEMPO REAL DA FROTA -->
-<div class="faixa" style="margin-bottom: 16px;">
+<div class="faixa faixa-hud">
   <div class="celula destaque">
     <span class="rot">Posição Atual</span>
     <b>{% if v.situacao %}{{ v.situacao.escala.porto_nome }}{%
@@ -59,13 +59,13 @@
           <span class="rot">Próxima Etapa Operacional</span>
           <h2 class="titulo-bloco">{{ p_escala.porto_nome }} — {{ p_marco.curto }}</h2>
         </div>
-        <button class="btn btn-secondary" id="btn-sync-local-time" type="button" style="font-size: 10.5px; padding: 3px 8px;">
+        <button class="btn btn-secondary btn-mini" id="btn-sync-local-time" type="button">
           🕒 Sincronizar Relógio Local
         </button>
       </div>
 
       <div class="caixa-assistente">
-        <div style="min-width: 0;">
+        <div class="min0">
           <span class="rot">Condição da Escala</span>
           <strong>{{ p_escala.porto_nome }} · {{ p_escala.condicao|upper }}</strong>
         </div>
@@ -121,11 +121,11 @@
           <input type="text" name="comentarios" placeholder="Condições climáticas, manobra, espera de prático...">
         </div>
 
-        <div class="full-width" style="margin-top: 4px;">
-          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-primary btn-largo">
             Gravar {{ p_marco.curto }} e Avançar
           </button>
-          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+          <span class="estado estado-centro" data-estado></span>
         </div>
       </form>
 
@@ -148,11 +148,11 @@
           <label class="rot req">Quantidade de Bauxita (MT)</label>
           <input type="number" step="0.001" min="0" name="quantidade" placeholder="Ex: 58000.000" required>
         </div>
-        <div class="full-width" style="margin-top: 6px;">
-          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-primary btn-largo">
             Gravar Movimento de Carga
           </button>
-          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+          <span class="estado estado-centro" data-estado></span>
         </div>
       </form>
 
@@ -179,11 +179,11 @@
           <label class="rot">MGO Recebido (t)</label>
           <input type="number" step="0.001" min="0" name="mgo" placeholder="0.000">
         </div>
-        <div class="full-width" style="margin-top: 6px;">
-          <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+        <div class="full-width rodape-form">
+          <button type="submit" class="btn btn-primary btn-largo">
             Gravar Abastecimento
           </button>
-          <span class="estado" data-estado style="display:block; text-align:center; margin-top:6px;"></span>
+          <span class="estado estado-centro" data-estado></span>
         </div>
       </form>
 
@@ -194,7 +194,7 @@
           <h2 class="titulo-bloco">Ciclo Encerrado</h2>
         </div>
       </div>
-      <p style="color: var(--ok); font-size: 13.5px; padding: 10px 0;">
+      <p class="texto-ok">
         Meta atingida ou ciclo concluído. A viagem foi finalizada e os dados já alimentam a supervisão.
       </p>
     {% endif %}
@@ -207,7 +207,7 @@
         <span class="rot">Linha do Tempo Auditada</span>
         <h2 class="titulo-bloco">Logbook Operacional</h2>
       </div>
-      <span style="font-size: 11px; color: var(--suave);">💡 Use ✏️ para retificar lançamentos</span>
+      <span class="dica-pequena">💡 Use ✏️ para retificar lançamentos</span>
     </div>
 
     <div class="tabela-container">
@@ -237,8 +237,15 @@
                     <span class="estado salvo" data-estado>salvo</span>
                   </td>
                   <td>
-                    <button type="button" class="btn-row-edit"
-                            onclick="abrirModalEdicaoMarco({{ b.escala.id }}, '{{ m.tipo }}', '{{ m.lancado.hora_local }}', '{{ b.escala.offset_padrao }}', '{{ m.lancado.rob_vlsfo or '' }}', '{{ m.lancado.rob_mgo or '' }}', '{{ m.lancado.fw or '' }}', '{{ m.lancado.lixo or '' }}', '{{ m.lancado.comentarios or '' }}', '{{ m.lancado.nome_responsavel }}')">
+                    <button type="button" class="btn-row-edit" data-editar
+                            data-escala-id="{{ b.escala.id }}" data-tipo="{{ m.tipo }}"
+                            data-hora="{{ m.lancado.hora_local }}" data-offset="{{ b.escala.offset_padrao }}"
+                            data-vlsfo="{{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else '' }}"
+                            data-mgo="{{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else '' }}"
+                            data-fw="{{ m.lancado.fw if m.lancado.fw is not none else '' }}"
+                            data-lixo="{{ m.lancado.lixo or '' }}"
+                            data-comentarios="{{ m.lancado.comentarios or '' }}"
+                            data-responsavel="{{ m.lancado.nome_responsavel }}">
                       ✏️ Editar
                     </button>
                   </td>
@@ -255,7 +262,7 @@
                   <td class="num">{{ m.lancado.fw|mt(1) if m.lancado.fw is not none else "—" }}</td>
                   <td>{{ m.lancado.lixo or "—" }}</td>
                   <td>{{ m.lancado.nome_responsavel }}</td>
-                  <td style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ m.lancado.comentarios or '' }}">
+                  <td class="td-comentario" title="{{ m.lancado.comentarios or '' }}">
                     {{ m.lancado.comentarios or "—" }}
                   </td>
                 </tr>
@@ -273,10 +280,10 @@
 <div class="modal-overlay" id="modal-edicao">
   <div class="modal-box">
     <div class="modal-topo">
-      <h3 style="color: var(--navy); font-size: 15px;">✏️ Retificar Ocorrência</h3>
-      <button class="btn btn-secondary" id="btn-fechar-modal-edicao" type="button" style="padding: 2px 8px;">✕</button>
+      <h3 class="modal-titulo">✏️ Retificar Ocorrência</h3>
+      <button class="btn btn-secondary btn-mini" id="btn-fechar-modal-edicao" type="button">✕</button>
     </div>
-    <p style="color: var(--suave); font-size: 12px; margin-bottom: 10px;">
+    <p class="modal-nota">
       A retificação preserva o rastro de auditoria gerando uma nova versão do evento.
     </p>
 
@@ -329,12 +336,12 @@
       </div>
 
       <div class="campo-grupo full-width">
-        <label class="rot req" style="color: var(--erro);">Motivo da Retificação (Obrigatório)</label>
+        <label class="rot req rot-erro">Motivo da Retificação (Obrigatório)</label>
         <input type="text" id="edit-reason" name="motivo_correcao" placeholder="Justificativa da alteração..." required>
       </div>
 
-      <div class="full-width" style="margin-top: 4px;">
-        <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 40px;">
+      <div class="full-width rodape-form">
+        <button type="submit" class="btn btn-primary btn-largo">
           Salvar Retificação
         </button>
       </div>

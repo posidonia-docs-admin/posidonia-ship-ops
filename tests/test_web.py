@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import re
 from contextlib import closing
 
 import pytest
@@ -78,7 +79,8 @@ def test_login_valido_entra_e_abre_a_viagem_sozinho(cliente):
     assert resposta.status_code == 200
     assert "AMAZON PATHFINDER" in resposta.text
     # a home abre a viagem se nao houver nenhuma: o comandante nunca fica sem onde lancar
-    assert "Juruti" in resposta.text and "Barra Norte" in resposta.text
+    assert 'class="hud-superior"' in resposta.text
+    assert "Alumar — Sailing" in resposta.text        # a primeira etapa ja esta oferecida
 
 
 def test_cookie_adulterado_e_recusado(cliente):
@@ -215,23 +217,47 @@ def test_correcao_pela_api_exige_motivo(cliente):
         base, hora_local="2026-03-01T07:45", id_cliente="c3",
         motivo_correcao="conferido no diario"))
     assert com_motivo.status_code == 200
-    assert "corrigido" in cliente.get("/navio").text
+    html = cliente.get("/navio").text
+    assert 'class="tag-retificado"' in html and ">v2<" in html   # o logbook marca a versao
+    assert 'title="conferido no diario"' in html
 
 
 # ---------------------------------------------------------------------------
 # Telas
 # ---------------------------------------------------------------------------
 
-def test_tela_nao_oferece_marco_que_a_escala_nao_tem(cliente):
-    """Barra Norte e passagem: a tela nao pode nem mostrar Berth para preencher."""
-    import re
+def _proxima_etapa(cliente):
+    """'Porto — Marco' da unica etapa que a tela oferece, ou None."""
+    html = cliente.get("/navio").text
+    m = re.search(r'<h2 class="titulo-bloco">([^<]+)</h2>', html)
+    return m.group(1).strip() if m else None
 
+
+def _lancar(cliente, escala_id, tipo, hora, marca):
+    r = cliente.post("/api/marco", json={
+        "escala_id": escala_id, "tipo": tipo, "hora_local": hora, "offset": "-03:00",
+        "nome_responsavel": "Cmt.", "id_cliente": marca})
+    assert r.status_code == 200, r.text
+
+
+def test_tela_nao_oferece_marco_que_a_escala_nao_tem(cliente):
+    """Barra Norte e passagem: a tela nunca pode chegar a oferecer Berth ali."""
     entrar(cliente)
-    html = cliente.get("/navio").text       # abre a viagem, se nao houver
+    cliente.get("/navio")
+    passos = [(10, "sailing"), (20, "arrival"), (20, "sailing"), (30, "arrival"), (30, "berth"),
+              (30, "unberth"), (30, "sailing"), (40, "arrival"), (40, "sailing")]
+    for i, (ordem, tipo) in enumerate(passos):
+        _lancar(cliente, escala_de(cliente, ordem=ordem), tipo,
+                "2026-03-{:02d}T08:00".format(i + 1), "bn-{}".format(i))
+        if (ordem, tipo) == (30, "sailing"):       # Juruti pede a carga antes de seguir
+            cliente.post("/api/carga", json={"escala_id": escala_de(cliente, ordem=30),
+                                             "quantidade": "58000", "nome_responsavel": "Cmt."})
+    assert _proxima_etapa(cliente) == "Barra Norte — Arrival"
+    _lancar(cliente, escala_de(cliente, ordem=50), "arrival", "2026-03-11T08:00", "bn-a")
+    assert _proxima_etapa(cliente) == "Barra Norte — Sailing"   # nunca Berth
     barra = escala_de(cliente, ordem=50)
-    bloco = re.findall(
-        r'data-escala="{}" data-tipo="([a-z]+)"'.format(barra), html)
-    assert set(bloco) == {"arrival", "sailing"}
+    html = cliente.get("/navio").text
+    assert 'data-escala="{}" data-tipo="berth"'.format(barra) not in html
 
 
 def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
@@ -240,31 +266,22 @@ def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
     assert "APT{}001".format(agora()[2:4]) in html
-    assert 'class="faixa"' in html               # a regua que substituiu o cartao
-    assert "Viagem nova" in html                 # nada lancado ainda
+    assert 'class="faixa faixa-hud"' in html          # a regua de posicao e combustivel
+    assert "Aguardando saída" in html                  # nada lancado ainda
 
 
-def _parada_aberta(cliente):
-    """O porto da parada que vem aberta — a que substituiu o cartao."""
-    import re
-    html = cliente.get("/navio").text
-    aberta = re.search(r'<details class="escala[^>]*\sopen>(.*?)</summary>', html, re.S)
-    if aberta is None:
-        return None
-    nome = re.search(r'<span class="porto">([^<]+)', aberta.group(1))
-    return nome.group(1).strip() if nome else None
 
 
 def test_uma_acao_obvia_por_vez(cliente):
     """O paredao de quinze formularios abertos foi o que motivou este desenho.
 
-    A regra sobreviveu ao fim do cartao de "proximo lancamento": agora e UMA
-    parada que vem aberta, e so ela. O resto continua fechado.
+    A regra sobreviveu a dois redesenhos: a tela oferece UMA etapa, a proxima,
+    e so ela. O resto esta no logbook, como historia, nao como formulario.
     """
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert html.count(" open>") == 1
-    assert _parada_aberta(cliente) == "Alumar"
+    assert html.count("Próxima Etapa Operacional") == 1
+    assert _proxima_etapa(cliente) == "Alumar — Sailing"
 
 
 def test_o_cartao_de_proximo_lancamento_nao_volta(cliente):
@@ -275,41 +292,32 @@ def test_o_cartao_de_proximo_lancamento_nao_volta(cliente):
         assert sumido not in html, sumido
 
 
-def test_a_parada_aberta_avanca_conforme_a_viagem(cliente):
-    """E o que faz a viagem 'se traduzir': a lista anda sozinha."""
+def test_a_etapa_oferecida_avanca_conforme_a_viagem(cliente):
+    """E o que faz a viagem 'se traduzir': a tela anda sozinha."""
     entrar(cliente)
     cliente.get("/navio")
-    assert _parada_aberta(cliente) == "Alumar"     # a saida que abre a viagem
-
-    abertura = escala_de(cliente, ordem=10)
-    cliente.post("/api/marco", json={
-        "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "av-1"})
-
-    assert _parada_aberta(cliente) == "Fazendinha"  # a lista andou
+    assert _proxima_etapa(cliente) == "Alumar — Sailing"     # a saida que abre a viagem
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T10:00", "av-1")
+    assert _proxima_etapa(cliente) == "Fazendinha — Arrival"  # andou
 
 
-def test_tabela_mostra_o_progresso_de_cada_parada(cliente):
+def test_logbook_mostra_o_que_ja_foi_lancado_e_o_topo_conta(cliente):
     entrar(cliente)
     cliente.get("/navio")
     juruti = escala_de(cliente, ordem=30)
-    cliente.post("/api/marco", json={
-        "escala_id": juruti, "tipo": "arrival", "hora_local": "2026-03-02T08:00",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "tr-1"})
+    _lancar(cliente, juruti, "arrival", "2026-03-02T08:00", "tr-1")
 
     html = cliente.get("/navio").text
-    assert 'class="tabela"' in html
-    assert "1 de 4" in html                       # por extenso, nao fracao solta
-    assert 'class="escala parcial' in html
-    # Um marco so nao delimita janela: mostrar "0h00" sugeriria escala instantanea.
-    assert "0h00" not in html
+    assert 'id="tabela-logbook"' in html
+    assert 'data-escala="{}" data-tipo="arrival"'.format(juruti) in html
+    assert "1 de 15 marcos" in html                   # a meta da viagem, por extenso
 
 
 def test_lancamento_acontece_na_propria_tela(cliente):
-    """Sem trocar de pagina: o formulario de cada marco vive na lista."""
+    """Sem trocar de pagina: o formulario da etapa vive no painel."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert "form class=\"lancar\"" in html
+    assert 'class="form-grid lancar"' in html
     assert "/static/escalas.js" in html
     assert "/navio/marco" not in html
 
@@ -335,15 +343,17 @@ def test_api_avisa_quando_a_viagem_troca(cliente):
     assert fim.json()["viagem_mudou"] is True
 
 
-def test_escala_extra_pela_tela(cliente):
+def test_escala_extra_entra_na_ordem_da_viagem(cliente):
+    """A parada adicional (bunker em Icoaraci) entra logo depois da saida de
+    Alumar: e a proxima etapa assim que o Sailing sai."""
     entrar(cliente)
     cliente.get("/navio")
     resposta = cliente.post("/navio/escala-extra", data={
         "codigo_porto": "ICOARACI", "motivo": "bunker",
         "apos_ordem": 10, "tipo_escala": "fundeio"}, follow_redirects=False)
     assert resposta.status_code == 303
-    pagina = cliente.get("/navio").text
-    assert "Icoaraci" in pagina and "Parada adicional" in pagina
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T10:00", "ex-1")
+    assert _proxima_etapa(cliente) == "Icoaraci — Arrival"
 
 
 def test_estatico_e_publico(cliente):
@@ -450,12 +460,11 @@ def test_fora_do_render_o_sqlite_local_e_aceito(cliente):
 # Condicao, combustivel e portos colapsaveis
 # ---------------------------------------------------------------------------
 
-def test_portos_sao_colapsaveis_e_mostram_a_condicao(cliente):
+def test_a_etapa_mostra_a_condicao_da_parada(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
-    assert html.count('<details class="escala') >= 6      # cada porto fecha
-    for condicao in ("ballast", "loading", "laden", "discharging"):
-        assert '>{}</span>'.format(condicao) in html
+    assert 'class="caixa-assistente"' in html
+    assert "Alumar · BALLAST" in html                 # a condicao, ao lado do porto
 
 
 def test_formulario_pede_combustivel_a_bordo(cliente):
@@ -503,6 +512,12 @@ def test_abastecimento_pela_api(cliente):
             "SELECT id FROM escala WHERE viagem_id = ? AND codigo_porto = 'ICOARACI'",
             (viagem_id,)).fetchone()[0]
 
+    # a tela pede a quantidade quando a parada de bunker ja tem os marcos
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T10:00", "bk-0")
+    _lancar(cliente, bunker, "arrival", "2026-03-02T10:00", "bk-1")
+    _lancar(cliente, bunker, "sailing", "2026-03-02T20:00", "bk-2")
+    assert 'class="form-grid abastecer"' in cliente.get("/navio").text
+
     resposta = cliente.post("/api/abastecimento", json={
         "escala_id": bunker, "vlsfo": "220", "mgo": "15", "nome_responsavel": "Cmt."})
     assert resposta.status_code == 200
@@ -510,7 +525,7 @@ def test_abastecimento_pela_api(cliente):
         linha = conn.execute(
             "SELECT vlsfo, mgo FROM abastecimento WHERE escala_id = ?", (bunker,)).fetchone()
     assert linha["vlsfo"] == 220.0 and linha["mgo"] == 15.0
-    assert 'class="abastecer"' in cliente.get("/navio").text
+    assert 'class="form-grid abastecer"' not in cliente.get("/navio").text   # seguiu em frente
 
 
 def test_abastecimento_de_outro_navio_e_bloqueado(cliente):
@@ -547,28 +562,31 @@ def test_datas_aparecem_no_formato_brasileiro(cliente):
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "br-1",
         "rob_vlsfo": "486.2", "rob_mgo": "37.5"})
 
-    import re
-
     html = cliente.get("/navio").text
     assert "21/08/2026 04:20" in html
     assert "486,200" in html                 # tres casas, padrao brasileiro
     assert "37,500" in html
 
-    # O ISO so pode aparecer no value de <input type="date"> — a especificacao
-    # HTML exige yyyy-mm-dd ali, e o navegador exibe no formato do aparelho.
-    # Em texto visivel, nunca.
-    visivel = re.sub(r"<input[^>]*>", "", html)
+    # O ISO so pode viver em atributo (value do <input type="date">, data-hora
+    # do botao Editar) — a especificacao HTML exige yyyy-mm-dd ali. Em texto
+    # visivel, nunca.
+    visivel = re.sub(r"<[^>]+>", "", html)
     assert "2026-08-21" not in visivel
 
 
 def test_so_quem_carrega_ou_descarrega_pede_quantidade(cliente):
-    import re
-
+    """A quantidade e pedida quando os marcos da parada de carga estao lancados
+    — em Juruti (carregamento) e em Alumar (descarga), e so neles."""
     entrar(cliente)
+    cliente.get("/navio")
+    passos = [(10, "sailing"), (20, "arrival"), (20, "sailing"), (30, "arrival"), (30, "berth"),
+              (30, "unberth"), (30, "sailing")]
+    for i, (ordem, tipo) in enumerate(passos):
+        _lancar(cliente, escala_de(cliente, ordem=ordem), tipo,
+                "2026-03-{:02d}T08:00".format(i + 1), "cg-{}".format(i))
     html = cliente.get("/navio").text
-    caixas = re.findall(r'data-escala="(\d+)" data-tipo="carga"', html)
-    assert len(caixas) == 2                  # Juruti e Alumar, so eles
-    assert "Carregado" in html and "Descarregado" in html
+    assert 'class="form-grid carregar"' in html and "Juruti — Carregamento" in html
+    assert 'name="quantidade"' in html
 
 
 def test_quantidade_de_carga_pela_api(cliente):
@@ -584,7 +602,6 @@ def test_quantidade_de_carga_pela_api(cliente):
             "SELECT carregado, descarregado FROM movimento_carga WHERE escala_id = ?",
             (juruti,)).fetchone()
     assert linha["carregado"] == 58000.0 and linha["descarregado"] is None
-    assert "58000" in cliente.get("/navio").text
 
 
 def test_carga_em_escala_que_nao_movimenta_devolve_422(cliente):
@@ -620,47 +637,28 @@ def test_sailing_de_abertura_aparece_no_cabecalho(cliente):
     """Era o que faltava: o começo da história, antes invisível."""
     entrar(cliente)
     cliente.get("/navio")
-    saida = escala_de(cliente, ordem=10)
-    cliente.post("/api/marco", json={
-        "escala_id": saida, "tipo": "sailing", "hora_local": "2026-08-16T14:00",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "ab-1"})
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-08-16T14:00", "ab-1")
 
     html = cliente.get("/navio").text
-    assert "Saiu de Alumar" in html
+    assert "Saída de Alumar" in html
     assert "16/08/2026 14:00" in html
 
 
-def test_a_linha_mostra_a_janela_da_escala(cliente):
-    """O ganho da tabela: ver a viagem sem abrir parada nenhuma."""
+def test_o_logbook_acumula_os_marcos_e_o_topo_conta(cliente):
     entrar(cliente)
     cliente.get("/navio")
     juruti = escala_de(cliente, ordem=30)
-    for i, (tipo, hora) in enumerate((("arrival", "2026-08-21T04:20"),
-                                      ("berth", "2026-08-21T14:00"))):
-        cliente.post("/api/marco", json={
-            "escala_id": juruti, "tipo": tipo, "hora_local": hora,
-            "offset": "-03:00", "nome_responsavel": "Cmt.",
-            "id_cliente": "res-{}".format(i)})
+    _lancar(cliente, juruti, "arrival", "2026-08-21T04:20", "res-0")
+    _lancar(cliente, juruti, "berth", "2026-08-21T14:00", "res-1")
 
-    # Com 2 de 4, a escala nao acabou: mostrar o ultimo marco na coluna FIM
-    # leria como escala encerrada, com o navio ainda atracado.
     html = cliente.get("/navio").text
-    assert "21/08/2026 04:20" in html      # o inicio ja aparece
-    assert "em curso" in html
-    assert "2 de 4" in html
-    assert "9h40" not in html              # duracao so quando fecha
+    assert "21/08/2026 04:20" in html and "21/08/2026 14:00" in html
+    assert "2 de 15 marcos" in html
 
-    for i, (tipo, hora) in enumerate((("unberth", "2026-08-22T09:30"),
-                                      ("sailing", "2026-08-22T11:00"))):
-        cliente.post("/api/marco", json={
-            "escala_id": juruti, "tipo": tipo, "hora_local": hora,
-            "offset": "-03:00", "nome_responsavel": "Cmt.",
-            "id_cliente": "fim-{}".format(i)})
-
-    # Fechada: do PRIMEIRO ao ULTIMO lancamento, e quanto durou.
+    _lancar(cliente, juruti, "unberth", "2026-08-22T09:30", "fim-0")
+    _lancar(cliente, juruti, "sailing", "2026-08-22T11:00", "fim-1")
     html = cliente.get("/navio").text
-    assert "21/08/2026 04:20" in html and "22/08/2026 11:00" in html
-    assert "30h40" in html                 # 21/08 04:20 -> 22/08 11:00
+    assert "22/08/2026 11:00" in html and "4 de 15 marcos" in html
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
@@ -671,16 +669,13 @@ def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
     assert html.index('id="responsavel"') < html.index('class="painel"')
 
 
-def test_a_tela_usa_a_grade_do_computador(cliente):
-    """Os quatro blocos sao IRMAOS: e o que deixa o celular ler na ordem do
-    HTML e o computador reposicionar pela grade. Aninhar em colunas quebraria
-    uma das duas leituras."""
+def test_a_tela_e_um_painel_lado_a_lado(cliente):
+    """HUD em cima, a etapa a lancar a esquerda, o logbook a direita."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="tela"', 'class="faixa"', 'class="bloco-viagem"',
-                  'class="tabela"', 'class="cabecalho"'):
+    for marca in ('class="hud-superior"', 'class="dashboard-grid"',
+                  'class="cartao painel-esquerda"', 'class="cartao painel-direita"'):
         assert marca in html, marca
-    assert 'class="coluna-lado"' not in html
     # o teto de largura vive no base.html, uma vez, para todas as telas
     assert 'class="limite"' in html
 
@@ -691,16 +686,19 @@ def test_o_topo_mostra_o_quanto_da_viagem_ja_foi_lancado(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
     assert '<progress class="barra"' in html
-    assert 'max="14"' in html
+    assert 'max="15"' in html                       # a meta de observacoes da viagem
 
 
-def test_nenhum_template_usa_style_inline(cliente):
-    """A CSP bloqueia `style=` EM SILENCIO — o atributo e ignorado e o espaco
-    simplesmente nao aparece. Sem este teste a regressao passa despercebida."""
+def test_nenhum_template_usa_style_inline_nem_onclick(cliente):
+    """A CSP bloqueia `style=` e `onclick=` EM SILENCIO — o atributo e ignorado
+    e o espaco simplesmente nao aparece (ou o botao nao faz nada). Sem este
+    teste a regressao passa despercebida: a tela de set/2026 chegou com 25
+    style= e um onclick=, e o Editar do logbook nao abria em producao."""
     import pathlib as _p
     raiz = _p.Path(__file__).resolve().parent.parent / "templates"
     culpados = [str(a.name) for a in raiz.glob("*.html")
-                if 'style="' in a.read_text(encoding="utf-8")]
+                if 'style="' in a.read_text(encoding="utf-8")
+                or "onclick=" in a.read_text(encoding="utf-8")]
     assert not culpados, culpados
 
 
@@ -773,27 +771,35 @@ def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
     fragmento = cliente.get("/navio/tela")
     assert fragmento.status_code == 200
     corpo = fragmento.text
-    assert 'class="tela"' in corpo and 'class="tabela"' in corpo
+    assert 'class="hud-superior"' in corpo and 'id="tabela-logbook"' in corpo
     for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
         assert fora not in corpo.lower(), fora
 
 
 def test_o_fragmento_ja_vem_com_o_lancamento_que_acabou_de_entrar(cliente):
-    """E o que substitui o reload: o cartao avanca e a contagem sobe."""
+    """E o que substitui o reload: a etapa avanca e a contagem sobe."""
     entrar(cliente)
     cliente.get("/navio")
     alumar = escala_de(cliente, ordem=10)
 
     antes = cliente.get("/navio/tela").text
-    assert "0 de 14 marcos" in antes
+    assert "0 de 15 marcos" in antes
 
-    cliente.post("/api/marco", json={
-        "escala_id": alumar, "tipo": "sailing", "hora_local": "2026-08-20T18:40",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "frag-1"})
+    _lancar(cliente, alumar, "sailing", "2026-08-20T18:40", "frag-1")
 
     depois = cliente.get("/navio/tela").text
-    assert "1 de 14 marcos" in depois
+    assert "1 de 15 marcos" in depois
     assert "20/08/2026 18:40" in depois
+    assert "Fazendinha — Arrival" in depois
+
+
+def test_o_fragmento_ja_traz_a_viagem_seguinte_quando_esta_fecha(cliente):
+    """Fechar a viagem nao exige recarregar: o miolo seguinte e a viagem nova."""
+    entrar(cliente)
+    _percorrer(cliente)
+    depois = cliente.get("/navio/tela")
+    assert depois.status_code == 200
+    assert "APT26002" in depois.text and "0 de 15 marcos" in depois.text
 
 
 def test_o_fragmento_e_so_do_comandante(cliente):
@@ -840,14 +846,13 @@ def _extra(cliente, motivo="bunker", porto="ICOARACI"):
             " ORDER BY e.id DESC LIMIT 1").fetchone()[0]
 
 
-def _tabela(cliente):
-    """So a tabela de paradas.
-
-    O nome do porto tambem aparece no seletor de "acrescentar parada", entao
-    procurar no HTML inteiro acharia Icoaraci mesmo depois de ela sair da viagem.
-    """
-    html = cliente.get("/navio/tela").text
-    return html[html.index('<div class="tabela">'):html.index('class="extra"')]
+def _etapas_da_viagem(cliente):
+    """Os portos da viagem aberta, na ordem, sem as paradas canceladas."""
+    with closing(db.conectar()) as conn:
+        return [r[0] for r in conn.execute(
+            "SELECT p.nome FROM escala e JOIN porto p ON p.codigo = e.codigo_porto "
+            "  JOIN viagem vg ON vg.id = e.viagem_id "
+            " WHERE vg.status = 'aberta' AND e.status <> 'cancelada' ORDER BY e.ordem")]
 
 
 def _remover(cliente, escala_id):
@@ -859,7 +864,7 @@ def test_parada_extra_vazia_pode_ser_removida(cliente):
     entrar(cliente)
     cliente.get("/navio")
     extra = _extra(cliente)
-    assert 'class="remover"' in cliente.get("/navio").text
+    assert "Icoaraci" in _etapas_da_viagem(cliente)
 
     resposta = _remover(cliente, extra)
     assert resposta.status_code == 303
@@ -891,16 +896,17 @@ def test_parada_extra_com_lancamento_sai_da_tela_sem_perder_o_lancamento(cliente
     entrar(cliente)
     cliente.get("/navio")
     extra = _extra(cliente)
-    cliente.post("/api/marco", json={
-        "escala_id": extra, "tipo": "arrival", "hora_local": "2026-08-20T09:00",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "extra-1"})
-    assert "Icoaraci" in _tabela(cliente)
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-08-20T06:00", "extra-0")
+    _lancar(cliente, extra, "arrival", "2026-08-20T09:00", "extra-1")
+    assert "Icoaraci" in _etapas_da_viagem(cliente)
+    assert _proxima_etapa(cliente) == "Icoaraci — Sailing"
 
     resposta = _remover(cliente, extra)
     assert resposta.headers["location"] == "/navio"
 
-    # sumiu da trilha do comandante...
-    assert "Icoaraci" not in _tabela(cliente)
+    # sumiu da trilha do comandante: a tela volta a pedir Fazendinha...
+    assert "Icoaraci" not in _etapas_da_viagem(cliente)
+    assert _proxima_etapa(cliente) == "Fazendinha — Arrival"
     with closing(db.conectar()) as conn:
         assert conn.execute(
             "SELECT status FROM escala WHERE id = ?", (extra,)).fetchone()[0] == "cancelada"
@@ -944,25 +950,15 @@ def test_um_navio_nao_remove_parada_do_outro(cliente):
                             (do_pioneer,)).fetchone()
 
 
-def test_abertura_esta_completa_e_mesmo_assim_nao_tem_fim(cliente):
-    """A saída de Alumar tem UM marco só.
-
-    Perguntar pelo fim antes de perguntar se a escala fechou fazia a linha dizer
-    "em curso" e "completa" na mesma linha — duas afirmações contraditórias
-    sobre a mesma escala.
-    """
+def test_a_saida_de_alumar_e_um_marco_so(cliente):
+    """A saida de Alumar tem UM marco: lancado o Sailing, a tela segue para
+    Fazendinha e o logbook guarda a saida como primeira linha."""
     entrar(cliente)
     cliente.get("/navio")
-    abertura = escala_de(cliente, ordem=10)
-    cliente.post("/api/marco", json={
-        "escala_id": abertura, "tipo": "sailing", "hora_local": "2026-03-01T10:00",
-        "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "ab-1"})
-
-    linha = _tabela(cliente)
-    alumar = linha[:linha.index("</details>")]
-    assert "01/03/2026 10:00" in alumar     # o início está lá
-    assert "completa" in alumar
-    assert "em curso" not in alumar
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T10:00", "ab-1")
+    html = cliente.get("/navio").text
+    assert "01/03/2026 10:00" in html
+    assert _proxima_etapa(cliente) == "Fazendinha — Arrival"
 
 
 # ---------------------------------------------------------------------------

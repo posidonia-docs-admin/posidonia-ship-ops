@@ -241,10 +241,10 @@
             </div>
             {% endfor %}
               <details class="lancamento-tardio">
-                <summary style="cursor:pointer; color:var(--teal); font-size:12px; margin-top:8px;">
+                <summary class="resumo-tardio">
                   ➕ Adicionar observação a esta viagem encerrada
                 </summary>
-                <form class="form-grid lancar" data-offset="{{ b.escala.offset_padrao }}" data-recarrega="1" style="margin-top:8px;">
+                <form class="form-grid lancar form-tardio" data-offset="{{ b.escala.offset_padrao }}" data-recarrega="1">
                   <input type="hidden" name="escala_id" value="{{ b.escala.id }}">
                   
                   <div class="campo-grupo">
@@ -283,12 +283,12 @@
                   </div>
               
                   <div class="campo-grupo full-width">
-                    <label class="rot req" style="color:var(--erro);">Motivo do Lançamento em Viagem Encerrada</label>
+                    <label class="rot req rot-erro">Motivo do Lançamento em Viagem Encerrada</label>
                     <input type="text" name="motivo_correcao" required placeholder="Ex: Inclusão retroativa de leitura de fundeio">
                   </div>
               
                   <div class="full-width">
-                    <button type="submit" class="btn btn-primary" style="margin-top:6px;">Gravar na Viagem Encerrada</button>
+                    <button type="submit" class="btn btn-primary rodape-form">Gravar na Viagem Encerrada</button>
                   </div>
                 </form>
               </details>

@@ -83,11 +83,9 @@
         if (botao) botao.disabled = false;
         return;
       }
-      // Se a viagem fechou (meta atingida) ou o form pediu recarga, recarrega a janela
-      if (r && r.viagemMudou) {
-        window.location.reload();
-        return;
-      }
+      // Viagem fechou e outra abriu: o miolo novo ja traz a viagem nova, sem
+      // recarregar. So quando NAO ha viagem aberta o servidor devolve 409 e
+      // trocarTela() recarrega a pagina — e o unico reload deste caminho.
       if (form.dataset.recarrega === "1") {
         window.location.reload();
         return;
@@ -197,6 +195,17 @@
         document.getElementById("f_time").value = `${horas}:${minutos}`;
       });
     }
+
+    // O botao Editar de cada linha do logbook. A CSP bloqueia onclick= inline,
+    // entao os dados vem em atributos e o clique e escutado aqui — inclusive
+    // nas linhas que chegam pelo fragmento, porque o listener e no documento.
+    document.addEventListener("click", function (ev) {
+      const botao = ev.target.closest("[data-editar]");
+      if (!botao) return;
+      const d = botao.dataset;
+      window.abrirModalEdicaoMarco(Number(d.escalaId), d.tipo, d.hora, d.offset,
+        d.vlsfo, d.mgo, d.fw, d.lixo, d.comentarios, d.responsavel);
+    });
 
     const btnFecharModal = document.getElementById("btn-fechar-modal-edicao");
     if (btnFecharModal) {

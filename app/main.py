@@ -357,9 +357,9 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "SELECT tipo_evento FROM marco_exigido WHERE tipo_escala = ? ORDER BY ordem",
             (escala["tipo_escala"],))]
         lancados = {r["tipo"]: r for r in conn.execute(
-           "SELECT tipo, hora_local, hora_utc, offset_utc, nome_responsavel, versao, "
-           "       observacao, rob_vlsfo, rob_mgo, fw, lixo, comentarios "
-           "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
+            "SELECT tipo, hora_local, hora_utc, offset_utc, nome_responsavel, versao, "
+            "       observacao, rob_vlsfo, rob_mgo, fw, lixo, comentarios, motivo_correcao "
+            "  FROM evento_vigente WHERE escala_id = ?", (escala["id"],))}
         bunker = conn.execute(
             "SELECT vlsfo, mgo, nome_responsavel FROM abastecimento WHERE escala_id = ?",
             (escala["id"],)).fetchone()

@@ -1135,3 +1135,20 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
   padding-bottom: 8px;
   margin-bottom: 10px;
 }
+
+/* ---- tela do comandante (set/2026): o que era style= inline ------------ */
+/* A CSP (style-src 'self') ignora style= em silencio: tudo vive aqui. */
+.faixa-hud { margin-bottom: 16px; }
+.btn-mini { font-size: 10.5px; padding: 3px 8px; min-height: 0; }
+.min0 { min-width: 0; }
+.rodape-form { margin-top: 6px; }
+.btn-largo { width: 100%; min-height: 40px; }
+.estado-centro { display: block; text-align: center; margin-top: 6px; }
+.texto-ok { color: var(--ok); font-size: 13.5px; padding: 10px 0; }
+.dica-pequena { font-size: 11px; color: var(--suave); }
+.td-comentario { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-titulo { color: var(--navy); font-size: 15px; margin: 0; }
+.modal-nota { color: var(--suave); font-size: 12px; margin-bottom: 10px; }
+.rot-erro { color: var(--erro); }
+.resumo-tardio { cursor: pointer; color: var(--teal); font-size: 12px; margin-top: 8px; }
+.form-tardio { margin-top: 8px; }
