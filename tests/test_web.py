@@ -682,8 +682,8 @@ def test_o_formulario_sugere_o_ultimo_rob_e_pede_confirmacao(cliente):
     cliente.get("/navio")
     html = cliente.get("/navio").text
     assert 'id="modal-confirmar"' in html and "Tem certeza?" in html
-    assert 'name="rob_vlsfo" placeholder' in html          # sem sugestao ainda: vazio, e opcional
-    assert 'name="rob_vlsfo"' in html and 'name="rob_vlsfo" required' not in html
+    # sem sugestao ainda: o campo vem vazio, sem placeholder e sem ser obrigatorio
+    assert 'name="rob_vlsfo">' in html and 'name="rob_vlsfo" required' not in html
     _lancar_rob = cliente.post("/api/marco", json={
         "escala_id": escala_de(cliente, ordem=10), "tipo": "sailing", "hora_local": "2026-03-01T18:40",
         "offset": "-03:00", "nome_responsavel": "Cmt.", "id_cliente": "sug-1",
