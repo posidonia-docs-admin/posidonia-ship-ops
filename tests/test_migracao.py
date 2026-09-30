@@ -295,7 +295,7 @@ def test_arranque_a_partir_de_versao_publicada(tmp_path, commit):
     assert conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
         "   AND name = 'premissa_pernada'").fetchone()[0] == 1
-    for tabela in ("relatorio_salvo", "sof_marco", "sof_escala"):
+    for tabela in ("relatorio_salvo",):
         assert conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
             (tabela,)).fetchone()[0] == 1, tabela

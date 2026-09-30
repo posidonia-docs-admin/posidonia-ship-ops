@@ -980,7 +980,7 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
+  gap: 12px 12px;
   width: 100%;
 }
 
@@ -1005,12 +1005,24 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  /* o tamanho de antes do redesenho: alvo de 44px, legivel no celular a bordo */
-  min-height: 44px;
-  padding: 10px 12px;
-  font-size: 14.5px;
+  /* A mesma altura de todo campo do sistema (login, supervisao): 46px. E UMA
+     fonte so — a do sistema, com digitos tabulares: data, hora e numeros
+     deixam a fonte de maquina e leem como o resto da tela (canvas de 30/09). */
+  min-height: 46px;
+  padding: 11px 13px;
+  font-size: 15px;
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
 }
+.campo-grupo label { margin: 0 0 4px 2px; }
+.campo-grupo small { font-size: 11.5px; color: var(--tenue); margin: 3px 0 0 2px; }
+.campo-grupo small button { border: 0; background: none; padding: 0; font: inherit; color: var(--teal-fundo);
+                            cursor: pointer; text-decoration: underline; }
+/* data mais larga que a hora (o texto dela e maior); os tres numeros numa linha */
+.linha-data { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; grid-column: 1 / -1; }
+.linha-rob { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; grid-column: 1 / -1; }
+@media (max-width: 480px) { .linha-rob { grid-template-columns: 1fr; } }
 
 .full-width {
   grid-column: 1 / -1;
@@ -1143,7 +1155,7 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 .btn-mini { font-size: 10.5px; padding: 3px 8px; min-height: 0; }
 .min0 { min-width: 0; }
 .rodape-form { margin-top: 6px; }
-.btn-largo { width: 100%; min-height: 40px; }
+.btn-largo { width: 100%; min-height: 48px; font-size: 14px; border-radius: var(--r-campo); }
 .estado-centro { display: block; text-align: center; margin-top: 6px; }
 .texto-ok { color: var(--ok); font-size: 13.5px; padding: 10px 0; }
 .dica-pequena { font-size: 11px; color: var(--suave); }
@@ -1224,9 +1236,8 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 .problemas li .num { color: var(--suave); font-size: 11.5px; margin-right: 6px; }
 form.confirmar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
 
-/* ---- sugestao de ROB: o ultimo valor, ja no campo ------------------------ */
-input.sugerido { color: var(--suave); }
-input.sugerido:focus { color: var(--tinta); }
+/* ---- sugestao de ROB: o ultimo valor como placeholder, e um toque para usar - */
+input.sugerido::placeholder { color: var(--suave); }
 
 /* ---- "tem certeza?" ---------------------------------------------------- */
 .modal-confirmar { max-width: 480px; }
@@ -1279,16 +1290,3 @@ input.sugerido:focus { color: var(--tinta); }
 .grafico-svg .ponto-svg { stroke: var(--painel); stroke-width: 2; }
 .grafico-svg .ponto-svg:hover { r: 6; }
 
-/* ---- o Statement of Facts na parada ------------------------------------- */
-details.sof { margin-top: 14px; border-top: 1px solid var(--linha); padding-top: 10px; }
-details.sof > summary { cursor: pointer; color: var(--navy); font: 600 12.5px var(--sans); list-style: none;
-                        display: flex; align-items: center; gap: 8px; }
-details.sof > summary::-webkit-details-marker { display: none; }
-details.sof > summary::before { content: "▸ "; color: var(--tenue); }
-details.sof[open] > summary::before { content: "▾ "; }
-details.sof form { margin-top: 10px; }
-.lista-sof { list-style: none; margin: 10px 0 0; padding: 0; font-size: 12.5px; }
-.lista-sof li { padding: 4px 0; border-top: 1px solid var(--linha); }
-.lista-sof li small { color: var(--suave); }
-.lista-sof .num { margin-right: 8px; }
-tr.linha-sof td { color: var(--suave); font-size: 12.5px; background: #fafcfe; }

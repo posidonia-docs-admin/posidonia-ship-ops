@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, listas, pernadas, sof, viagens
+from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, listas, pernadas, viagens
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -396,10 +396,7 @@ def _escalas_com_marcos(conn, viagem_id: int) -> list[dict]:
             "movimenta_carga": escala["condicao"] in ("loading", "discharging"),
             "carrega": escala["condicao"] == "loading",
             "carga": carga,
-            # o Statement of Facts da parada: marcos alem dos quatro, e os numeros
-            "sof": sof.marcos_da_escala(conn, escala["id"]),
-            "sof_dados": sof.dados_da_escala(conn, escala["id"]),
-            "sof_marcos_possiveis": sof.marcos_para(escala["tipo_escala"]),
+
             **_janela(lancados.values()),
         })
     return saida
@@ -528,21 +525,9 @@ def _contexto_navio(conta) -> dict:
     lancado = ultimo["lancado"] if ultimo else None
     sugestao = {chave: lancado[chave] for chave in ("rob_vlsfo", "rob_mgo", "fw")} if lancado else {}
 
-    # A parada do SOF: a que esta sendo operada agora — a proxima etapa, ou a
-    # ultima com marco quando a viagem ja acabou.
-    parada_sof = None
-    if corrente:
-        if corrente["proximo"]:
-            parada_sof = next((b for b in corrente["blocos"]
-                               if b["escala"]["id"] == corrente["proximo"]["escala"]["id"]), None)
-        if parada_sof is None:
-            com_marco = [b for b in corrente["blocos"] if any(m["lancado"] for m in b["marcos"])]
-            parada_sof = com_marco[-1] if com_marco else None
-
     return {"conta": conta, "lista": lista, "portos": portos,
             "corrente": corrente, "lancados": lancados, "total": total,
-            "sugestao": {k: v for k, v in sugestao.items() if v is not None},
-            "parada_sof": parada_sof, "campos_sof": sof.campos_dados()}
+            "sugestao": {k: v for k, v in sugestao.items() if v is not None}}
 
 
 @app.get("/navio", response_class=HTMLResponse)
@@ -1452,51 +1437,3 @@ def importar_confirmar(request: Request, chave: str = Form(...)):
     importacao.descartar(chave)
     return templates.TemplateResponse(request, "importar.html", {"conta": conta, "resultado": resultado})
 
-
-# ---------------------------------------------------------------------------
-# O Statement of Facts pela API — mesmo contrato do marco: JSON, 422 no dado
-# invalido para a fila nao repetir, 403 em parada de outro navio.
-# ---------------------------------------------------------------------------
-
-def _escala_do_navio(conn, conta, escala_id):
-    escala = conn.execute(
-        "SELECT e.id, vg.navio_id FROM escala e JOIN viagem vg ON vg.id = e.viagem_id WHERE e.id = ?",
-        (escala_id,)).fetchone()
-    if escala is None:
-        return None, JSONResponse({"ok": False, "erros": ["Escala não encontrada."]}, 404)
-    if conta["perfil"] == "navio" and escala["navio_id"] != conta["navio_id"]:
-        return None, JSONResponse({"ok": False, "erros": ["Escala de outro navio."]}, 403)
-    return escala, None
-
-
-@app.post("/api/sof/marco")
-async def api_sof_marco(request: Request):
-    corpo = await request.json()
-    conta = request.state.conta
-    with closing(db.conectar()) as conn:
-        escala, recusa = _escala_do_navio(conn, conta, corpo.get("escala_id"))
-        if recusa:
-            return recusa
-        _, erros = sof.registrar_marco(
-            conn, escala["id"], tipo=corpo.get("tipo"), hora_local=corpo.get("hora_local"),
-            offset=corpo.get("offset"), nome_responsavel=corpo.get("nome_responsavel", ""),
-            registrado_por=conta["login"], observacao=corpo.get("observacao"))
-    if erros:
-        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
-    return {"ok": True}
-
-
-@app.post("/api/sof/dados")
-async def api_sof_dados(request: Request):
-    corpo = await request.json()
-    conta = request.state.conta
-    with closing(db.conectar()) as conn:
-        escala, recusa = _escala_do_navio(conn, conta, corpo.get("escala_id"))
-        if recusa:
-            return recusa
-        _, erros = sof.registrar_dados(
-            conn, escala["id"], dados=corpo.get("dados") or {},
-            nome_responsavel=corpo.get("nome_responsavel", ""), registrado_por=conta["login"])
-    if erros:
-        return JSONResponse({"ok": False, "erros": erros}, status_code=422)
-    return {"ok": True}

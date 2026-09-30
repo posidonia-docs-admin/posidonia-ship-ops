@@ -236,37 +236,6 @@
     ]).then(function (ok) { if (ok) despachar(form, bloco, payload, "/api/abastecimento"); });
   }
 
-  function enviarSof(form, evento) {
-    evento.preventDefault();
-    if (!form.reportValidity()) return;
-    const bloco = form;
-    const nome = quemPreenche(form);
-    if (!nome) return;
-    const dados = new FormData(form);
-    const payload = { escala_id: Number(dados.get("escala_id")), nome_responsavel: nome };
-    const linhas = [["Parada", form.dataset.porto || ""]];
-    let url;
-    if (form.classList.contains("sof-marco")) {
-      payload.tipo = valor(dados, "tipo_sof");
-      payload.hora_local = valor(dados, "data") + "T" + valor(dados, "hora");
-      payload.offset = form.dataset.offset || "-03:00";
-      payload.observacao = valor(dados, "observacao");
-      const sel = form.querySelector("[name=tipo_sof]");
-      linhas.push(["Marco do SOF", sel ? sel.options[sel.selectedIndex].text : payload.tipo],
-                  ["Data e hora", br(payload.hora_local)], ["Observação", payload.observacao]);
-      url = "/api/sof/marco";
-    } else {
-      payload.dados = {};
-      form.querySelectorAll("[data-sof-campo]").forEach(function (campo) {
-        const v = campo.value.trim();
-        if (v !== "") { payload.dados[campo.name] = v; linhas.push([campo.dataset.rotulo || campo.name, v]); }
-      });
-      url = "/api/sof/dados";
-    }
-    linhas.push(["Quem preenche", nome]);
-    confirmar("Gravar dados do SOF", linhas).then(function (ok) { if (ok) despachar(form, bloco, payload, url); });
-  }
-
   /* ---- retificação (modal) ------------------------------------------- */
 
   window.abrirModalEdicaoMarco = function (escalaId, tipo, horaLocal, offset, vlsfo, mgo, fw, lixo, comentarios) {
@@ -316,8 +285,7 @@
   document.addEventListener("submit", function (evento) {
     const form = evento.target;
     if (!form.classList) return;
-    if (form.classList.contains("sof-marco") || form.classList.contains("sof-dados")) enviarSof(form, evento);
-    else if (form.classList.contains("lancar")) enviarMarco(form, evento);
+    if (form.classList.contains("lancar")) enviarMarco(form, evento);
     else if (form.classList.contains("carregar")) enviarCarga(form, evento);
     else if (form.classList.contains("abastecer")) enviarAbastecimento(form, evento);
   });

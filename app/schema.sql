@@ -322,38 +322,4 @@ CREATE TABLE IF NOT EXISTS relatorio_salvo (
     criado_em  TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------------
--- O Statement of Facts da parada (set/2026).
---
--- sof_marco: os marcos alem dos quatro do circuito (NOR, pratico a bordo,
--- primeiro cabo, inicio/fim de operacao, draft survey...). Um horario por
--- marco e parada; repetir substitui. A lista mora em app/listas.py.
--- sof_escala: os numeros da operacao (calados, taxa de carga, tempo
--- trabalhado e parado, carga por porao, remanescente) num JSON por parada —
--- acrescentar um dado e uma linha na lista, nao uma coluna aqui.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sof_marco (
-    id               INTEGER PRIMARY KEY,
-    escala_id        INTEGER NOT NULL REFERENCES escala(id),
-    tipo             TEXT NOT NULL,
-    hora_local       TEXT NOT NULL,
-    offset_utc       TEXT NOT NULL,
-    hora_utc         TEXT NOT NULL,
-    registrado_por   TEXT NOT NULL,
-    registrado_em    TEXT NOT NULL,
-    nome_responsavel TEXT NOT NULL,
-    observacao       TEXT,
-    UNIQUE (escala_id, tipo)
-);
-
-CREATE INDEX IF NOT EXISTS ix_sof_marco_escala ON sof_marco (escala_id, hora_utc);
-
-CREATE TABLE IF NOT EXISTS sof_escala (
-    escala_id        INTEGER PRIMARY KEY REFERENCES escala(id),
-    dados            TEXT NOT NULL,             -- JSON: chave -> numero
-    registrado_por   TEXT NOT NULL,
-    registrado_em    TEXT NOT NULL,
-    nome_responsavel TEXT NOT NULL
-);
-
 PRAGMA user_version = 1;
