@@ -308,8 +308,10 @@ def test_logbook_mostra_o_que_ja_foi_lancado_e_o_topo_conta(cliente):
     _lancar(cliente, juruti, "arrival", "2026-03-02T08:00", "tr-1")
 
     html = cliente.get("/navio").text
-    assert 'id="tabela-logbook"' in html
-    assert 'data-escala="{}" data-tipo="arrival"'.format(juruti) in html
+    assert 'id="logbook"' in html and 'class="logbook"' in html
+    assert '<li class="entrada" data-escala="{}" data-tipo="arrival">'.format(juruti) in html
+    # o fio termina no proximo marco DA ORDEM da viagem: a saida de Alumar ainda falta
+    assert "data-proxima" in html and "Próximo: Sailing em Alumar" in html
     assert "1 de 15 marcos" in html                   # a meta da viagem, por extenso
 
 
@@ -652,13 +654,14 @@ def test_o_logbook_acumula_os_marcos_e_o_topo_conta(cliente):
     _lancar(cliente, juruti, "berth", "2026-08-21T14:00", "res-1")
 
     html = cliente.get("/navio").text
-    assert "21/08/2026 04:20" in html and "21/08/2026 14:00" in html
+    # na linha do tempo a hora vem grande e a data pequena, na margem
+    assert "<b>04:20</b>21/08/2026" in html and "<b>14:00</b>21/08/2026" in html
     assert "2 de 15 marcos" in html
 
     _lancar(cliente, juruti, "unberth", "2026-08-22T09:30", "fim-0")
     _lancar(cliente, juruti, "sailing", "2026-08-22T11:00", "fim-1")
     html = cliente.get("/navio").text
-    assert "22/08/2026 11:00" in html and "4 de 15 marcos" in html
+    assert "<b>11:00</b>22/08/2026" in html and "4 de 15 marcos" in html
 
 
 def test_quem_preenche_fica_na_barra_lateral_e_so_uma_vez(cliente):
@@ -818,7 +821,7 @@ def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
     fragmento = cliente.get("/navio/tela")
     assert fragmento.status_code == 200
     corpo = fragmento.text
-    assert 'class="hud-superior"' in corpo and 'id="tabela-logbook"' in corpo
+    assert 'class="hud-superior"' in corpo and 'id="logbook"' in corpo
     for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
         assert fora not in corpo.lower(), fora
 

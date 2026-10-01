@@ -251,78 +251,78 @@
     </details>
   </div>
 
-  <!-- DIREITA: LOGBOOK EM TEMPO REAL COM STATUS DE FILA POR LINHA -->
+  <!-- DIREITA: O LOGBOOK, COMO LINHA DO TEMPO -->
+  {#
+    Um fio vertical, um ponto por marco com a cor do porto, a hora grande e a
+    data pequena na margem. Cada entrada e uma frase: marco, porto, sentido;
+    as leituras so quando existem. As paradas separam o fio; no fim, pontilhado,
+    o proximo marco esperado — e e ali que a entrada nova aparece, pelo
+    fragmento, assim que for gravada.
+  #}
   <div class="cartao painel-direita">
     <div class="cabecalho-bloco">
       <div>
-        <span class="rot">Linha do Tempo Auditada</span>
-        <h2 class="titulo-bloco">Logbook Operacional</h2>
+        <span class="rot">Linha do tempo auditada</span>
+        <h2 class="titulo-bloco">Logbook</h2>
       </div>
-      <span class="dica-pequena">💡 Use ✏️ para retificar lançamentos</span>
+      <span class="contagem"><b>{{ lancados }}</b> de {{ v.viagem.meta_observacoes or 15 }} marcos · {{ v.viagem.numero }}</span>
     </div>
 
-    <div class="tabela-container">
-      <table id="tabela-logbook">
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Ação</th>
-            <th>Data/Hora</th>
-            <th>Porto</th>
-            <th>Marco</th>
-            <th>VLSFO (t)</th>
-            <th>MGO (t)</th>
-            <th>FW (t)</th>
-            <th>Lixo</th>
-            <th>Quem Lançou</th>
-            <th>Comentários</th>
-          </tr>
-        </thead>
-        <tbody id="tabela-corpo">
-          {% for b in v.blocos %}
-            {% for m in b.marcos %}
-              {% if m.lancado %}
-                <tr data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
-                  <td>
-                    <!-- Indicador visual de fila por linha (fila.js) -->
-                    <span class="estado salvo" data-estado>salvo</span>
-                  </td>
-                  <td>
-                    <button type="button" class="btn-row-edit" data-editar
-                            data-escala-id="{{ b.escala.id }}" data-tipo="{{ m.tipo }}"
-                            data-hora="{{ m.lancado.hora_local }}" data-offset="{{ b.escala.offset_padrao }}"
-                            data-vlsfo="{{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else '' }}"
-                            data-mgo="{{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else '' }}"
-                            data-fw="{{ m.lancado.fw if m.lancado.fw is not none else '' }}"
-                            data-lixo="{{ m.lancado.lixo or '' }}"
-                            data-comentarios="{{ m.lancado.comentarios or '' }}"
-                            data-responsavel="{{ m.lancado.nome_responsavel }}">
-                      ✏️ Editar
-                    </button>
-                  </td>
-                  <td class="num">{{ m.lancado.hora_local|br }}</td>
-                  <td><span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span></td>
-                  <td>
-                    <span class="selo selo-acao">{{ m.curto }}</span>
-                    {% if m.lancado.versao > 1 %}
-                      <span class="tag-retificado" title="{{ m.lancado.motivo_correcao }}">v{{ m.lancado.versao }}</span>
-                    {% endif %}
-                  </td>
-                  <td class="num">{{ m.lancado.rob_vlsfo|mt if m.lancado.rob_vlsfo is not none else "—" }}</td>
-                  <td class="num">{{ m.lancado.rob_mgo|mt if m.lancado.rob_mgo is not none else "—" }}</td>
-                  <td class="num">{{ m.lancado.fw|mt(1) if m.lancado.fw is not none else "—" }}</td>
-                  <td>{{ m.lancado.lixo or "—" }}</td>
-                  <td>{{ m.lancado.nome_responsavel }}</td>
-                  <td class="td-comentario" title="{{ m.lancado.comentarios or '' }}">
-                    {{ m.lancado.comentarios or "—" }}
-                  </td>
-                </tr>
+    <ul class="logbook" id="logbook">
+      {% for b in v.blocos %}
+        {% set lancados_do_bloco = b.marcos|selectattr("lancado")|list %}
+        {% if lancados_do_bloco %}
+          <li class="parada">
+            <span class="rot">{{ b.escala.porto_nome }}{% if b.escala.sentido != "na" %} · {{ b.escala.sentido }}{% elif b.escala.motivo not in ("abertura", "passagem") %} · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo)|lower }}{% endif %}{% if b.escala.origem == "extra" %} · adicional{% endif %}</span>
+            <span class="risco"></span>
+          </li>
+        {% endif %}
+        {% for m in b.marcos %}{% if m.lancado %}
+          <li class="entrada" data-escala="{{ b.escala.id }}" data-tipo="{{ m.tipo }}">
+            <div class="quando"><b>{{ m.lancado.hora_local[11:16] }}</b>{{ m.lancado.hora_local[8:10] }}/{{ m.lancado.hora_local[5:7] }}/{{ m.lancado.hora_local[:4] }}</div>
+            <div class="ponto"><i class="{{ b.escala.codigo_porto|classe_porto }}"></i></div>
+            <div class="corpo">
+              <div class="titulo">
+                <span class="marco">{{ m.curto }}</span>
+                <span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span>
+                {% if b.escala.sentido != "na" %}<span class="sentido">{{ b.escala.sentido }}</span>{% endif %}
+                {% if m.lancado.versao > 1 %}<span class="tag-retificado" title="{{ m.lancado.motivo_correcao }}">v{{ m.lancado.versao }}</span>{% endif %}
+              </div>
+              {% if m.lancado.rob_vlsfo is not none or m.lancado.rob_mgo is not none or m.lancado.fw is not none or m.lancado.lixo %}
+              <div class="leituras">
+                {% if m.lancado.rob_vlsfo is not none %}<span><small>VLSFO</small>{{ m.lancado.rob_vlsfo|mt }} t</span>{% endif %}
+                {% if m.lancado.rob_mgo is not none %}<span><small>MGO</small>{{ m.lancado.rob_mgo|mt }} t</span>{% endif %}
+                {% if m.lancado.fw is not none %}<span><small>FW</small>{{ m.lancado.fw|mt(1) }} t</span>{% endif %}
+                {% if m.lancado.lixo %}<span><small>lixo</small>{{ m.lancado.lixo }}</span>{% endif %}
+              </div>
               {% endif %}
-            {% endfor %}
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+              {% if m.lancado.comentarios %}<div class="coment">{{ m.lancado.comentarios }}</div>{% endif %}
+              <div class="rodape">
+                <span>{{ m.lancado.nome_responsavel }}</span>
+                <span class="estado" data-estado></span>
+                <button type="button" class="retificar" data-editar
+                        data-escala-id="{{ b.escala.id }}" data-tipo="{{ m.tipo }}"
+                        data-hora="{{ m.lancado.hora_local }}" data-offset="{{ b.escala.offset_padrao }}"
+                        data-vlsfo="{{ m.lancado.rob_vlsfo if m.lancado.rob_vlsfo is not none else '' }}"
+                        data-mgo="{{ m.lancado.rob_mgo if m.lancado.rob_mgo is not none else '' }}"
+                        data-fw="{{ m.lancado.fw if m.lancado.fw is not none else '' }}"
+                        data-lixo="{{ m.lancado.lixo or '' }}"
+                        data-comentarios="{{ m.lancado.comentarios or '' }}">retificar</button>
+              </div>
+            </div>
+          </li>
+        {% endif %}{% endfor %}
+      {% endfor %}
+      {% if v.proximo and v.proximo.marco %}
+        <li class="proxima" data-proxima>
+          <div></div>
+          <div class="ponto"><i></i></div>
+          <div class="texto">Próximo: {{ v.proximo.marco.curto }} em {{ v.proximo.escala.porto_nome }}<small>aparece aqui assim que for gravado</small></div>
+        </li>
+      {% elif not lancados %}
+        <li class="proxima" data-proxima><div></div><div class="ponto"><i></i></div><div class="texto">Nenhum lançamento ainda<small>a viagem começa pelo Sailing de Alumar</small></div></li>
+      {% endif %}
+    </ul>
   </div>
 
 </div>

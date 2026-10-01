@@ -1294,3 +1294,51 @@ input.sugerido::placeholder { color: var(--suave); }
 .grafico-svg .ponto-svg { stroke: var(--painel); stroke-width: 2; }
 .grafico-svg .ponto-svg:hover { r: 6; }
 
+
+/* ---- o logbook como linha do tempo (01/10/2026) -------------------------- */
+.contagem { font-family: var(--mono); font-size: 12px; color: var(--suave); white-space: nowrap; }
+.contagem b { color: var(--navy); }
+.logbook { list-style: none; margin: 0; padding: 0; position: relative; }
+.logbook::before { content: ""; position: absolute; left: 112px; top: 8px; bottom: 8px; width: 2px; background: var(--linha); }
+.logbook .entrada { display: grid; grid-template-columns: 92px 40px minmax(0, 1fr); align-items: start; padding: 9px 0; }
+.logbook .entrada + .entrada { border-top: 1px solid var(--linha); }
+.logbook .quando { font-family: var(--mono); font-size: 12.5px; color: var(--suave); line-height: 1.35; padding-top: 4px; }
+.logbook .quando b { display: block; color: var(--tinta); font-weight: 600; font-size: 14px; }
+.logbook .ponto { position: relative; height: 100%; min-height: 32px; }
+.logbook .ponto i { position: absolute; left: 14px; top: 9px; width: 14px; height: 14px; border-radius: 50%;
+                    border: 3px solid var(--painel); box-shadow: 0 0 0 2px var(--campo-borda); background: var(--campo-borda); }
+.logbook .ponto i.porto-alumar { background: #F4B183; } .logbook .ponto i.porto-fazendinha { background: #70AD47; }
+.logbook .ponto i.porto-juruti { background: #FFD966; } .logbook .ponto i.porto-barra-norte { background: #9DC3E6; }
+.logbook .ponto i.porto-icoaraci { background: #B4C7E7; } .logbook .ponto i.porto-itaqui { background: #C9C9C9; }
+.logbook .ponto i.porto-ajb { background: #DEEBF7; }
+.logbook .corpo { min-width: 0; }
+.logbook .titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.logbook .marco { font-weight: 700; font-size: 15px; color: var(--navy); }
+.logbook .titulo .porto-chip { font-size: 12.5px; padding: 1px 9px; }
+.logbook .sentido { font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .08em; }
+.logbook .leituras { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 3px; font-size: 13px; }
+.logbook .leituras span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.logbook .leituras small { font-family: var(--sans); color: var(--suave); margin-right: 4px; }
+.logbook .coment { margin-top: 3px; font-size: 13px; color: var(--suave); }
+.logbook .rodape { display: flex; gap: 12px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--tenue); }
+.logbook .rodape .estado:empty { display: none; }
+.logbook .retificar { border: 0; background: none; padding: 0; font: 600 12px var(--sans); color: var(--teal-fundo);
+                      cursor: pointer; text-decoration: underline; }
+.logbook .proxima { display: grid; grid-template-columns: 92px 40px minmax(0, 1fr); padding: 10px 0 2px; align-items: center; }
+.logbook .proxima .ponto { min-height: 22px; }
+.logbook .proxima .ponto i { background: var(--painel); border: 2px dashed var(--teal); box-shadow: none; top: 4px; }
+.logbook .proxima .texto { font-size: 13px; color: var(--teal-fundo); font-weight: 600; }
+.logbook .proxima .texto small { display: block; color: var(--tenue); font-weight: 400; }
+.logbook .parada { display: flex; align-items: center; gap: 10px; padding: 14px 0 2px 132px; }
+.logbook .parada .rot { color: var(--tenue); white-space: nowrap; }
+.logbook .parada .risco { flex: 1; height: 1px; background: var(--linha); }
+@media (max-width: 640px) {
+  .logbook::before { left: 19px; }
+  .logbook .entrada, .logbook .proxima { grid-template-columns: 40px minmax(0, 1fr); }
+  .logbook .entrada .quando { grid-column: 2; padding-top: 0; font-size: 12px; }
+  .logbook .entrada .quando b { display: inline; font-size: 13px; margin-right: 6px; }
+  .logbook .entrada .ponto { grid-row: 1 / span 3; grid-column: 1; }
+  .logbook .entrada .corpo { grid-column: 2; }
+  .logbook .proxima > div:first-child { display: none; }
+  .logbook .parada { padding-left: 40px; }
+}
