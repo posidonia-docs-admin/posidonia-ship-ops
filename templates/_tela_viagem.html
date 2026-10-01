@@ -1,60 +1,47 @@
 {# Painel Operacional de Bordo — Estrutura Lado a Lado (Posidonia Corsair) #}
 {% set v = corrente %}
 
-<!-- TOP HUD: PARÂMETROS DA VIAGEM ATIVA -->
-<div class="hud-superior">
-  <div class="hud-marca">
-    <span class="codigo" id="hud-viagem-id">{{ v.viagem.numero }}</span>
-    <span class="separador">·</span>
-    <span class="embarcacao">{{ conta.navio_nome }}</span>
-    <span class="separador">·</span>
-    <span class="rota-etiqueta">Alumar ⇄ Juruti</span>
+<!-- O CABEÇALHO: identidade, a situação numa frase, o progresso e o que está a bordo -->
+<div class="cabecalho-viagem">
+  <div class="identidade">
+    <span class="codigo" id="hud-viagem-id">{{ v.viagem.numero }}</span><span class="navio">{{ conta.navio_nome }}</span><span class="rota-etiqueta">Alumar ⇄ Juruti</span>
+    <div class="situacao-frase">
+      {% if situacao and situacao.ultimo %}
+        <b>{{ situacao.titulo }}</b>{% if situacao.detalhe %}, {{ situacao.detalhe }}{% endif %}{% if situacao.condicao %}, {{ situacao.condicao }}{% endif %}
+        · desde o {{ situacao.ultimo.curto }} <span class="ha">há {{ ha }}</span>
+      {% else %}
+        <b>Viagem nova</b> · aguardando a saída de Alumar
+      {% endif %}
+    </div>
   </div>
-  <div class="hud-meta-tags">
-    <div>META: <strong>{{ lancados }} de {{ v.viagem.meta_observacoes or 15 }} marcos</strong></div>
+  <div class="progresso-viagem">
+    <div class="rot"><span>Marcos da viagem</span><b>{{ lancados }} de {{ v.viagem.meta_observacoes or 15 }}</b></div>
     <progress class="barra" value="{{ lancados }}" max="{{ v.viagem.meta_observacoes or 15 }}"></progress>
+    <div class="saida">{% if v.abertura %}Saída de Alumar <b>{{ v.abertura|br }}</b>{% if desde_saida %} · {{ desde_saida }} de viagem{% endif %}{% else %}Aguardando saída de Alumar{% endif %}</div>
   </div>
-  <div class="hud-acoes">
-    <a href="/navio/encerradas" class="btn btn-secondary btn-sm">Viagens Encerradas</a>
-  </div>
-</div>
-
-<!-- RÉGUA SUPERIOR: CÁLCULOS EM TEMPO REAL DA FROTA -->
-<div class="faixa faixa-hud">
-  <div class="celula destaque">
-    <span class="rot">Posição Atual</span>
-    <b>{% if v.situacao %}{{ v.situacao.escala.porto_nome }}{%
-         if v.situacao.escala.condicao %}<span class="cond">{{ v.situacao.escala.condicao }}</span>{%
-         endif %}{% else %}Viagem Aberta{% endif %}</b>
-  </div>
-  <div class="celula">
-    <span class="rot">Saída de Alumar</span>
-    <b>{{ v.abertura|br if v.abertura else "Aguardando saída" }}</b>
-  </div>
-  <div class="celula">
-    <span class="rot">Último Lançamento</span>
-    <b>{% if v.situacao %}{{ v.situacao.marco.curto }} · {{ v.situacao.marco.lancado.hora_local|br }}{% else %}—{% endif %}</b>
-  </div>
-  <div class="celula">
-    <span class="rot">VLSFO a Bordo</span>
-    <b class="num">{{ v.situacao.marco.lancado.rob_vlsfo|mt if v.situacao and v.situacao.marco.lancado.rob_vlsfo is not none else "—" }}</b>
-  </div>
-  <div class="celula">
-    <span class="rot">MGO a Bordo</span>
-    <b class="num">{{ v.situacao.marco.lancado.rob_mgo|mt if v.situacao and v.situacao.marco.lancado.rob_mgo is not none else "—" }}</b>
+  <div class="bordo">
+    {% set u = v.situacao.marco.lancado if v.situacao else none %}
+    <div class="tile{{ "" if u and u.rob_vlsfo is not none else " vazio" }}"><span class="rot">VLSFO a bordo</span><b>{{ u.rob_vlsfo|mt ~ " t" if u and u.rob_vlsfo is not none else "—" }}</b><small>{{ "no último marco" if u and u.rob_vlsfo is not none else "sem leitura" }}</small></div>
+    <div class="tile{{ "" if u and u.rob_mgo is not none else " vazio" }}"><span class="rot">MGO a bordo</span><b>{{ u.rob_mgo|mt ~ " t" if u and u.rob_mgo is not none else "—" }}</b><small>{{ "no último marco" if u and u.rob_mgo is not none else "sem leitura" }}</small></div>
+    <div class="tile{{ "" if u and u.fw is not none else " vazio" }}"><span class="rot">Água doce</span><b>{{ u.fw|mt(1) ~ " t" if u and u.fw is not none else "—" }}</b><small>{{ "no último marco" if u and u.fw is not none else "sem leitura" }}</small></div>
+    <a href="/navio/encerradas" class="btn btn-secondary btn-sm">Viagens encerradas</a>
   </div>
 </div>
 
-<!-- ROTEIRO: todas as paradas da viagem, na ordem, com o estado de cada uma -->
-<div class="roteiro" data-roteiro>
+<!-- O ROTEIRO COMO ROTA: as paradas na ordem, ligadas por um fio, com os horários -->
+<div class="roteiro n-{{ v.blocos|length }}" data-roteiro>
+  <span class="fio-feito p-{{ fio }}"></span>
   {% for b in v.blocos %}
     {% set proxima = v.proximo and v.proximo.escala.id == b.escala.id %}
     <div class="etapa {{ "proxima" if proxima else ("concluida" if b.completa else ("parcial" if b.lancados else "pendente")) }}"
          data-etapa="{{ b.escala.id }}">
       {% if b.escala.origem == "extra" %}<span class="extra-chip">adicional</span>{% endif %}
       <span class="porto-chip {{ b.escala.codigo_porto|classe_porto }}">{{ b.escala.porto_nome }}</span>
-      <small>{{ b.escala.sentido if b.escala.sentido != "na" else ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo) }}{% if b.escala.condicao %} · {{ b.escala.condicao }}{% endif %}</small>
-      <span class="progresso">{% if b.completa %}completa{% elif proxima %}próxima · {{ b.lancados }} de {{ b.total }}{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}</span>
+      <small>{% if b.escala.tipo_escala == "abertura" %}saída que abre a viagem{% elif b.escala.sentido != "na" %}{{ b.escala.sentido }}{% else %}{{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo)|lower }}{% endif %}{% if b.escala.condicao %} · {{ b.escala.condicao }}{% endif %}{% if b.escala.sentido != "na" and b.escala.motivo not in ("passagem", "carregamento", "descarga", "abertura") %} · {{ ROTULO_MOTIVO.get(b.escala.motivo, b.escala.motivo)|lower }}{% endif %}</small>
+      <div class="horas">
+        {% for m in b.marcos %}<em title="{{ m.rotulo }}">{{ m.curto[0] }}</em><span class="{{ "" if m.lancado else "falta" }}">{% if m.lancado %}{{ m.lancado.hora_local[8:10] }}/{{ m.lancado.hora_local[5:7] }} {{ m.lancado.hora_local[11:16] }}{% else %}—{% endif %}</span>{% endfor %}
+      </div>
+      <span class="progresso">{% if b.completa %}completa{% elif proxima %}próxima: {{ v.proximo.marco.curto if v.proximo.marco else ("carga" if v.proximo.carga else "abastecimento") }}{% else %}{{ b.lancados }} de {{ b.total }}{% endif %}</span>
       {% if b.escala.origem == "extra" %}
         <form class="tirar" method="post" action="/navio/escala-extra/remover">
           <input type="hidden" name="escala_id" value="{{ b.escala.id }}">
@@ -265,7 +252,7 @@
         <span class="rot">Linha do tempo auditada</span>
         <h2 class="titulo-bloco">Logbook</h2>
       </div>
-      <span class="contagem"><b>{{ lancados }}</b> de {{ v.viagem.meta_observacoes or 15 }} marcos · {{ v.viagem.numero }}</span>
+      <span class="contagem">{{ lancados }} de {{ v.viagem.meta_observacoes or 15 }} marcos · <b>{{ v.viagem.numero }}</b></span>
     </div>
 
     <ul class="logbook" id="logbook">

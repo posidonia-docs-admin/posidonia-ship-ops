@@ -79,7 +79,7 @@ def test_login_valido_entra_e_abre_a_viagem_sozinho(cliente):
     assert resposta.status_code == 200
     assert "AMAZON PATHFINDER" in resposta.text
     # a home abre a viagem se nao houver nenhuma: o comandante nunca fica sem onde lancar
-    assert 'class="hud-superior"' in resposta.text
+    assert 'class="cabecalho-viagem"' in resposta.text
     assert "Alumar — Sailing" in resposta.text        # a primeira etapa ja esta oferecida
 
 
@@ -266,8 +266,8 @@ def test_tela_mostra_o_codigo_e_onde_o_navio_esta(cliente):
     entrar(cliente)
     html = cliente.get("/navio").text
     assert "APT{}001".format(agora()[2:4]) in html
-    assert 'class="faixa faixa-hud"' in html          # a regua de posicao e combustivel
-    assert "Aguardando saída" in html                  # nada lancado ainda
+    assert 'class="cabecalho-viagem"' in html         # um cabecalho so
+    assert "Aguardando saída" in html and "Viagem nova" in html   # nada lancado ainda
 
 
 
@@ -565,7 +565,7 @@ def test_datas_aparecem_no_formato_brasileiro(cliente):
         "rob_vlsfo": "486.2", "rob_mgo": "37.5"})
 
     html = cliente.get("/navio").text
-    assert "21/08/2026 04:20" in html
+    assert "21/08/2026" in html and "<b>04:20</b>" in html     # no logbook: hora grande, data na margem
     assert "486,200" in html                 # tres casas, padrao brasileiro
     assert "37,500" in html
 
@@ -642,8 +642,9 @@ def test_sailing_de_abertura_aparece_no_cabecalho(cliente):
     _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-08-16T14:00", "ab-1")
 
     html = cliente.get("/navio").text
-    assert "Saída de Alumar" in html
-    assert "16/08/2026 14:00" in html
+    assert "Saída de Alumar <b>16/08/2026 14:00</b>" in html      # no cabecalho
+    assert "Navegando Alumar → Fazendinha" in html               # a frase da situacao
+    assert 'class="fio-feito p-20"' in html                       # o fio ate a parada atual (2a de 6)
 
 
 def test_o_logbook_acumula_os_marcos_e_o_topo_conta(cliente):
@@ -723,7 +724,7 @@ def test_a_tela_e_um_painel_lado_a_lado(cliente):
     """HUD em cima, a etapa a lancar a esquerda, o logbook a direita."""
     entrar(cliente)
     html = cliente.get("/navio").text
-    for marca in ('class="hud-superior"', 'class="dashboard-grid"',
+    for marca in ('class="cabecalho-viagem"', 'class="dashboard-grid"',
                   'class="cartao painel-esquerda"', 'class="cartao painel-direita"'):
         assert marca in html, marca
     # o teto de largura vive no base.html, uma vez, para todas as telas
@@ -821,7 +822,7 @@ def test_o_fragmento_e_so_o_miolo_da_tela(cliente):
     fragmento = cliente.get("/navio/tela")
     assert fragmento.status_code == 200
     corpo = fragmento.text
-    assert 'class="hud-superior"' in corpo and 'id="logbook"' in corpo
+    assert 'class="cabecalho-viagem"' in corpo and 'id="logbook"' in corpo
     for fora in ("<!doctype", "<html", "<body", 'class="lateral"', "/static/estilo.css"):
         assert fora not in corpo.lower(), fora
 
@@ -1648,6 +1649,20 @@ def test_roteiro_mostra_todas_as_paradas_com_a_cor_do_porto(cliente):
     assert etapas == ["proxima"] + ["pendente"] * 5          # uma proxima, o resto por vir
     for classe in ("porto-alumar", "porto-fazendinha", "porto-juruti", "porto-barra-norte"):
         assert classe in html, classe
+
+
+def test_roteiro_traz_os_horarios_de_cada_parada(cliente):
+    entrar(cliente)
+    cliente.get("/navio")
+    _lancar(cliente, escala_de(cliente, ordem=10), "sailing", "2026-03-01T18:40", "rt-0")
+    _lancar(cliente, escala_de(cliente, ordem=20), "arrival", "2026-03-03T18:40", "rt-1")
+    html = cliente.get("/navio").text
+    faz = html[html.index('data-etapa="{}"'.format(escala_de(cliente, ordem=20))):]
+    faz = faz[:faz.index("</div>\n    </div>") + 20] if "</div>\n    </div>" in faz else faz[:1200]
+    assert '<em title="Arrival (chegada)">A</em><span class="">03/03 18:40</span>' in faz
+    assert '<em title="Sailing (saída)">S</em><span class="falta">—</span>' in faz
+    assert "próxima: Sailing" in faz
+    assert 'class="roteiro n-6"' in html
 
 
 def test_parada_adicional_entra_no_roteiro_e_sai_por_ele(cliente):

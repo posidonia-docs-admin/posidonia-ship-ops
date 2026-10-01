@@ -525,9 +525,27 @@ def _contexto_navio(conta) -> dict:
     lancado = ultimo["lancado"] if ultimo else None
     sugestao = {chave: lancado[chave] for chave in ("rob_vlsfo", "rob_mgo", "fw")} if lancado else {}
 
+    # O cabecalho: a frase de onde o navio esta (a mesma logica da Frota), ha
+    # quanto tempo, e quanto da rota ja foi percorrida (para pintar o fio).
+    agora = _agora_utc()
+    situacao = frota.pernada_atual(corrente["blocos"]) if corrente else None
+    ha = _duracao_longa(_entre(lancado["hora_utc"], agora)) if lancado else ""
+    desde_saida = _duracao_longa(_entre(
+        next((m["lancado"]["hora_utc"] for b in corrente["blocos"] for m in b["marcos"]
+              if b["escala"]["tipo_escala"] == "abertura" and m["lancado"]), None), agora)) if corrente else ""
+    n_blocos = len(corrente["blocos"]) if corrente else 0
+    concluidas = sum(1 for b in corrente["blocos"] if b["completa"]) if corrente else 0
+    proxima_idx = next((i for i, b in enumerate(corrente["blocos"])
+                        if corrente["proximo"] and b["escala"]["id"] == corrente["proximo"]["escala"]["id"]),
+                       n_blocos - 1) if corrente else 0
+
     return {"conta": conta, "lista": lista, "portos": portos,
             "corrente": corrente, "lancados": lancados, "total": total,
-            "sugestao": {k: v for k, v in sugestao.items() if v is not None}}
+            "sugestao": {k: v for k, v in sugestao.items() if v is not None},
+            "situacao": situacao, "ha": ha, "desde_saida": desde_saida,
+            # a fracao do fio ja percorrida: ate o ponto da parada atual
+            "fio": int(round(100 * proxima_idx / max(n_blocos - 1, 1))) if n_blocos > 1 else 0,
+            "concluidas": concluidas}
 
 
 @app.get("/navio", response_class=HTMLResponse)

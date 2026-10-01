@@ -1183,25 +1183,82 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 .porto-itaqui      { background: #C9C9C9; }
 .porto-ajb         { background: #DEEBF7; }
 
-/* ---- o roteiro da viagem: todas as paradas, na ordem, com o estado ------ */
-.roteiro { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-bottom: 16px; }
-.roteiro .etapa { display: flex; flex-direction: column; gap: 3px; min-width: 128px; padding: 8px 12px;
-                  border-radius: var(--r-campo); border: 1px solid var(--campo-borda);
-                  background: var(--painel); font-size: 12.5px; position: relative; }
-.roteiro .etapa .porto-chip { align-self: flex-start; font-size: 12.5px; }
-.roteiro .etapa small { color: var(--suave); font-size: 11px; }
-.roteiro .etapa .progresso { font-family: var(--mono); font-size: 11px; color: var(--navy); }
-.roteiro .etapa.concluida { opacity: .78; }
+/* ---- o cabecalho da viagem: um so (canvas de 01/10/2026) ---------------- */
+.cabecalho-viagem { background: var(--painel); border: 1px solid var(--campo-borda); border-radius: var(--r-cartao);
+                    box-shadow: var(--sombra); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+                    align-items: center; gap: 24px; padding: 16px 22px; margin-bottom: 16px; }
+.cabecalho-viagem .identidade .codigo { font-family: var(--mono); font-weight: 700; font-size: 22px; color: var(--navy); }
+.cabecalho-viagem .identidade .navio { font-size: 14px; color: var(--suave); margin-left: 10px; }
+.cabecalho-viagem .identidade .rota-etiqueta { margin-left: 10px; }
+.cabecalho-viagem .situacao-frase { margin-top: 6px; font-size: 14px; color: var(--tinta); }
+.cabecalho-viagem .situacao-frase b { color: var(--navy); }
+.cabecalho-viagem .situacao-frase .ha { font-family: var(--mono); color: var(--teal-fundo); font-weight: 600; }
+.progresso-viagem .rot { display: flex; justify-content: space-between; }
+.progresso-viagem .rot b { font-family: var(--mono); color: var(--navy); letter-spacing: 0; font-size: 12px; }
+.progresso-viagem progress.barra { display: block; width: 100%; height: 8px; margin-top: 6px; }
+.progresso-viagem .saida { margin-top: 6px; font-size: 12.5px; color: var(--suave); }
+.progresso-viagem .saida b { font-family: var(--mono); color: var(--tinta); font-weight: 600; }
+.cabecalho-viagem .bordo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cabecalho-viagem .tile { background: var(--campo); border-radius: var(--r-campo); padding: 9px 14px; min-width: 104px; }
+.cabecalho-viagem .tile .rot { font-size: 10px; }
+.cabecalho-viagem .tile b { display: block; font-family: var(--mono); font-size: 17px; color: var(--navy); font-weight: 600; margin-top: 2px; }
+.cabecalho-viagem .tile small { color: var(--tenue); font-size: 10.5px; }
+.cabecalho-viagem .tile.vazio b { color: var(--tenue); }
+.cabecalho-viagem .bordo .btn { margin-left: 6px; }
+@media (max-width: 1099px) {
+  .cabecalho-viagem { grid-template-columns: 1fr; gap: 14px; }
+}
+
+/* ---- o roteiro como rota: paradas de largura igual ligadas por um fio ---- */
+.roteiro { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;
+           padding-top: 18px; margin-bottom: 16px; }
+.roteiro.n-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.roteiro.n-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.roteiro.n-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.roteiro.n-9 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.roteiro.n-10 { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.roteiro::before { content: ""; position: absolute; left: 8%; right: 8%; top: 8px; height: 3px; border-radius: 2px;
+                   background: var(--campo-borda); }
+.roteiro .fio-feito { position: absolute; left: 8%; top: 8px; height: 3px; border-radius: 2px; background: var(--navy);
+                      width: 0; max-width: 84%; }
+.roteiro .fio-feito.p-0 { width: 0; }
+.roteiro .fio-feito.p-20 { width: 16.8%; } .roteiro .fio-feito.p-25 { width: 21%; } .roteiro .fio-feito.p-33 { width: 27.7%; }
+.roteiro .fio-feito.p-40 { width: 33.6%; } .roteiro .fio-feito.p-50 { width: 42%; } .roteiro .fio-feito.p-60 { width: 50.4%; }
+.roteiro .fio-feito.p-67 { width: 56.3%; } .roteiro .fio-feito.p-75 { width: 63%; } .roteiro .fio-feito.p-80 { width: 67.2%; }
+.roteiro .fio-feito.p-100 { width: 84%; }
+.roteiro .fio-feito.p-14 { width: 11.8%; } .roteiro .fio-feito.p-17 { width: 14.3%; } .roteiro .fio-feito.p-29 { width: 24.4%; }
+.roteiro .fio-feito.p-43 { width: 36.1%; } .roteiro .fio-feito.p-57 { width: 47.9%; } .roteiro .fio-feito.p-71 { width: 59.6%; }
+.roteiro .fio-feito.p-83 { width: 69.7%; } .roteiro .fio-feito.p-86 { width: 72.2%; }
+.roteiro .etapa { position: relative; background: var(--painel); border: 1px solid var(--campo-borda); border-radius: var(--r-campo);
+                  padding: 12px 14px; min-height: 118px; display: flex; flex-direction: column; gap: 4px; }
+.roteiro .etapa::before { content: ""; position: absolute; top: -18px; left: 50%; width: 12px; height: 12px; margin-left: -6px;
+                          border-radius: 50%; background: var(--campo-borda); border: 3px solid var(--fundo); box-sizing: content-box; }
+.roteiro .etapa.concluida::before, .roteiro .etapa.parcial::before { background: var(--navy); }
+.roteiro .etapa.proxima::before { background: var(--painel); border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
+.roteiro .etapa.proxima { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(18,167,201,.18); }
+.roteiro .etapa.pendente { border-style: dashed; background: transparent; }
+.roteiro .etapa.pendente .porto-chip { opacity: .75; }
+.roteiro .etapa .porto-chip { align-self: flex-start; font-size: 13px; }
+.roteiro .etapa small { color: var(--suave); font-size: 11.5px; }
+.roteiro .etapa .horas { margin-top: auto; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 12px; }
+.roteiro .etapa .horas em { font-style: normal; color: var(--tenue); font-family: var(--mono); font-size: 10.5px; padding-top: 2px; }
+.roteiro .etapa .horas span { font-family: var(--mono); color: var(--tinta); font-variant-numeric: tabular-nums; }
+.roteiro .etapa .horas span.falta { color: var(--tenue); }
+.roteiro .etapa .progresso { font-size: 11.5px; font-weight: 600; color: var(--navy); }
 .roteiro .etapa.concluida .progresso { color: var(--ok); }
-.roteiro .etapa.proxima { border-color: var(--teal); box-shadow: var(--foco); }
-.roteiro .etapa.proxima .progresso { color: var(--teal-fundo); font-weight: 600; }
-.roteiro .etapa.pendente { border-style: dashed; }
-.roteiro .etapa .extra-chip { position: absolute; top: 6px; right: 8px; font-family: var(--mono);
-                              font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
-                              color: var(--suave); }
+.roteiro .etapa.proxima .progresso { color: var(--teal-fundo); }
+.roteiro .etapa.pendente .progresso { color: var(--tenue); font-weight: 500; }
+.roteiro .etapa .extra-chip { position: absolute; top: 8px; right: 10px; font-family: var(--mono); font-size: 9px;
+                              letter-spacing: .08em; text-transform: uppercase; color: var(--suave); }
 .roteiro form.tirar { margin: 4px 0 0; }
 .roteiro form.tirar button { border: 0; background: transparent; color: var(--erro); font: 600 11.5px var(--sans);
                              padding: 0; cursor: pointer; text-decoration: underline; }
+@media (max-width: 900px) {
+  .roteiro, .roteiro.n-5, .roteiro.n-7, .roteiro.n-8, .roteiro.n-9, .roteiro.n-10 { grid-template-columns: 1fr; padding-top: 0; }
+  .roteiro::before, .roteiro .fio-feito { display: none; }
+  .roteiro .etapa::before { display: none; }
+  .roteiro .etapa { min-height: 0; }
+}
 
 /* ---- acrescentar parada adicional (de volta ao painel) ------------------ */
 .extra { margin-top: 14px; border-top: 1px solid var(--linha); padding-top: 10px; }
