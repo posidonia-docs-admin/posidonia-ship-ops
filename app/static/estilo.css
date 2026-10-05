@@ -965,14 +965,24 @@ table.pivot tr.soma td { font-weight: 600; color: var(--navy); }
 /* Grade principal travada contra vazamento */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 460px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 480px minmax(0, 1fr);
+  gap: 28px;
   align-items: start;
   width: 100%;
 }
+/* Cada lado e um cartao proprio: a etapa a lancar e o logbook sao duas
+   coisas, e ficavam coladas no mesmo branco (Vinicius, 05/10/2026). */
+.dashboard-grid > .cartao {
+  background: var(--painel);
+  border: 1px solid var(--campo-borda);
+  border-radius: var(--r-cartao);
+  padding: 20px 22px 22px;
+  box-shadow: var(--sombra);
+}
+.dashboard-grid > .painel-direita { background: #fbfcfd; }
 
 @media (max-width: 1050px) {
-  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-grid { grid-template-columns: 1fr; gap: 20px; }
 }
 
 .painel-esquerda, .painel-direita {
