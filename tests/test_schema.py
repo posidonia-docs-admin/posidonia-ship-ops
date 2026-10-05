@@ -17,10 +17,17 @@ def test_seed_traz_os_portos_do_circuito(conn):
     }
 
 
-def test_imo_e_locode_ficam_nulos_ate_a_operacao_confirmar(conn):
-    """Numero inventado parece certo, e por isso e pior que numero ausente."""
-    assert conn.execute("SELECT COUNT(*) FROM navio WHERE imo IS NOT NULL").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM porto WHERE un_locode IS NOT NULL").fetchone()[0] == 0
+def test_imo_e_locode_so_entram_depois_de_confirmados(conn):
+    """Numero inventado parece certo, e por isso e pior que numero ausente.
+
+    Os quatro IMO foram confirmados pelo Vinicius em 05/10/2026; dos LOCODE so
+    Juruti aparece por escrito na operacao (RDE). O resto fica nulo.
+    """
+    imos = dict(conn.execute("SELECT nome_oficial, imo FROM navio ORDER BY id").fetchall())
+    assert imos == {"AMAZON PATHFINDER": 9991109, "AMAZON PIONEER": 9991094,
+                    "AMAZON COMMANDER": 9991111, "AMAZON COURAGE": 9991123}
+    locodes = dict(conn.execute("SELECT codigo, un_locode FROM porto WHERE un_locode IS NOT NULL").fetchall())
+    assert locodes == {"JURUTI": "BRJUR"}
 
 
 def test_alias_de_porto_resolve_grafia_divergente(conn):

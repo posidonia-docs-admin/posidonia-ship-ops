@@ -17,3 +17,7 @@ storage/
 *.pptx
 ~$*
 *.pdf
+
+# A unica planilha versionada: o formulario GFS1201 (RDE) em branco,
+# que o sistema preenche. Nao e dado de operacao.
+!app/modelos/rde.xlsx

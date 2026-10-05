@@ -16,6 +16,12 @@ INSERT OR IGNORE INTO navio (id, imo, nome_oficial, ativo, observacao) VALUES
 -- acima nao toca em linha que ja existe — bancos criados antes desta coluna
 -- ficariam com prefixo nulo para sempre.
 UPDATE navio SET prefixo = 'APT' WHERE id = 1 AND COALESCE(prefixo, '') = '';
+-- IMO confirmados pelo Vinicius em 05/10/2026 (para o RDE). UPDATE pelo
+-- mesmo motivo do prefixo: producao ja tinha as linhas, com IMO nulo.
+UPDATE navio SET imo = 9991109 WHERE id = 1 AND imo IS NULL;
+UPDATE navio SET imo = 9991094 WHERE id = 2 AND imo IS NULL;
+UPDATE navio SET imo = 9991111 WHERE id = 3 AND imo IS NULL;
+UPDATE navio SET imo = 9991123 WHERE id = 4 AND imo IS NULL;
 UPDATE navio SET prefixo = 'APN' WHERE id = 2 AND COALESCE(prefixo, '') = '';
 UPDATE navio SET prefixo = 'ACM' WHERE id = 3 AND COALESCE(prefixo, '') = '';
 UPDATE navio SET prefixo = 'ACR' WHERE id = 4 AND COALESCE(prefixo, '') = '';
@@ -51,6 +57,9 @@ INSERT OR IGNORE INTO porto (codigo, nome, un_locode, uf, pais, offset_padrao, a
 -- Juruti — lidas do tema do Excel em 29/09/2026). As demais seguem a mesma
 -- paleta do Office, para a tela falar a lingua da planilha. UPDATE, e nao
 -- parte do INSERT: a coluna nasceu depois do primeiro deploy.
+-- UN/LOCODE: so o que a operacao ja usa por escrito (o RDE de referencia
+-- anuncia 'BRJUR' como proximo porto). Os demais seguem nulos ate confirmar.
+UPDATE porto SET un_locode = 'BRJUR' WHERE codigo = 'JURUTI' AND un_locode IS NULL;
 UPDATE porto SET cor = '#F4B183' WHERE codigo = 'ALUMAR'      AND cor IS NULL;
 UPDATE porto SET cor = '#70AD47' WHERE codigo = 'FAZENDINHA'  AND cor IS NULL;
 UPDATE porto SET cor = '#FFD966' WHERE codigo = 'JURUTI'      AND cor IS NULL;

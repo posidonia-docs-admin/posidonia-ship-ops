@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from contextlib import asynccontextmanager, closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, listas, pernadas, viagens
+from . import analises, auth, bunker, config, contas, db, dominio, frota, importacao, listas, pernadas, viagens, rde
 
 RAIZ = Path(__file__).resolve().parent.parent
 ESTATICOS = Path(__file__).resolve().parent / "static"
@@ -72,6 +73,7 @@ def classe_porto(codigo: str) -> str:
 
 templates.env.filters["classe_porto"] = classe_porto
 templates.env.globals["LISTAS"] = listas
+templates.env.globals["RDE"] = rde
 
 
 def formato_br(iso):
@@ -539,7 +541,11 @@ def _contexto_navio(conta) -> dict:
                         if corrente["proximo"] and b["escala"]["id"] == corrente["proximo"]["escala"]["id"]),
                        n_blocos - 1) if corrente else 0
 
-    return {"conta": conta, "lista": lista, "portos": portos,
+    # O boletim do meio-dia (RDE): o que o sistema ja sabe para o formulario.
+    with closing(db.conectar()) as conn:
+        boletim = rde.dados_do_sistema(conn, conta, corrente, situacao)
+
+    return {"conta": conta, "lista": lista, "portos": portos, "rde": boletim,
             "corrente": corrente, "lancados": lancados, "total": total,
             "sugestao": {k: v for k, v in sugestao.items() if v is not None},
             "situacao": situacao, "ha": ha, "desde_saida": desde_saida,
@@ -574,6 +580,47 @@ def navio_tela(request: Request):
         # Sem viagem aberta a tela inteira muda de forma; o JavaScript recarrega.
         return HTMLResponse("", status_code=409)
     return templates.TemplateResponse(request, "_tela_viagem.html", contexto)
+
+
+@app.post("/navio/rde")
+async def navio_rde(request: Request):
+    """O formulario GFS1201 preenchido, para baixar e anexar ao e-mail.
+
+    Recebe os campos em JSON, devolve o xlsx. O texto do e-mail vai no
+    cabecalho `X-Rde-Email` (JSON percent-encoded: cabecalho e so ASCII) para
+    o rde.js abrir o e-mail pronto. Nada e gravado: decisao do Vinicius,
+    05/10/2026 — o RDE cumpre o envio, nao alimenta o banco.
+    """
+    conta = request.state.conta
+    if conta["perfil"] != "navio":
+        return JSONResponse({"erros": ["Só a conta do navio gera o RDE."]}, status_code=403)
+    try:
+        dados = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"erros": ["Corpo inválido."]}, status_code=422)
+    if not isinstance(dados, dict):
+        return JSONResponse({"erros": ["Corpo inválido."]}, status_code=422)
+    # Navio e IMO vem do cadastro, nunca do formulario.
+    with closing(db.conectar()) as conn:
+        navio = conn.execute("SELECT nome_oficial, imo FROM navio WHERE id = ?",
+                             (conta["navio_id"],)).fetchone()
+    dados = dict(dados, embarcacao=navio["nome_oficial"], imo=navio["imo"])
+    try:
+        conteudo = rde.preencher(dados)
+    except rde.CampoInvalido as exc:
+        return JSONResponse({"erros": [str(exc)]}, status_code=422)
+    dia = rde.normalizar(dados)["data"].date()
+    email = rde.email(navio["nome_oficial"], dia)
+    nome = email["arquivo"]
+    return Response(
+        conteudo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=\"RDE {}.xlsx\"; filename*=UTF-8''{}".format(
+                dia.strftime("%d.%m.%Y"), quote(nome)),
+            "X-Rde-Email": quote(json.dumps(email, ensure_ascii=False)),
+            "Cache-Control": "no-store",
+        })
 
 
 @app.post("/api/marco")

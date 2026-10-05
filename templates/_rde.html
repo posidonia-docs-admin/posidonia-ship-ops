@@ -1,0 +1,175 @@
+{# O boletim do meio-dia (RDE, formulário GFS1201 da Alcoa).
+
+   Um modal com todos os campos da planilha. O que o sistema sabe vem
+   preenchido (rde.campos); o que o aparelho lembra do boletim de ontem entra
+   pelo rde.js; o resto o comandante digita. Nada vai para o banco: o envio
+   gera o xlsx no servidor, baixa, e abre o e-mail pronto. #}
+{% set c = rde.campos %}
+{% macro campo(nome, rotulo, tipo="text", step=none, dica=none, classe="", obrig=false) -%}
+  <div class="campo-grupo {{ classe }}">
+    <label class="rot{{ " req" if obrig }}" for="rde-{{ nome }}">{{ rotulo }}</label>
+    <input type="{{ tipo }}" id="rde-{{ nome }}" name="{{ nome }}" value="{{ c.get(nome) if c.get(nome) is not none else "" }}"
+           {% if tipo == "number" %}step="{{ step or "any" }}" inputmode="decimal"{% endif %}
+           {% if obrig %}required{% endif %}>
+    {% if dica %}<small>{{ dica }}</small>{% endif %}
+  </div>
+{%- endmacro %}
+
+<div class="modal-overlay" id="modal-rde"
+     data-navio-id="{{ conta.navio_id }}" data-navio="{{ c.embarcacao }}">
+  <div class="modal-box modal-rde">
+    <div class="modal-topo">
+      <div>
+        <span class="rot">Formulário GFS1201 · envio diário às {{ RDE.HORA_BOLETIM }}</span>
+        <h3 class="modal-titulo">Boletim do meio-dia (RDE)</h3>
+      </div>
+      <button class="btn btn-secondary btn-mini" id="btn-fechar-rde" type="button">✕</button>
+    </div>
+
+    <form id="form-rde" method="post" action="/navio/rde" autocomplete="off">
+      <p class="modal-nota">Os campos já preenchidos vieram do sistema ou do boletim de ontem. Confira, complete o restante e gere o arquivo. Nada disto fica gravado no banco.</p>
+
+      <fieldset class="rde-secao">
+        <legend>Identificação</legend>
+        <div class="rde-grid-3">
+          <div class="campo-grupo"><span class="rot">Embarcação</span><div class="rde-fixo">{{ c.embarcacao }}</div></div>
+          <div class="campo-grupo"><span class="rot">IMO</span><div class="rde-fixo">{{ c.imo or "—" }}</div></div>
+          {{ campo("data", "Data do boletim", "date", obrig=true) }}
+          {{ campo("numero_viagem", "Número da viagem") }}
+          {{ campo("posidonia_nr", "Posidonia Nr.") }}
+          {{ campo("cliente_nr", "Cliente Nr.") }}
+          {{ campo("comandante", "Comandante", dica="vem de “Quem preenche”, na barra lateral") }}
+          {{ campo("nacionalidade", "Nacionalidade") }}
+        </div>
+        <input type="hidden" name="embarcacao" value="{{ c.embarcacao }}">
+        <input type="hidden" name="imo" value="{{ c.imo if c.imo is not none else "" }}">
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Posição e navegação</legend>
+        <div class="rde-grid-3">
+          {{ campo("localizacao", "Localização atual", classe="rde-largo") }}
+          {{ campo("lat", "Latitude às 12:00", dica="ex.: 02°40,67'S") }}
+          {{ campo("long", "Longitude às 12:00", dica="ex.: 044°21,63'W") }}
+          {{ campo("calado_proa", "Calado proa (m)", "number", "0.01") }}
+          {{ campo("calado_popa", "Calado popa (m)", "number", "0.01") }}
+          {{ campo("proximo_porto", "Próximo porto / unidade", dica="LOCODE, ex.: BRJUR") }}
+          {{ campo("eta", "ETA", dica="ex.: 09/10/2026 PM") }}
+          {{ campo("dist_navegar", "Distância a navegar (mn)", "number", "0.1") }}
+          {{ campo("dist_coberta", "Distância coberta desde a saída (mn)", "number", "0.1") }}
+          {{ campo("velocidade", "Velocidade atual (nós)", "number", "0.1") }}
+          {{ campo("rumo", "Rumo atual (°)", "number", "1") }}
+        </div>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>A bordo</legend>
+        <div class="rde-grid-4">
+          {{ campo("proteina", "Proteína (kg) / dias", dica="ex.: 48 KG / 03 DIAS") }}
+          {{ campo("horas_on_hire", "Horas do dia em contrato", "number", "0.5") }}
+          {{ campo("rancho_dias", "Duração do rancho (dias)", "number", "1") }}
+          {{ campo("residuos", "Resíduos gerados (m³)", "number", "0.01") }}
+          {{ campo("tripulantes", "Tripulantes", "number", "1") }}
+          {{ campo("reps_cliente", "Reps. cliente", "number", "1") }}
+          {{ campo("reps_armador", "Reps. armador", "number", "1") }}
+          {{ campo("passageiros", "Passageiros", "number", "1") }}
+        </div>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Diário de operações de bordo</legend>
+        <p class="modal-nota">Os marcos das últimas 24 horas já estão aqui. Hora local.</p>
+        <table class="rde-tabela rde-diario">
+          <thead><tr><th>Hora</th><th>Código</th><th>Descrição resumida</th></tr></thead>
+          <tbody>
+            {% for i in range(1, RDE.DIARIO_LINHAS + 1) %}
+              {% set l = rde.diario[i - 1] if rde.diario|length >= i else none %}
+              <tr>
+                <td><input type="text" name="diario_hora_{{ i }}" value="{{ l.hora if l else "" }}" placeholder="hh:mm" aria-label="hora {{ i }}"></td>
+                <td><input type="text" name="diario_codigo_{{ i }}" value="{{ l.codigo if l else "" }}" aria-label="código {{ i }}"></td>
+                <td><input type="text" name="diario_desc_{{ i }}" value="{{ l.desc if l else "" }}" aria-label="descrição {{ i }}"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Condições meteo-oceanográficas</legend>
+        <table class="rde-tabela rde-meteo">
+          <thead><tr><th></th>{% for h in RDE.METEO_HORAS %}<th>{{ h }}:00</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for chave, rotulo in RDE.METEO %}
+              <tr>
+                <th>{{ rotulo }}</th>
+                {% for h in RDE.METEO_HORAS %}
+                  <td><input type="number" step="any" inputmode="decimal" name="meteo_{{ chave }}_{{ h }}" aria-label="{{ rotulo }} às {{ h }}:00"></td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Estoques de bordo (m³)</legend>
+        <p class="modal-nota">“Quantidade anterior” é o ROB do boletim de ontem; “Total ROB” vem do último marco lançado. O consumo a planilha calcula sozinha.</p>
+        <table class="rde-tabela rde-estoques">
+          <thead><tr><th>Produto</th><th>Qtd anterior</th><th>Recebido</th><th>Total ROB</th></tr></thead>
+          <tbody>
+            {% for chave, rotulo in RDE.ESTOQUES %}
+              <tr>
+                <th>{{ rotulo }}</th>
+                {% for parte in ("anterior", "recebido", "total") %}
+                  {% set nome = "est_" ~ chave ~ "_" ~ parte %}
+                  <td><input type="number" step="any" inputmode="decimal" name="{{ nome }}" value="{{ c.get(nome) if c.get(nome) is not none else "" }}" aria-label="{{ rotulo }} {{ parte }}"></td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Horas de uso das máquinas</legend>
+        <p class="modal-nota">Digite as horas de hoje; as horas operando somam sobre as de ontem, se o aparelho lembrar.</p>
+        <table class="rde-tabela rde-maquinas">
+          <thead><tr><th>Máquina</th><th>Horas diárias</th><th>Horas operando</th></tr></thead>
+          <tbody>
+            {% for chave, rotulo in RDE.MAQUINAS %}
+              <tr>
+                <th>{{ rotulo }}</th>
+                <td><input type="number" step="any" inputmode="decimal" name="maq_{{ chave }}_diarias" data-maquina="{{ chave }}" aria-label="{{ rotulo }} horas diárias"></td>
+                <td><input type="number" step="any" inputmode="decimal" name="maq_{{ chave }}_operando" aria-label="{{ rotulo }} horas operando"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset class="rde-secao">
+        <legend>Observações gerais</legend>
+        <div class="campo-grupo">
+          <textarea name="observacoes" id="rde-observacoes" rows="3" placeholder="ex.: NAVIO ATRACADO AO TERMINAL DA ALUMAR, BERÇO II, EM OPERAÇÃO DE DESCARGA."></textarea>
+        </div>
+      </fieldset>
+
+      <div class="rodape-form">
+        <span class="estado" data-estado-rde></span>
+        <button type="submit" class="btn btn-primary btn-largo">Gerar o boletim e baixar o arquivo</button>
+      </div>
+    </form>
+
+    {# Depois de gerar: o arquivo já desceu; falta anexar e enviar. #}
+    <div class="rde-pronto" id="rde-pronto" hidden>
+      <h4>Arquivo gerado e baixado</h4>
+      <p>Anexe <b id="rde-pronto-arquivo"></b> ao e-mail e envie para <span id="rde-pronto-para"></span>.</p>
+      <pre class="rde-texto" id="rde-pronto-texto"></pre>
+      <div class="modal-acoes">
+        <button type="button" class="btn btn-secondary" id="btn-rde-copiar">Copiar o texto</button>
+        <button type="button" class="btn btn-secondary" id="btn-rde-voltar">Voltar ao formulário</button>
+        <a class="btn btn-primary" id="btn-rde-email" href="#">Abrir o e-mail pronto</a>
+      </div>
+    </div>
+  </div>
+</div>

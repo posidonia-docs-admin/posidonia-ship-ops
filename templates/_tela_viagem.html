@@ -24,6 +24,7 @@
     <div class="tile{{ "" if u and u.rob_vlsfo is not none else " vazio" }}"><span class="rot">VLSFO a bordo</span><b>{{ u.rob_vlsfo|mt ~ " t" if u and u.rob_vlsfo is not none else "—" }}</b><small>{{ "no último marco" if u and u.rob_vlsfo is not none else "sem leitura" }}</small></div>
     <div class="tile{{ "" if u and u.rob_mgo is not none else " vazio" }}"><span class="rot">MGO a bordo</span><b>{{ u.rob_mgo|mt ~ " t" if u and u.rob_mgo is not none else "—" }}</b><small>{{ "no último marco" if u and u.rob_mgo is not none else "sem leitura" }}</small></div>
     <div class="tile{{ "" if u and u.fw is not none else " vazio" }}"><span class="rot">Água doce</span><b>{{ u.fw|mt(1) ~ " t" if u and u.fw is not none else "—" }}</b><small>{{ "no último marco" if u and u.fw is not none else "sem leitura" }}</small></div>
+    <button type="button" class="btn btn-primary btn-sm" data-abrir-rde title="Formulário GFS1201 — boletim diário das 12:00">Boletim do meio-dia (RDE)</button>
     <a href="/navio/encerradas" class="btn btn-secondary btn-sm">Viagens encerradas</a>
   </div>
 </div>
@@ -381,6 +382,8 @@
     </form>
   </div>
 </div>
+
+{% include "_rde.html" %}
 
 <!-- "TEM CERTEZA?": o resumo do que vai ser gravado, antes de gravar -->
 <div class="modal-overlay" id="modal-confirmar">

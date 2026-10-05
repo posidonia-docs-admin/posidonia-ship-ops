@@ -1409,3 +1409,44 @@ input.sugerido::placeholder { color: var(--suave); }
   .logbook .proxima > div:first-child { display: none; }
   .logbook .parada { padding-left: 40px; }
 }
+
+/* ---- o boletim do meio-dia (RDE, 05/10/2026) ---------------------------- */
+/* Um modal largo com o formulario GFS1201 inteiro, em secoes. As tabelas
+   (diario, meteorologia, estoques, maquinas) espelham a planilha: quem ja
+   preenche o RDE reconhece cada bloco. */
+.modal-rde { max-width: 960px; padding: 18px 22px 22px; }
+.modal-rde .modal-topo .rot { display: block; margin-bottom: 2px; }
+.rde-secao { border: 1px solid var(--linha); border-radius: var(--r-campo); padding: 12px 14px 14px; margin: 0 0 14px; min-width: 0; }
+.rde-secao legend { padding: 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--navy); }
+.rde-secao .modal-nota { margin: 0 0 10px; }
+.rde-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; }
+.rde-grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+.rde-largo { grid-column: 1 / -1; }
+.rde-fixo { min-height: 46px; display: flex; align-items: center; padding: 11px 13px; font-size: 15px; font-weight: 600;
+            color: var(--navy); background: var(--campo); border-radius: var(--r-campo); font-variant-numeric: tabular-nums; }
+.rde-tabela { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.rde-tabela th, .rde-tabela td { padding: 3px 4px; text-align: left; font-size: 12.5px; color: var(--suave); vertical-align: middle; }
+.rde-tabela thead th { font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 10.5px; color: var(--tenue); }
+.rde-tabela tbody th { font: 600 13px var(--sans); text-transform: none; letter-spacing: 0; color: var(--tinta); white-space: nowrap; }
+.rde-tabela input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; font-size: 14px; font-family: var(--sans);
+                    font-variant-numeric: tabular-nums; }
+.rde-diario th:first-child, .rde-diario td:first-child { width: 20%; }
+.rde-diario th:nth-child(2), .rde-diario td:nth-child(2) { width: 20%; }
+.rde-meteo tbody th { width: 30%; }
+.rde-estoques tbody th, .rde-maquinas tbody th { width: 22%; }
+.rde-pronto h4 { margin: 4px 0 6px; color: var(--navy); font-size: 16px; }
+.rde-pronto p { margin: 0 0 10px; font-size: 14px; }
+.rde-texto { white-space: pre-wrap; background: var(--campo); border: 1px solid var(--campo-borda); border-radius: var(--r-campo);
+             padding: 12px 14px; font: 14px/1.5 var(--sans); color: var(--tinta); margin: 0 0 14px; }
+#form-rde .rodape-form { display: flex; flex-direction: column; gap: 6px; }
+#form-rde .rodape-form .estado:empty { display: none; }
+@media (max-width: 760px) {
+  .modal-rde { padding: 14px; }
+  .rde-grid-3, .rde-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rde-tabela th, .rde-tabela td { padding: 2px; }
+  .rde-tabela input { min-height: 38px; padding: 6px 6px; font-size: 13px; }
+  .rde-meteo tbody th { width: 34%; font-size: 11.5px; }
+}
+@media (max-width: 480px) {
+  .rde-grid-3, .rde-grid-4 { grid-template-columns: 1fr; }
+}
